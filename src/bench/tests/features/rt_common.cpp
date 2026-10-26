@@ -1,5 +1,6 @@
 #include "rt_common.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <map>
