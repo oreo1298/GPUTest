@@ -196,18 +196,31 @@ jobs:
       - name: Find Qt MSVC package
         shell: pwsh
         run: |
+          # aqt cannot always read the Windows repository metadata of the newest Qt
+          # release; fall back to the newest older release it can install.
           python -m pip install --quiet "aqtinstall>=3.3"
-          $archs = (python -m aqt list-qt windows desktop --arch $env:QT_VERSION) -split '\s+' | Where-Object { $_ -match '^win64_msvc\d+_64$' }
-          Write-Host "available MSVC archs for Qt $($env:QT_VERSION): $archs"
-          $arch = ($archs | Sort-Object -Descending | Select-Object -First 1)
-          if (-not $arch) { $arch = "win64_msvc2022_64" }
+          $all = (python -m aqt list-qt windows desktop) -split '\s+' | Where-Object { $_ -match '^6\.\d+\.\d+$' }
+          $latestPerMinor = $all | Group-Object { ($_ -split '\.')[0..1] -join '.' } |
+              ForEach-Object { $_.Group | Sort-Object { [version]$_ } | Select-Object -Last 1 } |
+              Sort-Object { [version]$_ } -Descending
+          $candidates = @($env:QT_VERSION) + @($latestPerMinor | Where-Object { [version]$_ -lt [version]$env:QT_VERSION } | Select-Object -First 4)
+          $ver = $null; $arch = $null
+          foreach ($v in $candidates) {
+            $archs = ((python -m aqt list-qt windows desktop --arch $v 2>$null) -split '\s+') | Where-Object { $_ -match '^win64_msvc\d+_64$' }
+            if ($archs) { $ver = $v; $arch = ($archs | Sort-Object -Descending | Select-Object -First 1); break }
+            Write-Host "Qt $v not installable with aqt here; trying an older release"
+          }
+          if (-not $ver) { Write-Host "::error::no installable Qt version found (tried $candidates)"; exit 1 }
+          if ($ver -ne $env:QT_VERSION) { Write-Host "::warning::Qt $($env:QT_VERSION) unavailable for Windows via aqt; using $ver" }
+          Add-Content -Path $env:GITHUB_ENV -Value "QT_WIN_VERSION=$ver"
           Add-Content -Path $env:GITHUB_ENV -Value "QT_ARCH=$arch"
-          Write-Host "::notice::Using Qt arch $arch"
+          Write-Host "::notice::Using Qt $ver ($arch)"
+          exit 0
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: ${{ env.QT_VERSION }}
+          version: ${{ env.QT_WIN_VERSION }}
           host: windows
           target: desktop
           arch: ${{ env.QT_ARCH }}
