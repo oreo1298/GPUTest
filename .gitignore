@@ -1,0 +1,13 @@
+/build/
+/out/
+/.cache/
+/.deps-cache/
+CMakeUserPresets.json
+compile_commands.json
+*.swp
+.vscode/
+.idea/
+/screenshots-tmp/
+/results-tmp/
+__pycache__/
+*.AppImage

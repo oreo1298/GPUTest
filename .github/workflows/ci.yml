@@ -1,0 +1,206 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  QT_VERSION: "6.8.3"
+  SLANG_VERSION: "2026.20"
+  VULKAN_SDK_VERSION: "1.4.328.1"
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            preset: ci-linux-gcc
+            package: true
+          - compiler: clang
+            preset: ci-linux-clang
+            package: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build ccache clang lld \
+            mesa-vulkan-drivers libvulkan-dev vulkan-tools vulkan-validationlayers libgl1-mesa-dri \
+            libgl-dev libegl-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
+            libxss-dev libxtst-dev libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev wayland-protocols \
+            libdecor-0-dev libdrm-dev libgbm-dev libdbus-1-dev libudev-dev xvfb xauth \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 \
+            libxcb-xkb1 libfuse2t64 file patchelf desktop-file-utils fonts-dejavu-core
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Install Slang
+        run: |
+          mkdir -p "$RUNNER_TEMP/slang"
+          curl -fsSL --retry 3 "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz" | tar -xz -C "$RUNNER_TEMP/slang"
+          echo "$RUNNER_TEMP/slang/bin" >> "$GITHUB_PATH"
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: linux-${{ matrix.compiler }}
+          max-size: 1G
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Unit tests
+        run: ctest --preset ${{ matrix.preset }}
+
+      - name: Runner smoke test (lavapipe)
+        run: |
+          if [ -x scripts/ci-smoke.sh ]; then scripts/ci-smoke.sh build/${{ matrix.preset }}; else build/${{ matrix.preset }}/bin/*-run --version; fi
+
+      - name: Upload smoke-test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-linux-${{ matrix.compiler }}
+          path: build/${{ matrix.preset }}/smoke/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Package AppImage
+        if: matrix.package
+        run: scripts/package-appimage.sh build/${{ matrix.preset }} dist
+
+      - name: Upload AppImage
+        if: matrix.package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  linux-sanitizers:
+    name: Linux ASan+UBSan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build ccache clang lld \
+            mesa-vulkan-drivers libvulkan-dev vulkan-tools vulkan-validationlayers libgl1-mesa-dri \
+            libgl-dev libegl-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
+            libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
+            libdrm-dev libgbm-dev libdbus-1-dev libudev-dev
+      - name: Install Slang
+        run: |
+          mkdir -p "$RUNNER_TEMP/slang"
+          curl -fsSL --retry 3 "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz" | tar -xz -C "$RUNNER_TEMP/slang"
+          echo "$RUNNER_TEMP/slang/bin" >> "$GITHUB_PATH"
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: linux-asan
+          max-size: 1G
+      - name: Configure
+        run: cmake --preset ci-linux-asan
+      - name: Build
+        run: cmake --build --preset ci-linux-asan
+      - name: Unit tests
+        env:
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --preset ci-linux-asan
+      - name: Runner smoke test (lavapipe, sanitized)
+        env:
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          if [ -x scripts/ci-smoke.sh ]; then scripts/ci-smoke.sh build/ci-linux-asan --quick; else build/ci-linux-asan/bin/*-run --version; fi
+
+  windows:
+    name: Windows MSVC
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Install Slang
+        shell: pwsh
+        run: |
+          $dst = Join-Path $env:RUNNER_TEMP "slang"
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          $zip = Join-Path $env:RUNNER_TEMP "slang.zip"
+          Invoke-WebRequest -Uri "https://github.com/shader-slang/slang/releases/download/v$env:SLANG_VERSION/slang-$env:SLANG_VERSION-windows-x86_64.zip" -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dst
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $dst "bin")
+
+      - name: Configure
+        run: cmake --preset ci-windows
+
+      - name: Build
+        run: cmake --build --preset ci-windows
+
+      - name: Unit tests
+        run: ctest --preset ci-windows
+
+      - name: Runner smoke test (WARP)
+        shell: pwsh
+        run: |
+          if (Test-Path scripts/ci-smoke.ps1) { pwsh scripts/ci-smoke.ps1 -BuildDir build/ci-windows } else { Get-ChildItem build/ci-windows/bin/*-run.exe | ForEach-Object { & $_.FullName --version } }
+
+      - name: Upload smoke-test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-windows
+          path: build/ci-windows/smoke/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Package portable zip
+        shell: pwsh
+        run: pwsh scripts/package-windows.ps1 -BuildDir build/ci-windows -OutDir dist
+
+      - name: Upload portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable
+          path: dist/*-portable.zip
+          if-no-files-found: error

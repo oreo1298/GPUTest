@@ -1,0 +1,11 @@
+#!/bin/sh
+# AppImage entry point. `<AppImage>` starts the GUI; `<AppImage> run [args]` (or
+# --runner / cli) runs the command-line benchmark runner instead.
+HERE="$(dirname "$(readlink -f "$0")")"
+case "$1" in
+    run|--runner|cli)
+        shift
+        exec "$HERE/usr/bin/@APP_RUNNER_NAME@" "$@"
+        ;;
+esac
+exec "$HERE/usr/bin/@APP_GUI_NAME@" "$@"

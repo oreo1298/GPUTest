@@ -1,0 +1,11 @@
+# Global sanitizer flags (applied to every target so third-party code is consistent).
+if(GT_SANITIZE)
+  if(MSVC)
+    if(GT_SANITIZE MATCHES "address")
+      add_compile_options(/fsanitize=address)
+    endif()
+  else()
+    add_compile_options(-fsanitize=${GT_SANITIZE} -fno-omit-frame-pointer -fno-sanitize-recover=undefined)
+    add_link_options(-fsanitize=${GT_SANITIZE})
+  endif()
+endif()

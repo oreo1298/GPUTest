@@ -1,0 +1,5 @@
+add_executable(gt_runner main.cpp)
+set_target_properties(gt_runner PROPERTIES OUTPUT_NAME "${APP_RUNNER_NAME}")
+target_link_libraries(gt_runner PRIVATE gt_common CLI11::CLI11)
+gt_set_warnings(gt_runner)
+install(TARGETS gt_runner RUNTIME DESTINATION "${GT_INSTALL_BINDIR}")

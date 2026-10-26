@@ -1,0 +1,14 @@
+// Generated from src/common/app_info.h.in by CMake — do not edit.
+#pragma once
+
+namespace gt::app {
+inline constexpr const char* kDisplayName = "@APP_DISPLAY_NAME@";
+inline constexpr const char* kId = "@APP_ID@";
+inline constexpr const char* kRdnn = "@APP_RDNN@";
+inline constexpr const char* kDescription = "@APP_DESCRIPTION@";
+inline constexpr const char* kHomepage = "@APP_HOMEPAGE@";
+inline constexpr const char* kVersion = "@APP_VERSION@";
+inline constexpr const char* kRunnerName = "@APP_RUNNER_NAME@";
+inline constexpr const char* kGuiName = "@APP_GUI_NAME@";
+inline constexpr const char* kGitRevision = "@GT_GIT_REVISION@";
+} // namespace gt::app

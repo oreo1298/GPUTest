@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b2f3a"/>
+      <stop offset="1" stop-color="#14161c"/>
+    </linearGradient>
+    <linearGradient id="flame" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#ff5a1f"/>
+      <stop offset="0.6" stop-color="#ffb02e"/>
+      <stop offset="1" stop-color="#ffe9a8"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="48" fill="url(#bg)"/>
+  <!-- chip outline -->
+  <rect x="64" y="64" width="128" height="128" rx="18" fill="none" stroke="#8a93a6" stroke-width="10"/>
+  <g stroke="#8a93a6" stroke-width="8" stroke-linecap="round">
+    <line x1="92" y1="40" x2="92" y2="60"/><line x1="128" y1="40" x2="128" y2="60"/><line x1="164" y1="40" x2="164" y2="60"/>
+    <line x1="92" y1="196" x2="92" y2="216"/><line x1="128" y1="196" x2="128" y2="216"/><line x1="164" y1="196" x2="164" y2="216"/>
+    <line x1="40" y1="92" x2="60" y2="92"/><line x1="40" y1="128" x2="60" y2="128"/><line x1="40" y1="164" x2="60" y2="164"/>
+    <line x1="196" y1="92" x2="216" y2="92"/><line x1="196" y1="128" x2="216" y2="128"/><line x1="196" y1="164" x2="216" y2="164"/>
+  </g>
+  <!-- flame -->
+  <path d="M128 84 C150 112 166 126 162 152 C159 172 145 180 128 180 C111 180 97 172 94 152 C91 132 104 120 112 104 C114 118 120 124 126 126 C124 110 124 98 128 84 Z"
+        fill="url(#flame)"/>
+</svg>

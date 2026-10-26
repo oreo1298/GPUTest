@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>@APP_RDNN@</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>@APP_DISPLAY_NAME@</name>
+  <summary>@APP_DESCRIPTION@</summary>
+  <description>
+    <p>
+      @APP_DISPLAY_NAME@ benchmarks, feature-tests and stress-tests AMD, NVIDIA and Intel GPUs on Linux and
+      Windows: scene benchmarks from legacy OpenGL to path tracing, synthetic micro-benchmarks, modern
+      feature tests, and repair-bench diagnostics such as a VRAM tester and artifact detection.
+    </p>
+  </description>
+  <launchable type="desktop-id">@APP_RDNN@.desktop</launchable>
+  <url type="homepage">@APP_HOMEPAGE@</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@APP_VERSION@" date="2026-10-26"/>
+  </releases>
+</component>

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=@APP_DISPLAY_NAME@
+GenericName=GPU Benchmark
+Comment=@APP_DESCRIPTION@
+Exec=@APP_GUI_NAME@
+Icon=@APP_RDNN@
+Terminal=false
+Categories=System;Monitor;Utility;
+Keywords=GPU;benchmark;stress;Vulkan;graphics;diagnostics;VRAM;
+StartupNotify=true
+StartupWMClass=@APP_ID@
