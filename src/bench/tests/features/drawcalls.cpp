@@ -128,7 +128,7 @@ public:
         const std::uint32_t samples = s.duration == DurationPreset::Smoke ? 2 : 5;
         for (Variant v : {Push, Uniform, Pipelines, Indirect}) {
             if (v == Indirect && !args) continue;
-            ctx.progress(0.1 + 0.22 * v, labels[v]);
+            ctx.progress(0.1 + 0.22 * static_cast<int>(v), labels[v]);
             std::vector<double> cpu, gpu;
             for (std::uint32_t i = 0; i <= samples; ++i) { // first round warms up
                 ctx.checkStop();
