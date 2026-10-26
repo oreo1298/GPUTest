@@ -46,6 +46,8 @@ std::unique_ptr<Provider> openProviders(const DeviceMatch& match, std::vector<st
 /// Individual providers (exposed for tests and the capability report).
 std::unique_ptr<Provider> openNvml(const DeviceMatch& match, std::string* why);
 std::unique_ptr<Provider> openLinuxSysfs(const DeviceMatch& match, std::string* why);
+/// Synthetic sensors for tests, enabled by the GT_FAKE_TELEMETRY environment variable.
+std::unique_ptr<Provider> openFake(std::string* why);
 
 /// Samples a provider on a background thread at a fixed interval.
 class Sampler {

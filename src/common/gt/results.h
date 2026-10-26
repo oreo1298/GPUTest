@@ -209,6 +209,20 @@ struct RunConfig {
     std::vector<std::string> tests; ///< resolved test ids
 };
 
+/// A device loss (driver reset / TDR) during the run, with what the driver and the
+/// sensors reported just before it.
+struct DeviceLoss {
+    std::string test;
+    int loop = 0;
+    double t = 0.0; ///< seconds since run start
+    std::string message;
+    bool recovered = false; ///< the device was recreated and the run continued
+    bool faultReportSupported = false;
+    std::string faultDescription;
+    std::vector<std::string> faultDetails;
+    std::optional<TelemetrySample> lastSample;
+};
+
 struct RunResult {
     int schemaVersion = kSchemaVersion;
     std::string appName, appVersion, appRevision;
@@ -225,6 +239,7 @@ struct RunResult {
     Telemetry telemetry;
     std::uint64_t validationErrors = 0, validationWarnings = 0;
     std::vector<std::string> warnings;
+    std::vector<DeviceLoss> deviceLosses;
     double durationS = 0.0;
 };
 

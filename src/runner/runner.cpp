@@ -139,24 +139,39 @@ void Runner::onTelemetry(const results::TelemetrySample& s) {
     }
     const SafetyLimits& lim = m_opt.safety;
     if (!lim.enabled) return;
-    std::string violation;
-    if (std::isfinite(s.tempEdgeC) && s.tempEdgeC > lim.maxTempC)
-        violation = std::format("GPU temperature {:.0f} °C exceeded the {:.0f} °C limit", s.tempEdgeC, lim.maxTempC);
-    else if (std::isfinite(s.tempHotspotC) && s.tempHotspotC > lim.maxHotspotC)
-        violation = std::format("hotspot temperature {:.0f} °C exceeded the {:.0f} °C limit", s.tempHotspotC,
-                                lim.maxHotspotC);
-    else if (std::isfinite(s.tempMemC) && s.tempMemC > lim.maxMemTempC)
-        violation = std::format("memory temperature {:.0f} °C exceeded the {:.0f} °C limit", s.tempMemC,
-                                lim.maxMemTempC);
-    else if (lim.maxPowerW > 0 && std::isfinite(s.powerW) && s.powerW > lim.maxPowerW)
-        violation = std::format("board power {:.0f} W exceeded the {:.0f} W limit", s.powerW, lim.maxPowerW);
-    if (violation.empty()) {
+    // Which limit is exceeded, and the worst value seen while it has been exceeded.
+    std::string what;
+    double value = 0.0, limit = 0.0;
+    const char* unit = "°C";
+    if (std::isfinite(s.tempEdgeC) && s.tempEdgeC > lim.maxTempC) {
+        what = "GPU temperature";
+        value = s.tempEdgeC;
+        limit = lim.maxTempC;
+    } else if (std::isfinite(s.tempHotspotC) && s.tempHotspotC > lim.maxHotspotC) {
+        what = "hotspot temperature";
+        value = s.tempHotspotC;
+        limit = lim.maxHotspotC;
+    } else if (std::isfinite(s.tempMemC) && s.tempMemC > lim.maxMemTempC) {
+        what = "memory temperature";
+        value = s.tempMemC;
+        limit = lim.maxMemTempC;
+    } else if (lim.maxPowerW > 0 && std::isfinite(s.powerW) && s.powerW > lim.maxPowerW) {
+        what = "board power";
+        value = s.powerW;
+        limit = lim.maxPowerW;
+        unit = "W";
+    }
+    if (what.empty()) {
         m_overSince = -1.0;
+        m_overPeak = 0.0;
         return;
     }
     if (m_overSince < 0) m_overSince = s.t;
+    m_overPeak = std::max(m_overPeak, value);
     if (s.t - m_overSince >= lim.gracePeriodS && !m_stop.load()) {
-        const std::string msg = "Safety cutoff: " + violation + ". The run was stopped to protect the hardware.";
+        const std::string msg = std::format("Safety cutoff: {} stayed above the {:.0f} {} limit for {} s (reached {:.0f} {}). "
+                                            "The run was stopped to protect the hardware.",
+                                            what, limit, unit, lim.gracePeriodS, m_overPeak, unit);
         requestStop(results::RunStatus::SafetyAbort, msg);
         m_sink.emit({{"type", "safety_abort"}, {"message", msg}, {"t", s.t}});
         log::error("{}", msg);
@@ -291,6 +306,28 @@ results::TestResult Runner::runTest(const std::string& id, int loop, int index, 
         tr.verdict = results::Verdict::Fail;
         tr.verdictMessage = "The GPU stopped responding (device lost / TDR). This points to a driver problem, an "
                             "unstable overclock or failing hardware.";
+        // Capture what the driver and the sensors said before anything tears the device down.
+        results::DeviceLoss loss;
+        loss.test = id;
+        loss.loop = loop;
+        loss.t = elapsed();
+        loss.message = e.what();
+        try {
+            const rhi::DeviceFaultReport fault = m_device->deviceFaultReport();
+            loss.faultReportSupported = fault.supported;
+            loss.faultDescription = fault.description;
+            loss.faultDetails = fault.details;
+        } catch (const std::exception& fe) {
+            loss.faultDescription = std::string("fault query failed: ") + fe.what();
+        }
+        if (m_sampler) loss.lastSample = m_sampler->latest();
+        if (!loss.faultDescription.empty()) tr.details["fault"] = loss.faultDescription;
+        if (!loss.faultDetails.empty()) tr.details["fault_details"] = loss.faultDetails;
+        log::error("device lost during {}: {}{}", id, e.what(),
+                   loss.faultReportSupported ? std::format(" — driver fault report: {}", loss.faultDescription.empty() ? "(empty)" : loss.faultDescription)
+                                             : std::string(" — the driver offers no fault report"));
+        for (const auto& d : loss.faultDetails) log::error("  {}", d);
+        m_run.deviceLosses.push_back(std::move(loss));
     } catch (const std::exception& e) {
         tr = ctx.result();
         tr.status = results::Status::Error;
@@ -315,7 +352,9 @@ void Runner::writeResults() {
     if (m_sampler) {
         m_run.telemetry.provider = m_sampler->providerName();
         m_run.telemetry.intervalS = m_sampler->interval();
-        m_run.telemetry.samples = m_sampler->samples();
+        m_run.telemetry.samples = m_priorSamples;
+        const auto current = m_sampler->samples();
+        m_run.telemetry.samples.insert(m_run.telemetry.samples.end(), current.begin(), current.end());
         m_run.telemetry.computeSummary();
     }
     if (m_device) {
@@ -424,12 +463,17 @@ int Runner::run() {
                 m_sink.emit({{"type", "device_lost"}, {"test", tr.id}, {"message", tr.message}});
                 if (m_opt.onDeviceLost == DeviceLostPolicy::Recover) {
                     log::warn("device lost during {}: recreating the device and continuing", tr.id);
-                    if (m_sampler) m_sampler->stop();
+                    if (m_sampler) {
+                        m_sampler->stop();
+                        const auto samples = m_sampler->samples();
+                        m_priorSamples.insert(m_priorSamples.end(), samples.begin(), samples.end());
+                    }
                     m_sampler.reset();
                     destroyDevice();
                     try {
                         createDevice();
                         startTelemetry();
+                        if (!m_run.deviceLosses.empty()) m_run.deviceLosses.back().recovered = true;
                         m_run.warnings.push_back(std::format("device lost during {}; recovered", tr.id));
                     } catch (const std::exception& e) {
                         m_run.warnings.push_back(std::string("device recovery failed: ") + e.what());
@@ -459,11 +503,18 @@ int Runner::run() {
     if (deviceLost) {
         m_run.status = results::RunStatus::DeviceLost;
         m_run.statusMessage = "The GPU was lost (driver reset / TDR) — partial results were saved.";
+    } else if (m_stop.load() && !m_run.deviceLosses.empty()) {
+        m_run.status = m_stopStatus == results::RunStatus::Completed ? results::RunStatus::Stopped : m_stopStatus;
+        m_run.statusMessage = m_stopReason + std::format(" ({} device loss(es) recovered during the run.)", m_run.deviceLosses.size());
     } else if (m_stop.load()) {
         m_run.status = m_stopStatus == results::RunStatus::Completed ? results::RunStatus::Stopped : m_stopStatus;
         m_run.statusMessage = m_stopReason;
     } else {
         m_run.status = results::RunStatus::Completed;
+        if (!m_run.deviceLosses.empty())
+            m_run.statusMessage = std::format("Completed after recovering from {} device loss(es) — see the device-loss "
+                                              "report; the GPU or driver is not stable.",
+                                              m_run.deviceLosses.size());
     }
     writeResults();
 
@@ -474,7 +525,8 @@ int Runner::run() {
                  {"message", m_run.statusMessage},
                  {"results_file", m_outPath},
                  {"overall_score", m_run.scores.overall},
-                 {"validation_errors", m_run.validationErrors}});
+                 {"validation_errors", m_run.validationErrors},
+                 {"device_losses", m_run.deviceLosses.size()}});
     if (m_sink.mode() == ProgressMode::Text) {
         std::printf("\n%s — %s on %s (%s)\n", app::kDisplayName, m_suite.name.c_str(), m_adapter.name.c_str(),
                     std::string(rhi::apiDisplayName(*m_opt.api)).c_str());
@@ -483,10 +535,16 @@ int Runner::run() {
         if (m_run.stability.valid)
             std::printf("Stability: %.1f%% (%s)\n", m_run.stability.ratio * 100.0, m_run.stability.passed ? "pass" : "FAIL");
         if (m_run.validationErrors) std::printf("Validation errors: %llu\n", static_cast<unsigned long long>(m_run.validationErrors));
+        for (const auto& d : m_run.deviceLosses)
+            std::printf("Device lost during %s (loop %d, %.1f s)%s: %s\n", d.test.c_str(), d.loop + 1, d.t,
+                        d.recovered ? ", recovered" : "", d.message.c_str());
+        if (!m_run.statusMessage.empty() && m_run.status != results::RunStatus::Completed)
+            std::printf("%s\n", m_run.statusMessage.c_str());
         std::printf("Results: %s\n", m_outPath.c_str());
     }
     if (m_run.status == results::RunStatus::DeviceLost) return kExitDeviceLost;
     if (m_run.status == results::RunStatus::SafetyAbort) return kExitSafetyAbort;
+    if (!m_run.deviceLosses.empty()) return kExitDeviceLost; // recovered, but the loss is the headline
     if (m_run.status == results::RunStatus::Stopped) return kExitStopped;
     if (m_opt.failOnValidation && m_run.validationErrors) return kExitValidationErrors;
     if (diagnosticFail) return kExitDiagnosticFail;

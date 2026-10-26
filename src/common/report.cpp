@@ -463,6 +463,19 @@ std::string toHtml(const results::RunResult& run) {
         for (const auto& e : run.system.extensions) o << htmlEscape(e) << " ";
         o << "</p></details>";
     }
+    if (!run.deviceLosses.empty()) {
+        o << "<h3>Device losses</h3><table class=\"kv\">";
+        for (const auto& d : run.deviceLosses) {
+            std::string fault = !d.faultReportSupported ? "not available (no driver fault reporting)"
+                                : d.faultDescription.empty() ? "(empty)"
+                                                             : d.faultDescription;
+            for (const auto& line : d.faultDetails) fault += "; " + line;
+            o << "<tr><td>" << htmlEscape(std::format("{} (loop {}, {:.1f} s)", d.test, d.loop + 1, d.t)) << "</td><td>"
+              << htmlEscape(d.message) << (d.recovered ? " — recovered" : " — run stopped") << "<br><span class=\"sub\">"
+              << htmlEscape("Driver fault report: " + fault) << "</span></td></tr>";
+        }
+        o << "</table>";
+    }
     if (!run.warnings.empty()) {
         o << "<h3>Warnings</h3><ul>";
         for (const auto& w : run.warnings) o << "<li>" << htmlEscape(w) << "</li>";

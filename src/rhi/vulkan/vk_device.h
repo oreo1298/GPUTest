@@ -320,6 +320,7 @@ struct FeatureSet {
     VkPhysicalDeviceShaderClockFeaturesKHR shaderClock{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_CLOCK_FEATURES_KHR};
     VkPhysicalDeviceDeviceGeneratedCommandsFeaturesEXT dgc{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_GENERATED_COMMANDS_FEATURES_EXT};
+    VkPhysicalDeviceFaultFeaturesEXT fault{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT};
     // Pre-1.2 fallbacks (only chained when the device API version lacks the core struct).
     VkPhysicalDeviceTimelineSemaphoreFeatures timelineSemaphore{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES};
@@ -369,6 +370,7 @@ public:
     std::uint32_t textureCopyPitchAlignment() const override { return 4; }
     MemoryBudget memoryBudget() const override;
     ValidationCounts validationCounts() const override { return globalValidationCounts(); }
+    DeviceFaultReport deviceFaultReport() override;
     void setDebugName(Buffer* b, const char* name) override;
     void setDebugName(Texture* t, const char* name) override;
 
@@ -429,6 +431,7 @@ private:
     bool m_debugUtils = false;
     bool m_timeline = false;
     bool m_memoryBudgetExt = false;
+    bool m_deviceFault = false; ///< VK_EXT_device_fault enabled
     bool m_rebar = false;
     std::uint32_t m_validationHeaderLimit = 0;
     std::vector<VkFence> m_freeFences;

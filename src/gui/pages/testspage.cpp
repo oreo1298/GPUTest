@@ -234,6 +234,7 @@ void TestsPage::rebuildTree() {
                                           {QStringLiteral("feature"), tr("Feature tests")},
                                           {QStringLiteral("diagnostic"), tr("Diagnostics")}};
     for (const auto& t : m_state->tests()) {
+        if (t.tags.contains(QStringLiteral("debug"))) continue; // development-only tests
         QTreeWidgetItem*& cat = cats[t.category];
         if (!cat) {
             cat = new QTreeWidgetItem(m_tree, {catNames.value(t.category, t.category)});
@@ -309,6 +310,7 @@ RunRequest TestsPage::request() const {
     r.maxMemTemp = s.maxMemTemp();
     r.maxPower = s.maxPower();
     r.stabilityThreshold = s.stabilityThreshold();
+    r.recoverDeviceLost = s.recoverDeviceLost();
     return r;
 }
 

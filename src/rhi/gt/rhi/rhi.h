@@ -486,6 +486,12 @@ struct ValidationCounts {
     std::uint64_t warnings = 0;
 };
 
+struct DeviceFaultReport {
+    bool supported = false;           ///< the API/driver can describe device faults
+    std::string description;          ///< driver's description of the fault (may be empty)
+    std::vector<std::string> details; ///< faulting addresses, vendor fault codes
+};
+
 class Device {
 public:
     virtual ~Device() = default;
@@ -523,6 +529,9 @@ public:
     virtual std::uint32_t textureCopyPitchAlignment() const = 0;
     virtual MemoryBudget memoryBudget() const = 0;
     virtual ValidationCounts validationCounts() const = 0;
+    /// What the driver reports about a device loss (VK_EXT_device_fault, D3D12 DRED).
+    /// Call after a DeviceLostError, before destroying the device.
+    virtual DeviceFaultReport deviceFaultReport() { return {}; }
     virtual void setDebugName(Buffer*, const char*) {}
     virtual void setDebugName(Texture*, const char*) {}
 

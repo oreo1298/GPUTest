@@ -72,6 +72,17 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **Windows CI installs the newest Qt that aqt can fetch** (configured 6.12.0, falling back through older minor
   releases) instead of pinning: aqt currently cannot read 6.12.0's Windows repository metadata.
 
+- **Device losses are recorded, not just reported**: `device_losses` holds the test, time, the driver's fault
+  report (`VK_EXT_device_fault`, enabled whenever supported; vendor binary dumps stay off) and the last sensor
+  sample. With `--on-device-lost recover` the runner recreates device and window, keeps the telemetry gathered so
+  far and continues with the next test; the exit code stays 5 so scripts notice, and the loss is the headline of
+  the results page.
+- **Testing hooks instead of untested error paths**: `GT_FAKE_TELEMETRY` (synthetic sensors) and the `debug`-tagged
+  `debug.device_lost` test let CI (including the ASan job) drive the safety cutoff, device-loss abort and recovery,
+  stdin stop and timed loops on lavapipe. Neither is reachable without explicitly asking for it.
+- **Safety cutoff messages state the rule**: "stayed above the 90 °C limit for 2 s (reached 93 °C)", so a user can
+  tell a cutoff from a crash and knows which limit to look at.
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.

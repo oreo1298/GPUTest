@@ -172,9 +172,10 @@ void HistoryPage::updateButtons() {
     m_delete->setEnabled(!rows.isEmpty());
     if (!m_entries.isEmpty()) {
         if (rows.isEmpty())
-            m_status->setText(tr("%n run(s). Select two runs to compare them.", nullptr, static_cast<int>(m_entries.size())));
+            m_status->setText((m_entries.size() == 1 ? tr("1 run.") : tr("%1 runs.").arg(m_entries.size())) +
+                              QLatin1Char(' ') + tr("Select two runs to compare them."));
         else
-            m_status->setText(tr("%n selected.", nullptr, static_cast<int>(rows.size())));
+            m_status->setText(tr("%1 selected.").arg(rows.size()));
     }
 }
 
@@ -214,7 +215,7 @@ void HistoryPage::importFiles() {
         else failed << QStringLiteral("%1: %2").arg(f, err);
     }
     if (!failed.isEmpty())
-        QMessageBox::warning(this, tr("Import"), tr("Imported %1 file(s). These could not be read:\n%2")
+        QMessageBox::warning(this, tr("Import"), tr("Imported: %1. These files could not be read:\n%2")
                                                      .arg(ok)
                                                      .arg(failed.join(QLatin1Char('\n'))));
 }
@@ -225,7 +226,8 @@ void HistoryPage::removeSelected(bool deleteFiles) {
     if (deleteFiles) {
         const auto r = QMessageBox::question(
             this, tr("Delete files"),
-            tr("Delete %n results file(s) from disk? This cannot be undone.", nullptr, static_cast<int>(rows.size())));
+            rows.size() == 1 ? tr("Delete this results file from disk? This cannot be undone.")
+                             : tr("Delete %1 results files from disk? This cannot be undone.").arg(rows.size()));
         if (r != QMessageBox::Yes) return;
     }
     QVector<HistoryEntry> victims;

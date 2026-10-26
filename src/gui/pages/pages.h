@@ -127,6 +127,10 @@ private:
     LineChart* m_frameChart;
     LineChart* m_fpsChart;
     LineChart* m_tempChart;
+    LineChart* m_loopChart;
+    QVector<QPointF> m_loopScores;
+    QVector<LineChart::Band> m_throttleBands;
+    std::uint32_t m_throttleMask = 0;
     StatTile* m_tiles[8];
     QPlainTextEdit* m_log;
     QPlainTextEdit* m_done;

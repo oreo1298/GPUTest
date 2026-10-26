@@ -54,6 +54,7 @@ const std::vector<WantedExtension>& wantedExtensions() {
         {VK_EXT_MEMORY_BUDGET_EXTENSION_NAME, kNotPromoted, {}},
         {VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME, kNotPromoted, {}},
         {VK_EXT_PCI_BUS_INFO_EXTENSION_NAME, kNotPromoted, {}},
+        {VK_EXT_DEVICE_FAULT_EXTENSION_NAME, kNotPromoted, {}},
         {VK_KHR_16BIT_STORAGE_EXTENSION_NAME, VK_API_VERSION_1_1, {}},
         {VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME, VK_API_VERSION_1_2, {}},
         {VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME, VK_API_VERSION_1_2, {}},
@@ -382,6 +383,7 @@ void VulkanDevice::createLogicalDevice() {
     if (has(VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME)) chain(tail, f.memoryPriority);
     if (has(VK_KHR_SHADER_CLOCK_EXTENSION_NAME)) chain(tail, f.shaderClock);
     if (has(VK_EXT_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME)) chain(tail, f.dgc);
+    if (has(VK_EXT_DEVICE_FAULT_EXTENSION_NAME)) chain(tail, f.fault);
     vkGetPhysicalDeviceFeatures2(m_physical, &f.core);
 
     // Never enable features that change performance or memory behaviour of the measured workloads.
@@ -397,6 +399,7 @@ void VulkanDevice::createLogicalDevice() {
     f.rtPipeline.rayTracingPipelineShaderGroupHandleCaptureReplayMixed = VK_FALSE;
     f.descriptorBuffer.descriptorBufferCaptureReplay = VK_FALSE;
     f.omm.micromapCaptureReplay = VK_FALSE;
+    f.fault.deviceFaultVendorBinary = VK_FALSE; // descriptions and codes are enough; no vendor crash dumps
     if (!has(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME)) f.mesh.primitiveFragmentShadingRateMeshShader = VK_FALSE;
     if (!f.v11.multiview) f.mesh.multiviewMeshShader = VK_FALSE;
 
@@ -444,6 +447,7 @@ void VulkanDevice::createLogicalDevice() {
     }
     m_pushDescriptors = has(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
     m_memoryBudgetExt = has(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+    m_deviceFault = has(VK_EXT_DEVICE_FAULT_EXTENSION_NAME) && f.fault.deviceFault && vkGetDeviceFaultInfoEXT;
 
     // --- VMA
     VmaVulkanFunctions fns{};
@@ -868,6 +872,54 @@ std::vector<std::uint8_t> VulkanDevice::readbackTexture(Texture* src, std::uint3
     std::vector<std::uint8_t> out(size);
     std::memcpy(out.data(), rb.mapped(), size);
     return out;
+}
+
+DeviceFaultReport VulkanDevice::deviceFaultReport() {
+    DeviceFaultReport r;
+    if (!m_deviceFault) return r;
+    r.supported = true;
+    VkDeviceFaultCountsEXT counts{VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT};
+    VkResult res = vkGetDeviceFaultInfoEXT(m_device, &counts, nullptr);
+    if (res < VK_SUCCESS) {
+        r.description = std::format("vkGetDeviceFaultInfoEXT failed: {}", resultName(res));
+        return r;
+    }
+    std::vector<VkDeviceFaultAddressInfoEXT> addresses(counts.addressInfoCount);
+    std::vector<VkDeviceFaultVendorInfoEXT> vendor(counts.vendorInfoCount);
+    counts.vendorBinarySize = 0;
+    VkDeviceFaultInfoEXT info{VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT};
+    info.pAddressInfos = addresses.empty() ? nullptr : addresses.data();
+    info.pVendorInfos = vendor.empty() ? nullptr : vendor.data();
+    res = vkGetDeviceFaultInfoEXT(m_device, &counts, &info);
+    if (res < VK_SUCCESS) {
+        r.description = std::format("vkGetDeviceFaultInfoEXT failed: {}", resultName(res));
+        return r;
+    }
+    r.description = info.description;
+    auto addressType = [](VkDeviceFaultAddressTypeEXT t) -> const char* {
+        switch (t) {
+        case VK_DEVICE_FAULT_ADDRESS_TYPE_NONE_EXT: return "no address";
+        case VK_DEVICE_FAULT_ADDRESS_TYPE_READ_INVALID_EXT: return "invalid read";
+        case VK_DEVICE_FAULT_ADDRESS_TYPE_WRITE_INVALID_EXT: return "invalid write";
+        case VK_DEVICE_FAULT_ADDRESS_TYPE_EXECUTE_INVALID_EXT: return "invalid execute";
+        case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_UNKNOWN_EXT: return "instruction pointer (unknown)";
+        case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_INVALID_EXT: return "instruction pointer (invalid)";
+        case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_FAULT_EXT: return "instruction pointer (fault)";
+        default: return "address";
+        }
+    };
+    for (std::uint32_t i = 0; i < counts.addressInfoCount; ++i) {
+        const auto& a = addresses[i];
+        r.details.push_back(std::format("{} at 0x{:x} (±0x{:x})", addressType(a.addressType),
+                                        static_cast<unsigned long long>(a.reportedAddress),
+                                        static_cast<unsigned long long>(a.addressPrecision)));
+    }
+    for (std::uint32_t i = 0; i < counts.vendorInfoCount; ++i) {
+        const auto& v = vendor[i];
+        r.details.push_back(std::format("vendor fault 0x{:x} (data 0x{:x}): {}", static_cast<unsigned long long>(v.vendorFaultCode),
+                                        static_cast<unsigned long long>(v.vendorFaultData), v.description));
+    }
+    return r;
 }
 
 MemoryBudget VulkanDevice::memoryBudget() const {

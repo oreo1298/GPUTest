@@ -43,6 +43,18 @@ Cutoffs are on by default: GPU 90 °C, hotspot 105 °C, memory 100 °C (sustaine
 `--max-hotspot`, `--max-mem-temp`, `--max-power` change them; `--no-safety` disables them. A cutoff stops the run
 with a clear message, keeps the partial results and exits with code 4.
 
+## Driver resets (device lost / TDR)
+When the GPU stops responding, the run records the loss in `device_losses` (test, time, the driver's fault report
+via `VK_EXT_device_fault` where available, and the last sensor sample), keeps the partial results and either stops
+(`--on-device-lost abort`, default) or recreates the device and continues with the next test
+(`--on-device-lost recover`). Either way the exit code is 5.
+
+## Testing hooks (development and CI only)
+- `GT_FAKE_TELEMETRY=ramp[:<°C per second>]` replaces real sensors with synthetic ones (temperature ramping from
+  45 °C, power near a 300 W limit, throttle flags) to exercise the telemetry, safety and UI paths without sensors.
+- `--test debug.device_lost` renders a few frames and then reports a device loss (`--param debug.frames=N`), to
+  exercise device-loss handling. Tests tagged `debug` are in no suite and hidden in the GUI.
+
 ## Output
 - Results JSON: `--out FILE`, default `<data dir>/results/<time>_<suite>.json` (format: [RESULTS_SCHEMA.md](RESULTS_SCHEMA.md)).
   The file is rewritten atomically after every test, so a crash or driver reset never loses finished tests.
@@ -63,6 +75,6 @@ Every line is an object with a `type`:
 | 2 | Setup failed (no device, driver error) or a test errored |
 | 3 | Stopped by the user |
 | 4 | Safety cutoff |
-| 5 | Device lost (driver reset / TDR) |
+| 5 | Device lost (driver reset / TDR), also when the run recovered and continued |
 | 6 | Validation errors with `--fail-on-validation` |
 | 7 | A diagnostic test reported FAIL |

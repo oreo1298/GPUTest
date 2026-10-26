@@ -29,8 +29,11 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
     start, filter, import, forget/delete, score history of comparable runs.
   - Compare page: A/B pickers, comparability warning (which settings differ), overall/sub-score/power/efficiency
     deltas, per-test deltas with ±2 % noise band, frame-time and histogram overlays, sensor deltas.
-- Next: Milestone 5 (run modes: loop polish, safety, device-lost recovery) — loops/stability/safety basics already
-  exist from M2, so M5 is mostly verification, recovery and UI.
+- **Milestone 5 (run modes): done.** Loops (N / timed / infinite) with per-loop scores, stability and trend; live
+  "score per loop" chart; safety cutoffs with clear messages; device-loss capture (VK_EXT_device_fault report +
+  last sensor sample) with abort or recover-and-continue (setting "If the GPU resets"); telemetry kept across
+  recovery. Testing hooks `GT_FAKE_TELEMETRY` and `debug.device_lost` drive all of it in CI (`scripts/ci-smoke.sh`).
+- Next: Milestone 6 (diagnostics: VRAM tester, artifact detection, compute correctness, thermal soak, PCIe check).
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
@@ -68,3 +71,6 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   installable Qt; MSVC float-narrowing warning fixed; annotations include MSVC warnings and packaging logs.
 - M4: HTML/CSV export, histogram + telemetry small multiples, SQLite history, compare page, live-tinted icons,
   TabView (tab pages sized to the current page). Unit tests for histograms.
+- Packaging: AppImage ships only the SQLite Qt SQL driver (qmake wrapper with an overlay plugin dir); Windows too.
+- M5: device-loss records + fault reports, recovery keeps telemetry, fake sensors, debug device-loss test, CI run-mode
+  checks (safety exit 4, device lost exit 5 abort/recover, stdin stop exit 3, timed loop).

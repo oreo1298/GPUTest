@@ -30,9 +30,9 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 - [x] Export JSON, CSV, self-contained printable HTML (GUI + `kiln-run --export-html/--export-csv`)
 
 ## 5. Run modes
-- [ ] Loops: N, timed, infinite; per-loop scores; stability score + trend
-- [ ] Safety cutoffs (temp, hotspot, power) with clear abort messages
-- [ ] Device-lost / TDR capture, partial results, optional recover-and-continue
+- [x] Loops: N, timed, infinite; per-loop scores; stability score + trend (live loop chart in the GUI)
+- [x] Safety cutoffs (temp, hotspot, power) with clear abort messages (CI-tested with fake sensors)
+- [x] Device-lost / TDR capture (VK_EXT_device_fault + last sensors), partial results, optional recover-and-continue
 
 ## 6. Diagnostics
 - [ ] VRAM tester (walking bits, moving inversions, random, address-in-address), failing ranges

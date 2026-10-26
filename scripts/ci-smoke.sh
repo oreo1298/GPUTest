@@ -42,6 +42,44 @@ print(len(types), "events OK")
 PY
 end
 
+# Expect a given exit code from a command (set -e would abort on the non-zero ones).
+expect_exit() {
+    local want="$1"; shift
+    local got=0
+    "$@" || got=$?
+    if [ "$got" != "$want" ]; then echo "expected exit code $want, got $got: $*"; exit 1; fi
+}
+# Checks fields of a results file: check_json FILE 'python expression over r'
+check_json() {
+    python3 - "$1" "$2" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+ok = eval(sys.argv[2], {"r": r})
+if not ok:
+    print("check failed:", sys.argv[2])
+    print(json.dumps({k: r.get(k) for k in ("status", "status_message", "device_losses")}, indent=1))
+    sys.exit(1)
+print("ok:", sys.argv[2])
+PY
+}
+
+step "run modes: safety cutoff (fake sensors), device loss (abort / recover), stop, timed loop"
+common=(--offscreen --resolution 320x180 --progress quiet)
+GT_FAKE_TELEMETRY=ramp:10 expect_exit 4 "$runner" --test scene.lattice --duration quick --max-temp 60 "${common[@]}" \
+    --out "$out/safety.json"
+check_json "$out/safety.json" 'r["status"] == "safety_abort" and "stayed above the 60" in r["status_message"] and r["telemetry"]["provider"] == "fake"'
+expect_exit 5 "$runner" --test debug.device_lost,scene.lattice --duration smoke "${common[@]}" --out "$out/lost.json"
+check_json "$out/lost.json" 'r["status"] == "device_lost" and [t["status"] for t in r["tests"]] == ["device_lost"] and len(r["device_losses"]) == 1 and not r["device_losses"][0]["recovered"]'
+expect_exit 5 "$runner" --test debug.device_lost,scene.lattice --duration smoke --on-device-lost recover "${common[@]}" \
+    --out "$out/lost-recover.json"
+check_json "$out/lost-recover.json" 'r["status"] == "completed" and [t["status"] for t in r["tests"]] == ["device_lost", "completed"] and r["device_losses"][0]["recovered"]'
+( sleep 3; echo stop ) | expect_exit 3 "$runner" --suite smoke --duration smoke --loop inf --control-stdin "${common[@]}" \
+    --out "$out/stop.json"
+check_json "$out/stop.json" 'r["status"] == "stopped" and len(r["loops"]) >= 2'
+expect_exit 0 "$runner" --suite smoke --duration smoke --loop 4s "${common[@]}" --out "$out/timed.json"
+check_json "$out/timed.json" 'r["status"] == "completed" and len(r["loops"]) >= 2 and r["duration_s"] >= 4'
+end
+
 if [ -z "$quick" ] && command -v xvfb-run >/dev/null 2>&1; then
     step "windowed run under Xvfb (swapchain + HUD)"
     xvfb-run -a -s "-screen 0 1280x720x24" "$runner" --test scene.lattice --duration smoke --resolution 320x180 \

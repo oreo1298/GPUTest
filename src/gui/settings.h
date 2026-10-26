@@ -47,6 +47,8 @@ public:
     double maxPower() const { return value("safety/max_power", 0.0).toDouble(); }
     void setMaxPower(double v) { set("safety/max_power", v); }
     double stabilityThreshold() const { return value("safety/stability_threshold", 0.97).toDouble(); }
+    bool recoverDeviceLost() const { return value("safety/recover_device_lost", false).toBool(); }
+    void setRecoverDeviceLost(bool v) { set("safety/recover_device_lost", v); }
     void setStabilityThreshold(double v) { set("safety/stability_threshold", v); }
 
     QVariant value(const char* key, const QVariant& def = {}) const;

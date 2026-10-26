@@ -14,6 +14,7 @@
 #include <QScrollBar>
 #include <QTimer>
 
+#include <algorithm>
 #include <cmath>
 
 namespace gt::gui {
@@ -73,8 +74,10 @@ RunPage::RunPage(AppState* state, QWidget* parent)
     }
     m_content->addLayout(tiles);
 
-    auto* charts = new QGridLayout;
-    charts->setSpacing(10);
+    auto* chartRow1 = new QHBoxLayout;
+    chartRow1->setSpacing(10);
+    auto* chartRow2 = new QHBoxLayout;
+    chartRow2->setSpacing(10);
     m_frameChart = new LineChart;
     m_frameChart->setTitle(tr("Frame time"));
     m_frameChart->setAxisLabels(tr("frame"), tr("ms"));
@@ -94,10 +97,20 @@ RunPage::RunPage(AppState* state, QWidget* parent)
     m_tempSeries[1] = m_tempChart->addSeries(tr("Hotspot"), 1);
     m_tempSeries[2] = m_tempChart->addSeries(tr("Memory"), 2);
     m_tempChart->setEmptyText(tr("No temperature sensors reported by this GPU / driver"));
-    charts->addWidget(m_frameChart, 0, 0);
-    charts->addWidget(m_fpsChart, 0, 1);
-    charts->addWidget(m_tempChart, 1, 0, 1, 2);
-    m_content->addLayout(charts);
+    m_loopChart = new LineChart;
+    m_loopChart->setTitle(tr("Score per loop"));
+    m_loopChart->setAxisLabels(tr("loop"), tr("score"));
+    m_loopChart->addSeries(tr("Score"), 0);
+    m_loopChart->setXInteger(true);
+    m_loopChart->setYStartsAtZero(false);
+    m_loopChart->setEmptyText(tr("The score of each loop appears here when it finishes"));
+    m_loopChart->hide();
+    chartRow1->addWidget(m_frameChart);
+    chartRow1->addWidget(m_fpsChart);
+    chartRow2->addWidget(m_tempChart);
+    chartRow2->addWidget(m_loopChart);
+    m_content->addLayout(chartRow1);
+    m_content->addLayout(chartRow2);
 
     auto* lists = new QHBoxLayout;
     auto* doneCol = new QVBoxLayout;
@@ -136,6 +149,11 @@ RunPage::RunPage(AppState* state, QWidget* parent)
         m_frameChart->clearData();
         m_fpsChart->clearData();
         m_tempChart->clearData();
+        m_loopChart->clearData();
+        m_loopChart->setTitle(tr("Score per loop"));
+        m_loopScores.clear();
+        m_throttleBands.clear();
+        m_throttleMask = 0;
         m_frameIndex = 0;
         m_done->clear();
         m_log->clear();
@@ -158,6 +176,25 @@ RunPage::RunPage(AppState* state, QWidget* parent)
     connect(c, &RunnerClient::telemetry, this, &RunPage::onTelemetry);
     connect(c, &RunnerClient::testFinished, this, &RunPage::onTestFinished);
     connect(c, &RunnerClient::loopStarted, this, [this](int loop) { m_loop = loop; });
+    connect(c, &RunnerClient::loopFinished, this, [this](int loop, double score) {
+        if (!(score > 0)) return;
+        m_loopScores.push_back(QPointF(loop + 1, score));
+        m_loopChart->setPoints(0, m_loopScores);
+        double lo = score, hi = score;
+        for (const auto& p : m_loopScores) {
+            lo = std::min(lo, p.y());
+            hi = std::max(hi, p.y());
+        }
+        if (m_loopScores.size() >= 2)
+            m_loopChart->setTitle(tr("Score per loop — worst is %1 % of best").arg(100.0 * lo / hi, 0, 'f', 1));
+    });
+    connect(c, &RunnerClient::deviceLost, this, [this](const QString& msg) {
+        m_banner->setText(tr("⚠ The GPU stopped responding (device lost / driver reset): %1. %2")
+                              .arg(msg, Settings::instance().recoverDeviceLost()
+                                            ? tr("Recreating the device and continuing.")
+                                            : tr("The run stops; finished tests are kept.")));
+        m_banner->show();
+    });
     connect(c, &RunnerClient::logLine, this, [this](const QString& level, const QString& text) {
         m_log->appendPlainText(level == QLatin1String("stderr") ? text : QStringLiteral("[%1] %2").arg(level, text));
     });
@@ -187,6 +224,7 @@ void RunPage::onRunStarted(const nlohmann::json& e) {
                            .arg(e.value("resolution", nlohmann::json::array({0, 0}))[0].get<int>())
                            .arg(e.value("resolution", nlohmann::json::array({0, 0}))[1].get<int>())
                            .arg(QString::fromStdString(e.value("quality", std::string())), m_loopText));
+    m_loopChart->setVisible(m_loopText != QLatin1String("single"));
     if (m_loopText == QLatin1String("infinite")) m_overall->setRange(0, 0);
     else m_overall->setRange(0, 1000);
 }
@@ -234,11 +272,23 @@ void RunPage::onTelemetry(const results::TelemetrySample& s) {
     auto status = [](double v, double limit) { return !std::isfinite(v) ? -1 : v > limit ? 3 : v > limit - 8 ? 1 : 0; };
     m_tiles[2]->setStatus(status(s.tempEdgeC, lim.maxTemp()));
     m_tiles[3]->setStatus(status(s.tempHotspotC, lim.maxHotspot()));
-    if (s.throttle & ~results::throttle::kIdle) {
-        QStringList names;
-        for (const auto& n : results::throttle::names(s.throttle & ~results::throttle::kIdle)) names << QString::fromStdString(n);
-        m_tiles[0]->setValue(m_tiles[0]->value(), tr("throttling: %1").arg(names.join(QStringLiteral(", "))));
-        m_tiles[0]->setStatus(1);
+    if (const std::uint32_t th = s.throttle & ~results::throttle::kIdle) {
+        m_tiles[0]->setValue(m_tiles[0]->value(), tr("throttling: %1").arg(throttleText(th)));
+        m_tiles[0]->setStatus(throttleSeverity(th));
+        // Shade throttling on the temperature chart, extending the current period while it lasts.
+        const double gap = 1.0; // seconds; telemetry events arrive several times per second
+        if (!m_throttleBands.isEmpty() && s.t - m_throttleBands.back().x1 <= gap &&
+            m_throttleBands.back().status == throttleSeverity(th)) {
+            // One shaded period per contiguous stretch of the same severity, listing every reason seen in it.
+            auto& b = m_throttleBands.back();
+            b.x1 = s.t;
+            m_throttleMask |= th;
+            b.label = tr("throttled: %1").arg(throttleText(m_throttleMask));
+        } else {
+            m_throttleBands.push_back({s.t, s.t, tr("throttled: %1").arg(throttleText(th)), throttleSeverity(th)});
+            m_throttleMask = th;
+        }
+        m_tempChart->setBands(m_throttleBands);
     } else {
         m_tiles[0]->setStatus(-1);
     }

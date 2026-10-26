@@ -34,6 +34,7 @@ struct RunRequest {
     bool safety = true;
     double maxTemp = 90, maxHotspot = 105, maxMemTemp = 100, maxPower = 0;
     double stabilityThreshold = 0.97;
+    bool recoverDeviceLost = false; ///< recreate the device after a driver reset and continue
     QString out;            ///< results file path
     QStringList extraArgs;
     QStringList toArguments() const;

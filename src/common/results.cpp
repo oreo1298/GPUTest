@@ -490,6 +490,18 @@ json toJson(const RunResult& r) {
     j["telemetry"] = std::move(tel);
     j["validation"] = {{"errors", r.validationErrors}, {"warnings", r.validationWarnings}};
     j["warnings"] = r.warnings;
+    json losses = json::array();
+    for (const auto& d : r.deviceLosses) {
+        json e{{"test", d.test},
+               {"loop", d.loop},
+               {"t", round3(d.t)},
+               {"message", d.message},
+               {"recovered", d.recovered},
+               {"fault", {{"supported", d.faultReportSupported}, {"description", d.faultDescription}, {"details", d.faultDetails}}}};
+        if (d.lastSample) e["last_sample"] = toJson(*d.lastSample);
+        losses.push_back(std::move(e));
+    }
+    j["device_losses"] = std::move(losses);
     return j;
 }
 
@@ -571,6 +583,26 @@ RunResult fromJson(const json& j) {
     if (auto it = j.find("warnings"); it != j.end() && it->is_array())
         for (const auto& w : *it)
             if (w.is_string()) r.warnings.push_back(w.get<std::string>());
+    if (auto it = j.find("device_losses"); it != j.end() && it->is_array()) {
+        for (const auto& e : *it) {
+            if (!e.is_object()) continue;
+            DeviceLoss d;
+            d.test = getStr(e, "test");
+            d.loop = getInt<int>(e, "loop");
+            d.t = getNum(e, "t");
+            d.message = getStr(e, "message");
+            d.recovered = getBool(e, "recovered");
+            if (auto f = e.find("fault"); f != e.end() && f->is_object()) {
+                d.faultReportSupported = getBool(*f, "supported");
+                d.faultDescription = getStr(*f, "description");
+                if (auto dd = f->find("details"); dd != f->end() && dd->is_array())
+                    for (const auto& x : *dd)
+                        if (x.is_string()) d.faultDetails.push_back(x.get<std::string>());
+            }
+            if (auto s = e.find("last_sample"); s != e.end() && s->is_object()) d.lastSample = sampleFromJson(*s);
+            r.deviceLosses.push_back(std::move(d));
+        }
+    }
     return r;
 }
 

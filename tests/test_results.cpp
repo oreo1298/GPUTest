@@ -143,3 +143,39 @@ TEST_CASE("throttle names round trip", "[results]") {
     const std::uint32_t m = results::throttle::kThermal | results::throttle::kPower;
     CHECK(results::throttle::fromNames(results::throttle::names(m)) == m);
 }
+
+TEST_CASE("device losses round trip", "[results]") {
+    results::RunResult r = sampleRun();
+    results::DeviceLoss d;
+    d.test = "scene.lattice";
+    d.loop = 2;
+    d.t = 12.5;
+    d.message = "vkQueueSubmit: VK_ERROR_DEVICE_LOST";
+    d.recovered = true;
+    d.faultReportSupported = true;
+    d.faultDescription = "page fault";
+    d.faultDetails = {"invalid read at 0x1000 (±0x0)"};
+    results::TelemetrySample s;
+    s.t = 12.4;
+    s.tempEdgeC = 83.0f;
+    s.throttle = results::throttle::kThermal;
+    d.lastSample = s;
+    r.deviceLosses.push_back(d);
+    const results::RunResult back = results::fromJson(results::toJson(r));
+    REQUIRE(back.deviceLosses.size() == 1);
+    const auto& b = back.deviceLosses.front();
+    CHECK(b.test == d.test);
+    CHECK(b.loop == 2);
+    CHECK(b.t == Approx(12.5));
+    CHECK(b.recovered);
+    CHECK(b.faultReportSupported);
+    CHECK(b.faultDescription == "page fault");
+    REQUIRE(b.faultDetails.size() == 1);
+    REQUIRE(b.lastSample.has_value());
+    CHECK(b.lastSample->tempEdgeC == Approx(83.0));
+    CHECK(b.lastSample->throttle == results::throttle::kThermal);
+    // Files written before the field existed still load.
+    auto j = results::toJson(sampleRun());
+    j.erase("device_losses");
+    CHECK(results::fromJson(j).deviceLosses.empty());
+}

@@ -22,6 +22,7 @@
 #include <QTreeWidget>
 #include <QUrl>
 
+#include <algorithm>
 #include <cmath>
 
 namespace gt::gui {
@@ -218,15 +219,22 @@ void ResultsPage::showRun(const results::RunResult& run, const QString& file) {
                                QString::fromStdString(run.createdUtc),
                                file.isEmpty() ? tr("not saved") : file.toHtmlEscaped()));
     const QString status = QString::fromStdString(results::toString(run.status));
-    if (run.status != results::RunStatus::Completed) {
-        m_banner->setText(tr("⚠ Run status: %1. %2").arg(status, QString::fromStdString(run.statusMessage).toHtmlEscaped()));
-        m_banner->show();
-    } else if (run.validationErrors > 0) {
-        m_banner->setText(tr("⚠ The API validation layer reported %1 error(s) during this run.").arg(run.validationErrors));
-        m_banner->show();
-    } else {
-        m_banner->hide();
-    }
+    QStringList banner;
+    if (run.status != results::RunStatus::Completed)
+        banner << tr("⚠ Run status: %1. %2").arg(status, QString::fromStdString(run.statusMessage).toHtmlEscaped());
+    if (!run.deviceLosses.empty())
+        banner << (run.deviceLosses.size() == 1
+                       ? tr("⚠ The GPU stopped responding once during this run (device lost / driver reset).")
+                       : tr("⚠ The GPU stopped responding %1 times during this run (device lost / driver reset).")
+                             .arg(run.deviceLosses.size())) +
+                      QLatin1Char(' ') +
+                      tr("The driver's fault report and the last sensor readings are in System report → Device losses.");
+    if (run.validationErrors > 0)
+        banner << (run.validationErrors == 1 ? tr("⚠ The API validation layer reported an error during this run.")
+                                             : tr("⚠ The API validation layer reported %1 errors during this run.")
+                                                   .arg(run.validationErrors));
+    m_banner->setText(banner.join(QStringLiteral("<br>")));
+    m_banner->setVisible(!banner.isEmpty());
 
     clearLayout(m_scoreBox->layout());
     auto* box = static_cast<QHBoxLayout*>(m_scoreBox->layout());
@@ -286,8 +294,11 @@ void ResultsPage::showRun(const results::RunResult& run, const QString& file) {
         set(6, verdict);
         m_table->item(i, 6)->setToolTip(verdict);
     }
+    // Long status / verdict texts are elided (full text in the tooltip) instead of widening the table.
     m_table->resizeColumnsToContents();
+    m_table->setColumnWidth(1, std::min(m_table->columnWidth(1), 220));
     m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    m_table->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Stretch);
     const int rows = std::min<int>(static_cast<int>(run.tests.size()), 10);
     m_table->setFixedHeight(m_table->horizontalHeader()->sizeHint().height() + 6 +
                             std::max(rows, 3) * m_table->verticalHeader()->defaultSectionSize());
@@ -470,6 +481,29 @@ void ResultsPage::showSystem() {
     add(r, tr("Total time"), formatDurationText(m_run.durationS));
     add(r, tr("Command line"), s(m_run.commandLine));
     add(r, tr("File"), m_file);
+    for (std::size_t i = 0; i < m_run.deviceLosses.size(); ++i) {
+        const auto& d = m_run.deviceLosses[i];
+        auto* g2 = group(m_run.deviceLosses.size() > 1 ? tr("Device loss %1").arg(i + 1) : tr("Device loss"));
+        add(g2, tr("During"), tr("%1 (loop %2) at %3").arg(s(d.test)).arg(d.loop + 1).arg(formatDurationText(d.t)));
+        add(g2, tr("Error"), s(d.message));
+        add(g2, tr("Outcome"), d.recovered ? tr("device recreated, run continued") : tr("run stopped"));
+        add(g2, tr("Driver fault report"),
+            !d.faultReportSupported ? tr("not available (the driver offers no fault reporting, e.g. VK_EXT_device_fault)")
+            : d.faultDescription.empty() ? tr("(empty)")
+                                         : s(d.faultDescription));
+        for (const auto& line : d.faultDetails) add(g2, tr("Fault detail"), s(line));
+        if (d.lastSample) {
+            const auto& t = *d.lastSample;
+            QStringList parts;
+            if (std::isfinite(t.tempEdgeC)) parts << tr("GPU %1").arg(formatTemp(t.tempEdgeC));
+            if (std::isfinite(t.tempHotspotC)) parts << tr("hotspot %1").arg(formatTemp(t.tempHotspotC));
+            if (std::isfinite(t.powerW)) parts << tr("%1 W").arg(t.powerW, 0, 'f', 0);
+            if (std::isfinite(t.gpuClockMhz)) parts << tr("%1 MHz").arg(t.gpuClockMhz, 0, 'f', 0);
+            if (std::isfinite(t.vramUsedMB)) parts << tr("VRAM %1").arg(formatBytes(t.vramUsedMB * 1048576.0));
+            if (t.throttle) parts << tr("throttled: %1").arg(throttleText(t.throttle));
+            add(g2, tr("Sensors just before"), parts.isEmpty() ? tr("no sensor data") : parts.join(QStringLiteral(" · ")));
+        }
+    }
     if (!m_run.warnings.empty()) {
         auto* w = group(tr("Warnings"));
         for (const auto& x : m_run.warnings) add(w, QStringLiteral("⚠"), s(x));

@@ -88,8 +88,15 @@ SettingsPage::SettingsPage(QWidget* parent)
     sf->addRow(tr("Max &memory temperature:"), mem);
     sf->addRow(tr("Max board &power:"), power);
     sf->addRow(tr("Loop &stability pass threshold:"), stab);
+    auto* lost = new QComboBox;
+    lost->addItem(tr("Stop the run"), false);
+    lost->addItem(tr("Recover and continue"), true);
+    lost->setCurrentIndex(s.recoverDeviceLost() ? 1 : 0);
+    lost->setToolTip(tr("What to do when the GPU stops responding and the driver resets it (device lost / TDR). "
+                        "Either way the loss is recorded with the driver's fault report and the sensor readings."));
+    sf->addRow(tr("If the GPU &resets:"), lost);
     for (QWidget* w : {static_cast<QWidget*>(temp), static_cast<QWidget*>(hot), static_cast<QWidget*>(mem),
-                       static_cast<QWidget*>(power), static_cast<QWidget*>(stab)})
+                       static_cast<QWidget*>(power), static_cast<QWidget*>(stab), static_cast<QWidget*>(lost)})
         w->setAccessibleName(static_cast<QLabel*>(sf->labelForField(w))->text().remove(QLatin1Char('&')).remove(QLatin1Char(':')));
     sl->addLayout(sf);
     m_content->addWidget(safety);
@@ -99,6 +106,8 @@ SettingsPage::SettingsPage(QWidget* parent)
     connect(mem, &QDoubleSpinBox::valueChanged, this, [](double v) { Settings::instance().setMaxMemTemp(v); });
     connect(power, &QDoubleSpinBox::valueChanged, this, [](double v) { Settings::instance().setMaxPower(v); });
     connect(stab, &QDoubleSpinBox::valueChanged, this, [](double v) { Settings::instance().setStabilityThreshold(v / 100.0); });
+    connect(lost, &QComboBox::currentIndexChanged, this,
+            [lost] { Settings::instance().setRecoverDeviceLost(lost->currentData().toBool()); });
 
     auto* pathsCard = new Card;
     auto* pl = static_cast<QVBoxLayout*>(pathsCard->layout());

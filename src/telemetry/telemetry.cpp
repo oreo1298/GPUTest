@@ -56,6 +56,15 @@ std::unique_ptr<Provider> openProviders(const DeviceMatch& match, std::vector<st
             log->push_back("telemetry: " + why);
         }
     };
+    {
+        // Testing hook (CI / VMs without sensors): replaces every real provider.
+        std::string why;
+        if (auto fake = openFake(&why)) {
+            if (log) log->push_back("telemetry: using fake sensor data (GT_FAKE_TELEMETRY)");
+            return fake;
+        }
+        if (log && !why.empty()) log->push_back("telemetry: " + why);
+    }
     if (match.vendorId == 0x10DE) tryOpen(&openNvml);
     tryOpen(&openLinuxSysfs);
     if (ps.empty()) return std::make_unique<NullProvider>();

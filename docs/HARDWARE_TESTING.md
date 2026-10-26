@@ -21,6 +21,17 @@ and screenshots into one archive — commit it under `hardware-reports/` or atta
 
 ## Pending checks
 
+### M5 — run modes
+1. **Safety cutoff with real sensors**: `kiln-run --suite quick --max-temp 50` (any GPU that warms past 50 °C under
+   load) must stop within a few seconds after the GPU passes 50 °C for 2 s, with the message
+   "GPU temperature stayed above the 50 °C limit for 2 s (reached … °C)", exit code 4. Check the same in the GUI
+   (Settings → Safety limits → 50 °C, then run Quick): the Live run page shows the message.
+2. **Long loop**: GUI → Tests → Loop "Timed loop" 20m on the 4090. Watch the "Score per loop" chart; afterwards the
+   Results → Loops tab should show a stability % and a trend (%/h). Send the results file.
+3. **Device loss**: nothing safe can provoke a real driver reset. If one ever happens during any run, send the
+   results file — `device_losses` holds the driver's fault report (NVIDIA and RADV implement
+   VK_EXT_device_fault) — and say whether "Recover and continue" got the run going again.
+
 ### M4 — results, history, compare (GUI)
 Use the GUI (`./Kiln-*.AppImage` / `kiln.exe`) after a few runs on the RTX 4090 and the iGPU:
 1. **Sensors tab** (Results): temperature, power (with the power-limit line), clocks, load, fan and VRAM charts

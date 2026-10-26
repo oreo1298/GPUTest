@@ -34,6 +34,7 @@ QStringList RunRequest::toArguments() const {
         if (maxPower > 0) a << QStringLiteral("--max-power") << QString::number(maxPower);
     }
     a << QStringLiteral("--stability-threshold") << QString::number(stabilityThreshold);
+    if (recoverDeviceLost) a << QStringLiteral("--on-device-lost") << QStringLiteral("recover");
     if (!out.isEmpty()) a << QStringLiteral("--out") << out;
     a << QStringLiteral("--progress") << QStringLiteral("jsonl") << QStringLiteral("--control-stdin");
     a << extraArgs;

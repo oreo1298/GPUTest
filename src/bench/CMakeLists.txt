@@ -14,6 +14,7 @@ gt_set_warnings(gt_bench)
 # Tests register themselves statically; an OBJECT library keeps every object file.
 add_library(gt_bench_tests OBJECT
   tests/scenes/lattice.cpp
+  tests/debug/device_lost.cpp
 )
 target_link_libraries(gt_bench_tests PUBLIC gt_bench)
 gt_set_warnings(gt_bench_tests)

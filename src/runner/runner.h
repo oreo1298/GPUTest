@@ -55,6 +55,7 @@ private:
     SDL_Window* m_window = nullptr;
     std::unique_ptr<bench::Presenter> m_presenter;
     std::unique_ptr<telemetry::Sampler> m_sampler;
+    std::vector<results::TelemetrySample> m_priorSamples; ///< samples of samplers replaced after a device recovery
     results::RunResult m_run;
     std::atomic<bool> m_stop{false};
     std::mutex m_stopMutex;
@@ -67,6 +68,7 @@ private:
     std::string m_currentTest;
     // safety state (sampler thread)
     double m_overSince = -1.0;
+    double m_overPeak = 0.0; ///< worst value while over the limit
 };
 
 } // namespace gt::runner

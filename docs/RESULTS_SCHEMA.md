@@ -51,7 +51,10 @@ the same code). Units are in the key names. Unknown keys must be ignored by read
     "throttle_events": [{"start_s", "end_s", "reasons": [...]}]
   },
   "validation": {"errors", "warnings"},
-  "warnings": ["..."]
+  "warnings": ["..."],
+  "device_losses": [{"test", "loop", "t", "message", "recovered",
+                     "fault": {"supported", "description", "details": ["..."]},   // VK_EXT_device_fault / DRED
+                     "last_sample": {...telemetry sample...}}]                    // optional; [] when none
 }
 ```
 
