@@ -80,6 +80,21 @@ expect_exit 0 "$runner" --suite smoke --duration smoke --loop 4s "${common[@]}" 
 check_json "$out/timed.json" 'r["status"] == "completed" and len(r["loops"]) >= 2 and r["duration_s"] >= 4'
 end
 
+step "diagnostics: clean run with validation, and injected faults must be detected"
+"$runner" --suite diagnostics --duration smoke --validation --fail-on-validation "${common[@]}" --out "$out/diag.json"
+check_json "$out/diag.json" 'all(t.get("verdict") == "pass" or t["status"] == "skipped" for t in r["tests"]) and len(r["tests"]) == 5'
+for t in vram artifacts compute; do
+    expect_exit 7 "$runner" --test "diag.$t" --duration smoke --param "diag.$t.inject=1" "${common[@]}" --out "$out/diag-$t-bad.json"
+    check_json "$out/diag-$t-bad.json" 'r["tests"][0]["verdict"] == "fail"'
+done
+expect_exit 0 "$runner" --test diag.pcie --duration smoke --param diag.pcie.force=1 --validation --fail-on-validation \
+    "${common[@]}" --out "$out/diag-pcie.json"
+check_json "$out/diag-pcie.json" 'r["tests"][0]["verdict"] == "pass" and r["tests"][0]["metrics"][0]["value"] > 0'
+GT_FAKE_TELEMETRY=ramp:8 expect_exit 0 "$runner" --test diag.thermal --duration smoke --param diag.soak_s=6 --no-safety \
+    "${common[@]}" --out "$out/diag-soak.json"
+check_json "$out/diag-soak.json" 'r["tests"][0]["verdict"] == "warn" and "thermal throttling" in r["tests"][0]["verdict_message"]'
+end
+
 if [ -z "$quick" ] && command -v xvfb-run >/dev/null 2>&1; then
     step "windowed run under Xvfb (swapchain + HUD)"
     xvfb-run -a -s "-screen 0 1280x720x24" "$runner" --test scene.lattice --duration smoke --resolution 320x180 \

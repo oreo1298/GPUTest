@@ -29,6 +29,7 @@ struct TestInfo {
     std::uint64_t minVramMB = 0;
     std::vector<std::string> tags;   ///< "cpu-light", "legacy", "rt", ...
     std::vector<std::string> suites; ///< preset suites that include this test ("quick", "standard", ...)
+    int order = 100; ///< run order within its category (lower first; ties keep id order)
 };
 
 struct SupportResult {

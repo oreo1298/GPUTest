@@ -21,6 +21,18 @@ and screenshots into one archive — commit it under `hardware-reports/` or atta
 
 ## Pending checks
 
+### M6 — diagnostics
+Run `kiln-run --suite diagnostics` (Standard: ~8 minutes) on the RTX 4090 and on the iGPU, or in the GUI pick the
+Diagnostics suite. Send the results files. Check:
+1. **VRAM test** covers ~90 % of free VRAM on the 4090 (details → `tested_mb`, `free_mb`) and passes; how long did it
+   take, and did the desktop stay responsive?
+2. **PCIe**: the verdict should say "PCIe Gen4 x16 (card supports Gen4 x16)" on the 4090 with ~20–26 GB/s host → GPU.
+   If you have a riser or an x8 slot, try it: the check should WARN.
+3. **Thermal soak**: plausible plateau temperature/time, power-limit share, and no thermal throttling on a healthy
+   card. Compare with what your usual monitoring tool shows.
+4. **Artifact detection / compute check** pass at stock clocks. If you are comfortable doing it, an aggressive memory
+   or core overclock should eventually make one of them (or the VRAM test) FAIL before games crash — tell me which.
+
 ### M5 — run modes
 1. **Safety cutoff with real sensors**: `kiln-run --suite quick --max-temp 50` (any GPU that warms past 50 °C under
    load) must stop within a few seconds after the GPU passes 50 °C for 2 s, with the message

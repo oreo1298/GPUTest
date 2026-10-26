@@ -54,6 +54,15 @@ via `VK_EXT_device_fault` where available, and the last sensor sample), keeps th
   45 °C, power near a 300 W limit, throttle flags) to exercise the telemetry, safety and UI paths without sensors.
 - `--test debug.device_lost` renders a few frames and then reports a device loss (`--param debug.frames=N`), to
   exercise device-loss handling. Tests tagged `debug` are in no suite and hidden in the GUI.
+- Diagnostics fault injection (each must then report FAIL): `--param diag.vram.inject=1` (corrupts 4 words),
+  `--param diag.artifacts.inject=1` (one reference frame rendered differently), `--param diag.compute.inject=1`
+  (one wrong value). `--param diag.pcie.force=1` runs the PCIe check on software renderers.
+
+## Diagnostic parameters
+| Parameter | Meaning |
+|---|---|
+| `diag.vram.mb=N` | Test N MiB instead of the preset's share of free VRAM |
+| `diag.soak_s=N` | Thermal soak length in seconds (presets: smoke 3, quick 60, standard 300, extreme 1200) |
 
 ## Output
 - Results JSON: `--out FILE`, default `<data dir>/results/<time>_<suite>.json` (format: [RESULTS_SCHEMA.md](RESULTS_SCHEMA.md)).

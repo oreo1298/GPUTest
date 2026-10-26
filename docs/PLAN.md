@@ -35,12 +35,12 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 - [x] Device-lost / TDR capture (VK_EXT_device_fault + last sensors), partial results, optional recover-and-continue
 
 ## 6. Diagnostics
-- [ ] VRAM tester (walking bits, moving inversions, random, address-in-address), failing ranges
-- [ ] Artifact detection under load (reference frames, mismatched pixels)
-- [ ] Compute correctness under load
-- [ ] Thermal soak + throttle-reason analysis
-- [ ] PCIe link check
-- [ ] PASS/WARN/FAIL verdicts with explanations
+- [x] VRAM tester (walking bits, moving inversions, random, address-in-address), failing ranges
+- [x] Artifact detection under load (reference frames, mismatched pixels)
+- [x] Compute correctness under load
+- [x] Thermal soak + throttle-reason analysis
+- [x] PCIe link check
+- [x] PASS/WARN/FAIL verdicts with explanations (Diagnosis card in the GUI; fault injection proves detection in CI)
 
 ## 7. Synthetic / micro
 - [ ] Compute throughput FP32/FP16/FP64/INT32/INT8 (+dot products)

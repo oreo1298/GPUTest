@@ -175,6 +175,8 @@ private:
     QLabel* m_banner;
     QLabel* m_note;
     QWidget* m_scoreBox;
+    Card* m_verdictCard;
+    QGridLayout* m_verdictGrid;
     QToolButton* m_export;
     QPushButton* m_compare;
     TabView* m_tabs;

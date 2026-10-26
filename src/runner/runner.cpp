@@ -4,6 +4,7 @@
 #include "gt/log.h"
 #include "gt/paths.h"
 #include "gt/scoring.h"
+#include "gt/sysinfo.h"
 #include "sysreport.h"
 
 #include <SDL3/SDL.h>
@@ -284,6 +285,28 @@ results::TestResult Runner::runTest(const std::string& id, int loop, int index, 
     auto test = bench::Registry::instance().create(id);
     bench::TestContext ctx(*m_device, m_opt.settings, *info, &m_sink, m_presenter.get(), &m_stop, &m_stopReason);
     ctx.hudStatus = [this] { return hudStatus(); };
+    ctx.telemetrySamples = [this, startS] {
+        std::vector<results::TelemetrySample> out;
+        if (m_sampler)
+            for (const auto& s : m_sampler->samples())
+                if (s.t >= startS) out.push_back(s);
+        return out;
+    };
+    ctx.gpuInfo = [this] {
+        results::GpuInfo g = m_run.system.gpu;
+        if (!g.pciAddress.empty()) {
+            const auto pci = sysinfo::readPciDevice(g.pciAddress);
+            if (pci.valid && pci.currentGen > 0) {
+                g.pcieCurrentGen = pci.currentGen;
+                g.pcieCurrentWidth = pci.currentWidth;
+                g.pcieMaxGen = pci.maxGen;
+                g.pcieMaxWidth = pci.maxWidth;
+                g.pcieCurrent = sysinfo::formatLink(pci.currentGen, pci.currentWidth);
+                g.pcieMax = sysinfo::formatLink(pci.maxGen, pci.maxWidth);
+            }
+        }
+        return g;
+    };
     try {
         const bench::SupportResult sup = test->checkSupport(ctx);
         if (!sup.supported) {

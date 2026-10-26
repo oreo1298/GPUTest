@@ -4,6 +4,7 @@ add_library(gt_common STATIC
   duration.cpp
   paths.cpp
   report.cpp
+  diagnostics.cpp
   results.cpp
   scoring.cpp
   sysinfo.cpp

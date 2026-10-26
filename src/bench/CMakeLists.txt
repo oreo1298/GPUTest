@@ -15,6 +15,12 @@ gt_set_warnings(gt_bench)
 add_library(gt_bench_tests OBJECT
   tests/scenes/lattice.cpp
   tests/debug/device_lost.cpp
+  tests/diagnostics/vram.cpp
+  tests/diagnostics/stress_common.cpp
+  tests/diagnostics/artifacts.cpp
+  tests/diagnostics/thermal.cpp
+  tests/diagnostics/compute_check.cpp
+  tests/diagnostics/pcie.cpp
 )
 target_link_libraries(gt_bench_tests PUBLIC gt_bench)
 gt_set_warnings(gt_bench_tests)

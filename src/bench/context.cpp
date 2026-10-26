@@ -222,8 +222,8 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
     };
 
     const double dt = d.simDuration / std::max(1u, d.framesPerPass);
-    const double minS = m_settings.minSeconds();
-    const double maxS = m_settings.maxSeconds();
+    const double minS = d.minSeconds >= 0.0 ? d.minSeconds : m_settings.minSeconds();
+    const double maxS = d.maxSeconds > 0.0 ? d.maxSeconds : m_settings.maxSeconds();
     const std::uint32_t warmup = m_settings.duration == DurationPreset::Smoke ? std::min(d.warmupFrames, 2u)
                                                                               : d.warmupFrames;
     std::uint64_t counter = 0;

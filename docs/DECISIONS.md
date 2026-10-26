@@ -83,6 +83,20 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **Safety cutoff messages state the rule**: "stayed above the 90 °C limit for 2 s (reached 93 °C)", so a user can
   tell a cutoff from a crash and knows which limit to look at.
 
+- **Diagnostics are judged by the GPU against itself**: artifact detection compares re-rendered reference frames
+  bit for bit with the first rendering, the float compute chain with the first GPU round, and only exact integer
+  results with the CPU. Cross-vendor or CPU float comparisons would flag harmless rounding differences.
+- **VRAM test coverage scales with the preset** (smoke 64 MiB, quick 50 % of free up to 4 GiB, standard 90 %,
+  extreme 92 % of free VRAM; integrated GPUs at most a quarter of free memory and 2 GiB, because that is system
+  RAM). Chunks are 256 MiB so every dispatch stays far below OS GPU watchdogs; all chunks are written before any is
+  verified so data has to be retained. Addresses are reported as chunk + offset (physical addresses are not exposed).
+- **Thermal-soak verdicts**: FAIL on wrong reference frames or hardware slowdown; WARN on > 10 % performance drop,
+  > 5 % of the time thermal-throttled, or ≥ 87 °C GPU / ≥ 100 °C hotspot; power-limit throttling alone is normal.
+- **PCIe verdicts are WARN at worst** (lower gen/width than the card supports, < 50 % of the link's bandwidth):
+  boards and CPUs legitimately limit links, so the message names the likely causes instead of failing the card.
+- **Every detector is proven in CI by fault injection** (`diag.*.inject`), since a detector that never fires is
+  indistinguishable from a broken one.
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.

@@ -71,6 +71,8 @@ struct FrameLoopDesc {
     std::function<void(FrameContext&)> record;
     rhi::Texture* output = nullptr; ///< final image (shown in the window, dumped as golden frames)
     std::vector<std::uint32_t> goldenFrames; ///< frame indices (of pass 0) to dump/hash
+    double minSeconds = -1.0; ///< overrides the duration preset's minimum run time when >= 0
+    double maxSeconds = -1.0; ///< overrides the preset's hard time limit when > 0
 };
 
 struct FrameLoopResult {
@@ -121,6 +123,10 @@ public:
     Presenter* presenter() { return m_presenter; }
     /// Extra HUD lines (telemetry, loop counter) supplied by the runner.
     std::function<std::vector<std::string>()> hudStatus;
+    /// Telemetry samples recorded since this test started (set by the runner; may be empty).
+    std::function<std::vector<results::TelemetrySample>()> telemetrySamples;
+    /// The GPU's identity with the PCIe link state re-read now (set by the runner).
+    std::function<results::GpuInfo()> gpuInfo;
 
 private:
     rhi::Device& m_device;

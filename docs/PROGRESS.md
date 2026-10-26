@@ -33,7 +33,13 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   "score per loop" chart; safety cutoffs with clear messages; device-loss capture (VK_EXT_device_fault report +
   last sensor sample) with abort or recover-and-continue (setting "If the GPU resets"); telemetry kept across
   recovery. Testing hooks `GT_FAKE_TELEMETRY` and `debug.device_lost` drive all of it in CI (`scripts/ci-smoke.sh`).
-- Next: Milestone 6 (diagnostics: VRAM tester, artifact detection, compute correctness, thermal soak, PCIe check).
+- **Milestone 6 (diagnostics): done.** `diagnostics` suite, run in this order: `diag.pcie` (link gen/width under
+  load vs capability, host↔GPU bandwidth vs link maximum), `diag.vram` (walking ones/zeros, moving inversions,
+  random, address-in-address over up to 90 % of free VRAM, failing ranges + flipped bits), `diag.compute` (integer
+  chains vs CPU, float chains vs first GPU round), `diag.artifacts` (bit-exact reference frames under a ray-marched
+  load), `diag.thermal` (5/20 min soak: perf drop, plateau, clocks, throttle reasons, reference checks). Analysis
+  helpers in `src/common/diagnostics.*` (unit-tested). Each detector has an injection parameter used by CI.
+- Next: Milestone 7 (synthetic / micro benchmarks).
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
@@ -74,3 +80,5 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
 - Packaging: AppImage ships only the SQLite Qt SQL driver (qmake wrapper with an overlay plugin dir); Windows too.
 - M5: device-loss records + fault reports, recovery keeps telemetry, fake sensors, debug device-loss test, CI run-mode
   checks (safety exit 4, device lost exit 5 abort/recover, stdin stop exit 3, timed loop).
+- M6: five diagnostics + Diagnosis card/tile in the GUI; first compute pipelines through the RHI; explicit test run
+  order (`TestInfo::order`); debug-tagged tests excluded from "full".

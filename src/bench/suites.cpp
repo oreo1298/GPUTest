@@ -51,7 +51,9 @@ std::vector<Suite> presetSuites() {
         s.duration = p.duration;
         s.quality = p.quality;
         for (const auto& t : tests) {
-            const bool member = s.id == "full" || std::find(t.suites.begin(), t.suites.end(), s.id) != t.suites.end();
+            const bool debugOnly = std::find(t.tags.begin(), t.tags.end(), "debug") != t.tags.end();
+            const bool member = (s.id == "full" && !debugOnly) ||
+                                std::find(t.suites.begin(), t.suites.end(), s.id) != t.suites.end();
             if (member) s.tests.push_back(t.id);
         }
         // Run order: diagnostics first (fail fast on bad hardware), then synthetic, features, scenes.
@@ -65,8 +67,12 @@ std::vector<Suite> presetSuites() {
             }
             return 9;
         };
+        auto order = [](const TestInfo* i) { return i ? i->order : 100; };
         std::stable_sort(s.tests.begin(), s.tests.end(), [&](const std::string& a, const std::string& b) {
-            return rank(Registry::instance().find(a)) < rank(Registry::instance().find(b));
+            const TestInfo* ia = Registry::instance().find(a);
+            const TestInfo* ib = Registry::instance().find(b);
+            if (rank(ia) != rank(ib)) return rank(ia) < rank(ib);
+            return order(ia) < order(ib);
         });
         out.push_back(std::move(s));
     }

@@ -12,6 +12,7 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -91,6 +92,18 @@ ResultsPage::ResultsPage(AppState* state, QWidget* parent)
     sl->setContentsMargins(0, 0, 0, 0);
     sl->setSpacing(10);
     m_content->addWidget(m_scoreBox);
+
+    // Diagnosis: one row per test that delivered a PASS / WARN / FAIL verdict.
+    m_verdictCard = new Card;
+    auto* vl = static_cast<QVBoxLayout*>(m_verdictCard->layout());
+    vl->addWidget(makeSubtitle(tr("Diagnosis")));
+    m_verdictGrid = new QGridLayout;
+    m_verdictGrid->setHorizontalSpacing(12);
+    m_verdictGrid->setVerticalSpacing(8);
+    m_verdictGrid->setColumnStretch(2, 1);
+    vl->addLayout(m_verdictGrid);
+    m_verdictCard->hide();
+    m_content->addWidget(m_verdictCard);
 
     m_tabs = new TabView;
 
@@ -238,11 +251,28 @@ void ResultsPage::showRun(const results::RunResult& run, const QString& file) {
 
     clearLayout(m_scoreBox->layout());
     auto* box = static_cast<QHBoxLayout*>(m_scoreBox->layout());
-    auto* overall = new StatTile(tr("Overall score"));
-    overall->setValue(run.scores.overall > 0 ? QString::number(run.scores.overall, 'f', 0) : QStringLiteral("—"),
-                      std::isfinite(run.scores.perWatt) ? tr("%1 points per watt").arg(run.scores.perWatt, 0, 'f', 1)
-                                                        : QString());
-    box->addWidget(overall);
+    int passed = 0, warned = 0, failed = 0;
+    for (const auto& t : run.tests) {
+        passed += t.verdict == results::Verdict::Pass;
+        warned += t.verdict == results::Verdict::Warn;
+        failed += t.verdict == results::Verdict::Fail;
+    }
+    if (run.scores.overall > 0 || passed + warned + failed == 0) {
+        auto* overall = new StatTile(tr("Overall score"));
+        overall->setValue(run.scores.overall > 0 ? QString::number(run.scores.overall, 'f', 0) : QStringLiteral("—"),
+                          std::isfinite(run.scores.perWatt) ? tr("%1 points per watt").arg(run.scores.perWatt, 0, 'f', 1)
+                                                            : QString());
+        box->addWidget(overall);
+    }
+    if (passed + warned + failed > 0) {
+        auto* diag = new StatTile(tr("Diagnosis"));
+        diag->setValue(failed ? tr("FAIL") : warned ? tr("WARN") : tr("PASS"),
+                       tr("%1 failed · %2 · %3 passed").arg(failed).arg(warned == 1 ? tr("1 warning") : tr("%1 warnings").arg(warned)).arg(passed));
+        diag->setStatus(static_cast<int>(failed ? ThemeManager::Status::Critical
+                                         : warned ? ThemeManager::Status::Warning
+                                                  : ThemeManager::Status::Good));
+        box->addWidget(diag);
+    }
     for (const auto& [cat, score] : run.scores.subscores) {
         auto* t = new StatTile(tr("%1 score").arg(capitalized(QString::fromStdString(cat))));
         t->setValue(QString::number(score, 'f', 0));
@@ -267,6 +297,26 @@ void ResultsPage::showRun(const results::RunResult& run, const QString& file) {
         box->addWidget(t);
     }
     box->addStretch();
+
+    clearLayout(m_verdictGrid);
+    int vrow = 0;
+    for (const auto& t : run.tests) {
+        if (t.verdict == results::Verdict::None) continue;
+        const Badge::Kind kind = t.verdict == results::Verdict::Pass   ? Badge::Kind::Good
+                                 : t.verdict == results::Verdict::Warn ? Badge::Kind::Warning
+                                                                       : Badge::Kind::Critical;
+        auto* badge = new Badge(QString::fromStdString(results::toString(t.verdict)).toUpper(), kind);
+        auto* name = new QLabel(QStringLiteral("<b>%1</b>").arg(QString::fromStdString(t.name).toHtmlEscaped() +
+                                                                (run.loops.size() > 1 ? tr(" (loop %1)").arg(t.loop + 1) : QString())));
+        auto* text = new QLabel(QString::fromStdString(t.verdictMessage).toHtmlEscaped());
+        text->setWordWrap(true);
+        text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_verdictGrid->addWidget(badge, vrow, 0, Qt::AlignTop);
+        m_verdictGrid->addWidget(name, vrow, 1, Qt::AlignTop);
+        m_verdictGrid->addWidget(text, vrow, 2);
+        ++vrow;
+    }
+    m_verdictCard->setVisible(vrow > 0);
 
     m_table->setRowCount(static_cast<int>(run.tests.size()));
     for (int i = 0; i < static_cast<int>(run.tests.size()); ++i) {
@@ -340,7 +390,8 @@ void ResultsPage::showTest(int row) {
     }
     QStringList misc;
     if (std::isfinite(t.gpuBusyPercent)) misc << tr("GPU busy %1 %").arg(t.gpuBusyPercent, 0, 'f', 1);
-    misc << tr("%1 frames in %2 s").arg(t.frames).arg(t.durationS, 0, 'f', 1);
+    if (t.frames > 0) misc << tr("%1 frames in %2 s").arg(t.frames).arg(t.durationS, 0, 'f', 1);
+    else misc << tr("took %1").arg(formatDurationText(t.durationS));
     lines << misc.join(QStringLiteral(" · "));
     QStringList metrics;
     for (const auto& m : t.metrics)
@@ -356,6 +407,9 @@ void ResultsPage::showTest(int row) {
     QVector<QPointF> ft, gt;
     for (std::size_t i = 0; i < t.frameTimesMs.size(); ++i) ft.push_back(QPointF(static_cast<double>(i), t.frameTimesMs[i]));
     for (std::size_t i = 0; i < t.gpuTimesMs.size(); ++i) gt.push_back(QPointF(static_cast<double>(i), t.gpuTimesMs[i]));
+    const bool frames = !t.frameTimesMs.empty();
+    m_frameChart->setVisible(frames);
+    m_hist->setVisible(frames);
     m_frameChart->resetZoom();
     m_frameChart->setPoints(0, ft);
     m_frameChart->setPoints(1, gt);

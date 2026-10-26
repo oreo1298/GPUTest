@@ -13,3 +13,11 @@ common/hud.slang               psRect         fragment   vk,d3d12
 scenes/lattice.slang           vsLattice      vertex     vk,d3d12,d3d11,gl
 scenes/lattice.slang           vsFloor        vertex     vk,d3d12,d3d11,gl
 scenes/lattice.slang           psLattice      fragment   vk,d3d12,d3d11,gl
+
+# --- diagnostics --------------------------------------------------------------
+diagnostics/memtest.slang      csMemtest      compute    vk,d3d12,d3d11
+diagnostics/stress.slang       vsStress       vertex     vk,d3d12,d3d11
+diagnostics/stress.slang       psStress       fragment   vk,d3d12,d3d11
+diagnostics/stress.slang       csCompare      compute    vk,d3d12,d3d11
+diagnostics/compute.slang      csIntChain     compute    vk,d3d12,d3d11
+diagnostics/compute.slang      csFloatChain   compute    vk,d3d12,d3d11
