@@ -72,7 +72,10 @@ float4 psFlat(VSOut v) : SV_Target { return float4(pc.color.rgb, 1.0); }
 float4 psShade(VSOut v) : SV_Target {
     // A little arithmetic so MSAA costs are measured on a realistic pixel shader.
     float3 c = pc.color.rgb;
-    [[unroll]] for (uint i = 0; i < 4; ++i) c = frac(c * 1.37 + v.uv.xyx * 0.11);
+    c = frac(c * 1.37 + v.uv.xyx * 0.11);
+    c = frac(c * 1.37 + v.uv.xyx * 0.11);
+    c = frac(c * 1.37 + v.uv.xyx * 0.11);
+    c = frac(c * 1.37 + v.uv.xyx * 0.11);
     return float4(c, 1.0);
 }
 

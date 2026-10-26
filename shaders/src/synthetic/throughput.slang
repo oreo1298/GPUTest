@@ -16,72 +16,106 @@ struct ThroughputParams {
 GT_PUSH_CONSTANTS(ThroughputParams, pc);
 RWStructuredBuffer<uint> sink : register(u0);
 
+// fxc (D3D11) refuses to unroll small loops nested in a dynamic loop, so the eight
+// chains are spelled out with macros instead of arrays and [unroll] loops.
+#define GT_CHAINS(OP) OP(0) OP(1) OP(2) OP(3) OP(4) OP(5) OP(6) OP(7)
+
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void csFp32(uint3 tid: SV_DispatchThreadID) {
-    float4 x[8];
-    [[unroll]] for (uint k = 0; k < 8; ++k) x[k] = float4(tid.x & 255u, k, 1, 2) * 1e-3;
+#define INIT(k) float4 x##k = float4(tid.x & 255u, k, 1, 2) * 1e-3;
+#define STEP(k) x##k = mad(x##k, m, c);
+#define SUM(k) s += x##k;
+    GT_CHAINS(INIT)
     float4 m = pc.mulF, c = pc.addF;
+    [loop]
     for (uint i = 0; i < pc.iterations; ++i) {
-        [[unroll]] for (uint k = 0; k < 8; ++k) x[k] = mad(x[k], m, c);
+        GT_CHAINS(STEP)
     }
     float4 s = 0;
-    [[unroll]] for (uint k = 0; k < 8; ++k) s += x[k];
+    GT_CHAINS(SUM)
     sink[tid.x & 1023u] = asuint(s.x + s.y + s.z + s.w);
+#undef INIT
+#undef STEP
+#undef SUM
 }
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void csFp16(uint3 tid: SV_DispatchThreadID) {
-    half4 x[8];
-    [[unroll]] for (uint k = 0; k < 8; ++k) x[k] = half4(half(tid.x & 7u), half(k), 1.0h, 2.0h) * 0.01h;
+#define INIT(k) half4 x##k = half4(half(tid.x & 7u), half(k), 1.0h, 2.0h) * 0.01h;
+#define STEP(k) x##k = mad(x##k, m, c);
+#define SUM(k) s += x##k;
+    GT_CHAINS(INIT)
     half4 m = half4(half(pc.mulF)), c = half4(half(pc.addF));
+    [loop]
     for (uint i = 0; i < pc.iterations; ++i) {
-        [[unroll]] for (uint k = 0; k < 8; ++k) x[k] = mad(x[k], m, c);
+        GT_CHAINS(STEP)
     }
     half4 s = half4(0.0h);
-    [[unroll]] for (uint k = 0; k < 8; ++k) s += x[k];
+    GT_CHAINS(SUM)
     sink[tid.x & 1023u] = asuint(float(s.x + s.y + s.z + s.w));
+#undef INIT
+#undef STEP
+#undef SUM
 }
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void csFp64(uint3 tid: SV_DispatchThreadID) {
-    double x[8];
-    [[unroll]] for (uint k = 0; k < 8; ++k) x[k] = double(tid.x & 255u) * 1e-3 + double(k);
+#define INIT(k) double x##k = double(tid.x & 255u) * 1e-3 + double(k);
+#define STEP(k) x##k = x##k * m + c;
+#define SUM(k) s += x##k;
+    GT_CHAINS(INIT)
     double m = double(pc.mulF), c = double(pc.addF);
+    [loop]
     for (uint i = 0; i < pc.iterations; ++i) {
-        [[unroll]] for (uint k = 0; k < 8; ++k) x[k] = x[k] * m + c;
+        GT_CHAINS(STEP)
     }
     double s = 0;
-    [[unroll]] for (uint k = 0; k < 8; ++k) s += x[k];
+    GT_CHAINS(SUM)
     sink[tid.x & 1023u] = asuint(float(s));
+#undef INIT
+#undef STEP
+#undef SUM
 }
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void csInt32(uint3 tid: SV_DispatchThreadID) {
-    uint4 x[8];
-    [[unroll]] for (uint k = 0; k < 8; ++k) x[k] = uint4(tid.x, k, tid.x ^ k, 7u);
+#define INIT(k) uint4 x##k = uint4(tid.x, k, tid.x ^ k, 7u);
+#define STEP(k) x##k = x##k * m + c;
+#define SUM(k) s ^= x##k;
+    GT_CHAINS(INIT)
     uint4 m = pc.mulI, c = pc.addI;
+    [loop]
     for (uint i = 0; i < pc.iterations; ++i) {
-        [[unroll]] for (uint k = 0; k < 8; ++k) x[k] = x[k] * m + c;
+        GT_CHAINS(STEP)
     }
     uint4 s = 0;
-    [[unroll]] for (uint k = 0; k < 8; ++k) s ^= x[k];
+    GT_CHAINS(SUM)
     sink[tid.x & 1023u] = s.x ^ s.y ^ s.z ^ s.w;
+#undef INIT
+#undef STEP
+#undef SUM
 }
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void csDot8(uint3 tid: SV_DispatchThreadID) {
-    int x[8];
-    [[unroll]] for (uint k = 0; k < 8; ++k) x[k] = int(tid.x * 2654435761u + k);
+#define INIT(k) int x##k = int(tid.x * 2654435761u + k);
+#define STEP(k) x##k = dot4add_i8packed(uint(x##k), pc.packedB, x##k);
+#define SUM(k) s ^= x##k;
+    GT_CHAINS(INIT)
+    [loop]
     for (uint i = 0; i < pc.iterations; ++i) {
         // The accumulator is also the packed operand: a non-linear chain no compiler can shortcut.
-        [[unroll]] for (uint k = 0; k < 8; ++k) x[k] = dot4add_i8packed(uint(x[k]), pc.packedB, x[k]);
+        GT_CHAINS(STEP)
     }
     int s = 0;
-    [[unroll]] for (uint k = 0; k < 8; ++k) s ^= x[k];
+    GT_CHAINS(SUM)
     sink[tid.x & 1023u] = uint(s);
+#undef INIT
+#undef STEP
+#undef SUM
 }

@@ -30,18 +30,24 @@ VSOut vsStress(uint vid: SV_VertexID) {
     return o;
 }
 
+float blendSphere(float d, float3 p, float t, float fi) {
+    float3 c = float3(sin(t * 0.7 + fi * 1.7) * 1.6, 0.2 + 0.5 * sin(t * 1.1 + fi), cos(t * 0.5 + fi * 2.3) * 1.6);
+    float r = 0.45 + 0.15 * sin(fi * 3.1 + t);
+    float s = length(p - c) - r;
+    float k = 0.35; // smooth union
+    float h = saturate(0.5 + 0.5 * (s - d) / k);
+    return lerp(s, d, h) - k * h * (1.0 - h);
+}
+
+// Six spheres, written out: fxc cannot unroll a loop nested in the dynamic ray-march loop.
 float sdScene(float3 p, float t) {
     float d = p.y + 1.0; // floor
-    [[unroll]]
-    for (uint i = 0u; i < 6u; ++i) {
-        float fi = float(i);
-        float3 c = float3(sin(t * 0.7 + fi * 1.7) * 1.6, 0.2 + 0.5 * sin(t * 1.1 + fi), cos(t * 0.5 + fi * 2.3) * 1.6);
-        float r = 0.45 + 0.15 * sin(fi * 3.1 + t);
-        float s = length(p - c) - r;
-        float k = 0.35; // smooth union
-        float h = saturate(0.5 + 0.5 * (s - d) / k);
-        d = lerp(s, d, h) - k * h * (1.0 - h);
-    }
+    d = blendSphere(d, p, t, 0.0);
+    d = blendSphere(d, p, t, 1.0);
+    d = blendSphere(d, p, t, 2.0);
+    d = blendSphere(d, p, t, 3.0);
+    d = blendSphere(d, p, t, 4.0);
+    d = blendSphere(d, p, t, 5.0);
     return d;
 }
 
