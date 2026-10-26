@@ -1,0 +1,66 @@
+# Runner command line (`kiln-run`)
+
+The runner is the benchmark engine. Everything the GUI does goes through it, so everything is scriptable.
+`kiln-run --help` lists every option; this page explains the important ones.
+
+## Information
+| Command | Output |
+|---|---|
+| `--list-devices [--json]` | GPUs per API (index, vendor, driver, PCI address, default choice) |
+| `--list-tests [--json]` | All tests with category, supported APIs, suites, scoring |
+| `--list-suites [--json]` | Preset suites and their tests |
+| `--sysinfo [--api A] [--gpu N]` | Host + GPU report (JSON): CPU, RAM, OS, driver, VBIOS, PCIe link, key features |
+| `--caps [--json]` | Full capability listing (extensions, features, properties, limits) |
+| `--check-support [--json]` | Which tests the GPU/API can run and, if not, why |
+
+## Running
+```
+kiln-run --suite standard --api vulkan --gpu 1 --loop 20m --out results.json
+kiln-run --test scene.lattice --resolution 1440p --quality ultra --duration quick
+kiln-run --suite my-suite.json --offscreen --progress jsonl
+```
+| Option | Meaning |
+|---|---|
+| `--suite, -s` | `quick`, `standard`, `extreme`, `raytracing`, `legacy`, `compute`, `diagnostics`, `full`, `smoke`, or a custom suite `.json` |
+| `--test, -t` | Run specific test ids instead (comma-separated or repeated) |
+| `--api, -a` | `vulkan`, `d3d12`, `d3d11`, `opengl` (default: best available) |
+| `--gpu, -g` | Adapter index within the API (default: first discrete GPU) |
+| `--resolution, -r` | `720p`, `1080p`, `1440p`, `4k` or `WxH` — fixed internal render resolution, independent of the window |
+| `--quality, -q` | `low`, `medium`, `high`, `ultra` (suite default otherwise) |
+| `--duration, -d` | `smoke`, `quick`, `standard`, `extreme` |
+| `--loop, -l` | `1` (default), `N`, a duration (`20m`, `1h30m`) or `inf` |
+| `--offscreen` | No window, no present |
+| `--fullscreen`, `--vsync`, `--no-hud` | Window options (vsync is off by default) |
+| `--validation` | Vulkan validation layers / D3D debug layer; errors are counted in the results |
+| `--dump-frames DIR` | Write the golden frames of each scene as PNG |
+| `--golden DIR` | Compare frames with `DIR/golden.json` (tolerant signature comparison) |
+| `--param key=value` | Per-test overrides (documented per test) |
+
+## Safety
+Cutoffs are on by default: GPU 90 °C, hotspot 105 °C, memory 100 °C (sustained for 2 s). `--max-temp`,
+`--max-hotspot`, `--max-mem-temp`, `--max-power` change them; `--no-safety` disables them. A cutoff stops the run
+with a clear message, keeps the partial results and exits with code 4.
+
+## Output
+- Results JSON: `--out FILE`, default `<data dir>/results/<time>_<suite>.json` (format: [RESULTS_SCHEMA.md](RESULTS_SCHEMA.md)).
+  The file is rewritten atomically after every test, so a crash or driver reset never loses finished tests.
+- Progress: `--progress text` (default), `jsonl` (one JSON event per line, used by the GUI) or `quiet`.
+- `--control-stdin`: the runner reads commands from stdin (`stop`); closing stdin also stops the run.
+
+### Progress events (`--progress jsonl`)
+Every line is an object with a `type`:
+`hello`, `run_start`, `loop_start`, `test_start`, `progress` (fraction, status), `frames` (batch of frame times),
+`telemetry` (one sample), `test_end` (full test result), `loop_end` (loop score), `log` (warnings/errors),
+`safety_abort`, `device_lost`, `error`, `run_end` (status, results file, overall score).
+
+## Exit codes
+| Code | Meaning |
+|---|---|
+| 0 | Completed |
+| 1 | Usage error |
+| 2 | Setup failed (no device, driver error) or a test errored |
+| 3 | Stopped by the user |
+| 4 | Safety cutoff |
+| 5 | Device lost (driver reset / TDR) |
+| 6 | Validation errors with `--fail-on-validation` |
+| 7 | A diagnostic test reported FAIL |

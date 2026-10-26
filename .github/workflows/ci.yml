@@ -13,7 +13,7 @@ concurrency:
 env:
   QT_VERSION: "6.8.3"
   SLANG_VERSION: "2026.20"
-  VULKAN_SDK_VERSION: "1.4.328.1"
+  VULKAN_SDK_VERSION: "1.4.363.0"
 
 jobs:
   linux:
@@ -44,6 +44,20 @@ jobs:
             libdecor-0-dev libdrm-dev libgbm-dev libdbus-1-dev libudev-dev xvfb xauth \
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 \
             libxcb-xkb1 libfuse2t64 file patchelf desktop-file-utils fonts-dejavu-core
+
+      - name: Vulkan validation layers (LunarG SDK)
+        run: |
+          # Newest validation layers; Ubuntu's 1.3.275 layer does not know Vulkan 1.4.
+          url="https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/linux/vulkansdk-linux-x86_64-${VULKAN_SDK_VERSION}.tar.xz"
+          if curl -fsSL --retry 3 -o "$RUNNER_TEMP/vksdk.tar.xz" "$url"; then
+            mkdir -p "$RUNNER_TEMP/vksdk"
+            tar -xJf "$RUNNER_TEMP/vksdk.tar.xz" -C "$RUNNER_TEMP/vksdk" --wildcards '*/x86_64/lib/libVkLayer_khronos_validation.so' '*/x86_64/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json'
+            layer_json="$(find "$RUNNER_TEMP/vksdk" -name VkLayer_khronos_validation.json | head -1)"
+            echo "VK_LAYER_PATH=$(dirname "$layer_json")" >> "$GITHUB_ENV"
+            echo "LD_LIBRARY_PATH=$(dirname "$(find "$RUNNER_TEMP/vksdk" -name libVkLayer_khronos_validation.so | head -1)")" >> "$GITHUB_ENV"
+          else
+            echo "::warning::LunarG SDK download failed; using Ubuntu's validation layers"
+          fi
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -76,8 +90,7 @@ jobs:
         run: ctest --preset ${{ matrix.preset }}
 
       - name: Runner smoke test (lavapipe)
-        run: |
-          if [ -x scripts/ci-smoke.sh ]; then scripts/ci-smoke.sh build/${{ matrix.preset }}; else build/${{ matrix.preset }}/bin/*-run --version; fi
+        run: scripts/ci-smoke.sh build/${{ matrix.preset }}
 
       - name: Upload smoke-test output
         if: always()
@@ -113,6 +126,19 @@ jobs:
             libgl-dev libegl-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
             libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
             libdrm-dev libgbm-dev libdbus-1-dev libudev-dev
+      - name: Vulkan validation layers (LunarG SDK)
+        run: |
+          # Newest validation layers; Ubuntu's 1.3.275 layer does not know Vulkan 1.4.
+          url="https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/linux/vulkansdk-linux-x86_64-${VULKAN_SDK_VERSION}.tar.xz"
+          if curl -fsSL --retry 3 -o "$RUNNER_TEMP/vksdk.tar.xz" "$url"; then
+            mkdir -p "$RUNNER_TEMP/vksdk"
+            tar -xJf "$RUNNER_TEMP/vksdk.tar.xz" -C "$RUNNER_TEMP/vksdk" --wildcards '*/x86_64/lib/libVkLayer_khronos_validation.so' '*/x86_64/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json'
+            layer_json="$(find "$RUNNER_TEMP/vksdk" -name VkLayer_khronos_validation.json | head -1)"
+            echo "VK_LAYER_PATH=$(dirname "$layer_json")" >> "$GITHUB_ENV"
+            echo "LD_LIBRARY_PATH=$(dirname "$(find "$RUNNER_TEMP/vksdk" -name libVkLayer_khronos_validation.so | head -1)")" >> "$GITHUB_ENV"
+          else
+            echo "::warning::LunarG SDK download failed; using Ubuntu's validation layers"
+          fi
       - name: Install Slang
         run: |
           mkdir -p "$RUNNER_TEMP/slang"
@@ -136,8 +162,7 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: |
-          if [ -x scripts/ci-smoke.sh ]; then scripts/ci-smoke.sh build/ci-linux-asan --quick; else build/ci-linux-asan/bin/*-run --version; fi
+        run: scripts/ci-smoke.sh build/ci-linux-asan --quick
 
   windows:
     name: Windows MSVC
@@ -182,8 +207,7 @@ jobs:
 
       - name: Runner smoke test (WARP)
         shell: pwsh
-        run: |
-          if (Test-Path scripts/ci-smoke.ps1) { pwsh scripts/ci-smoke.ps1 -BuildDir build/ci-windows } else { Get-ChildItem build/ci-windows/bin/*-run.exe | ForEach-Object { & $_.FullName --version } }
+        run: pwsh scripts/ci-smoke.ps1 -BuildDir build/ci-windows
 
       - name: Upload smoke-test output
         if: always()

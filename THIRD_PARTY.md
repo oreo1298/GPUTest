@@ -14,6 +14,8 @@ All components are MIT-compatible. "Build" = used only to build; "Linked" = comp
 | Slang | 2026.20 | Apache-2.0 WITH LLVM-exception | Build (shader compiler; not shipped) | https://github.com/shader-slang/slang |
 | Qt 6 (qtbase, qtsvg, qtwayland) | 6.8 | LGPL-3.0 (dynamically linked) | Linked (GUI) | https://www.qt.io |
 | SQLite (via Qt's QSQLITE driver) | bundled with Qt | Public domain | Linked (GUI) | https://sqlite.org |
+| stb_image_write | 1.16 (commit 003501f) | Public domain / MIT | Linked (vendored in third_party/stb) | https://github.com/nothings/stb |
+| 8×8 VGA bitmap font | — | Public domain (Marcel Sondaar / IBM VGA), via SDL3 | Linked (HUD font, src/bench/hud_font.h) | https://github.com/libsdl-org/SDL |
 | linuxdeploy + plugin-qt | continuous | MIT | Build (AppImage packaging) | https://github.com/linuxdeploy |
 
 Qt is used under the LGPLv3: it is dynamically linked, its source is available from qt.io, and users can replace

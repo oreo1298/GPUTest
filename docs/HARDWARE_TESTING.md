@@ -11,8 +11,31 @@ and screenshots into one archive — commit it under `hardware-reports/` or atta
   - GUI: `./Kiln-*.AppImage`; runner CLI: `./Kiln-*.AppImage run --help`.
 - Windows: download `windows-portable`, unzip anywhere, run `kiln.exe` (GUI) or `kiln-run.exe` (CLI).
 
+## The hardware report (start here)
+- Linux: `./hw-report.sh` from the repo `scripts/` directory, or from inside the AppImage:
+  `./Kiln-*.AppImage --appimage-extract >/dev/null && squashfs-root/usr/share/kiln/hw-report.sh --runner squashfs-root/usr/bin/kiln-run`
+- Windows (portable zip folder): `powershell -ExecutionPolicy Bypass -File hw-report.ps1`
+- Options: `--standard` / `-Mode standard` (longer), `--stress 20m` / `-Mode stress -Stress 20m`, `--api`, `--gpu`.
+- It runs, for every GPU and API: `--sysinfo`, `--caps`, `--check-support`, the smoke suite with validation layers
+  and frame dumps, then the quick suite with frame dumps. Output: `hwreport-<host>-<time>.tar.gz` / `.zip`.
+
 ## Pending checks
-_(filled in as features land; see below)_
+
+### M2 — vertical slice (Vulkan runner, telemetry)
+Run `hw-report.sh` on the CachyOS rig (RTX 4090 + 9950X3D iGPU) and `hw-report.ps1` on Windows if possible. Then check:
+1. **Both adapters listed** (`kiln-run --list-devices`): the 4090 is the default; the Raphael iGPU (RADV) is listed too.
+2. **NVIDIA telemetry (NVML)**: in `runs/vulkan-gpu0-quick.json` → `telemetry.samples` should have clocks, temperature,
+   power, power limit, fan %, utilization, VRAM, and `throttle` flags when power-limited. `system.gpu.vbios` and
+   `pcie_current`/`pcie_max` (e.g. "Gen4 x16") should be filled.
+3. **AMD iGPU telemetry (amdgpu sysfs)**: for the iGPU run, `telemetry.provider` should be `amdgpu-sysfs`; check
+   which channels are present (APUs expose fewer hwmon files than dGPUs) — tell me which are missing.
+4. **Rendering**: `frames/*/scene.lattice_frame0000.png` should show coloured cubes over a checkered floor with a
+   blue-grey sky (same image as CI's lavapipe reference). Any black/garbled frame is a bug.
+5. **Window + HUD**: during the run a window shows the scene letterboxed with a HUD (test name, FPS, clocks/temps
+   line). Press F1 to toggle the HUD, Esc to stop. Does it work on Wayland (KDE) and under X11
+   (`SDL_VIDEO_DRIVER=x11`)? Is the present mode `immediate` or `mailbox` (see `logs/*-quick.log`, "swapchain" line)?
+6. **Validation**: `logs/*-smoke.log` should contain no `[vulkan-validation]` errors (needs the Vulkan SDK or the
+   distro's `vulkan-validation-layers` package installed; otherwise the run notes that validation was unavailable).
 
 ### M1 — packaging smoke
 1. Linux (CachyOS/KDE): start the AppImage; a window titled "Kiln" must open. Run `./Kiln-*.AppImage run --version`.

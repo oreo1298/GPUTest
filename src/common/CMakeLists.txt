@@ -3,6 +3,9 @@ add_library(gt_common STATIC
   stats.cpp
   duration.cpp
   paths.cpp
+  results.cpp
+  scoring.cpp
+  sysinfo.cpp
 )
 target_include_directories(gt_common PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}"

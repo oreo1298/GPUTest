@@ -1,0 +1,15 @@
+# Shader entry points compiled at build time (see cmake/Shaders.cmake for the format).
+# file                         entry          stage      apis               options
+
+# --- common -------------------------------------------------------------------
+common/blit.slang              vsFullscreen   vertex     vk,d3d12,d3d11,gl
+common/blit.slang              psBlit         fragment   vk,d3d12,d3d11,gl
+common/hud.slang               vsText         vertex     vk,d3d12
+common/hud.slang               psText         fragment   vk,d3d12
+common/hud.slang               vsRect         vertex     vk,d3d12
+common/hud.slang               psRect         fragment   vk,d3d12
+
+# --- scenes -------------------------------------------------------------------
+scenes/lattice.slang           vsLattice      vertex     vk,d3d12,d3d11,gl
+scenes/lattice.slang           vsFloor        vertex     vk,d3d12,d3d11,gl
+scenes/lattice.slang           psLattice      fragment   vk,d3d12,d3d11,gl

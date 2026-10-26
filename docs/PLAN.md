@@ -10,13 +10,13 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 - [x] clang-format / clang-tidy configs, unit-test scaffold (Catch2)
 
 ## 2. Vertical slice
-- [ ] Shader pipeline: Slang → SPIR-V (+DXIL/DXBC on Windows, GLSL via SPIRV-Cross), embedded blobs
-- [ ] RHI interface + Vulkan backend (volk + VMA), offscreen + SDL3 window
-- [ ] Runner: device enumeration, `--list-devices/--list-tests`, one scene test, frame stats, GPU timestamps
-- [ ] Telemetry: sampler thread, NVML, amdgpu/i915/xe sysfs, VK_EXT_memory_budget
-- [ ] Results JSON (schema v1) + JSON-lines progress stream
-- [ ] Hardware report scripts (bash + PowerShell)
-- [ ] Lavapipe smoke test in CI with validation layers, frame dumps (PNG) + golden hashes
+- [x] Shader pipeline: Slang → SPIR-V embedded blobs (DXIL/DXBC/GLSL paths wired, enabled with their backends)
+- [x] RHI interface + Vulkan backend (volk + VMA), offscreen + SDL3 window
+- [x] Runner: device enumeration, `--list-devices/--list-tests`, one scene test, frame stats, GPU timestamps
+- [x] Telemetry: sampler thread, NVML, amdgpu/i915/xe sysfs, VK_EXT_memory_budget
+- [x] Results JSON (schema v1) + JSON-lines progress stream
+- [x] Hardware report scripts (bash + PowerShell)
+- [x] Lavapipe smoke test in CI with validation layers, frame dumps (PNG) + golden signatures
 
 ## 3. Qt GUI shell
 - [ ] Theme manager: OS light/dark + accent, live updates (portal, KDE kdeglobals, Windows 11 style)
