@@ -226,7 +226,8 @@ results::TestResult Runner::runTest(const std::string& id, int loop, int index, 
     tr.id = id;
     tr.loop = loop;
     tr.api = std::string(rhi::apiName(*m_opt.api));
-    tr.startS = elapsed();
+    const double startS = elapsed();
+    tr.startS = startS;
     if (!info) {
         tr.status = results::Status::Error;
         tr.message = "unknown test";
@@ -241,7 +242,8 @@ results::TestResult Runner::runTest(const std::string& id, int loop, int index, 
     if (m_window) SDL_SetWindowTitle(m_window, std::format("{} — {}", app::kDisplayName, info->name).c_str());
 
     auto finish = [&](results::TestResult& r) {
-        r.durationS = elapsed() - r.startS;
+        r.startS = startS;
+        r.durationS = elapsed() - startS;
         r.loop = loop;
         return r;
     };
@@ -294,7 +296,6 @@ results::TestResult Runner::runTest(const std::string& id, int loop, int index, 
         tr.status = results::Status::Error;
         tr.message = e.what();
     }
-    tr.startS = tr.startS == 0.0 ? elapsed() : tr.startS;
     const auto validationAfter = m_device ? m_device->validationCounts() : validationBefore;
     if (validationAfter.errors > validationBefore.errors)
         tr.details["validation_errors"] = validationAfter.errors - validationBefore.errors;

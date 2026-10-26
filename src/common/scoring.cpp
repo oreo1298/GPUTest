@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <limits>
 #include <map>
 
 namespace gt::scoring {
@@ -68,7 +69,11 @@ void computeScores(results::RunResult& run, double stabilityThreshold) {
         run.stability.ratio = worst / best;
         run.stability.passed = run.stability.ratio >= stabilityThreshold;
         const double mean = geometricMean(ys);
-        run.stability.trendPercentPerHour = mean > 0.0 ? linearSlope(xs, ys) / mean * 100.0 : 0.0;
+        // A trend needs at least three loops spread over a minute; otherwise it is noise.
+        const double span = (xs.back() - xs.front()) * 3600.0;
+        run.stability.trendPercentPerHour = (xs.size() >= 3 && span >= 60.0 && mean > 0.0)
+                                                ? linearSlope(xs, ys) / mean * 100.0
+                                                : std::numeric_limits<double>::quiet_NaN();
     }
 
     // Efficiency: overall score per average watt over the samples taken while scored tests ran.

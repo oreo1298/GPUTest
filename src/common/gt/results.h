@@ -71,6 +71,13 @@ struct TelemetrySample {
 
 /// Names of the float channels of TelemetrySample, in a fixed order (JSON keys).
 const std::vector<std::string>& telemetryChannels();
+/// Display label and unit per channel (same order as telemetryChannels()).
+struct ChannelInfo {
+    std::string label;
+    std::string unit;
+};
+const std::vector<ChannelInfo>& telemetryChannelInfo();
+const ChannelInfo* telemetryChannelInfo(const std::string& key);
 float telemetryValue(const TelemetrySample& s, std::size_t channel);
 void setTelemetryValue(TelemetrySample& s, std::size_t channel, float v);
 
@@ -143,7 +150,7 @@ struct Stability {
     double ratio = 0.0;     ///< worst loop / best loop (0..1)
     double threshold = 0.97;
     bool passed = false;
-    double trendPercentPerHour = 0.0; ///< linear trend of loop scores
+    double trendPercentPerHour = std::numeric_limits<double>::quiet_NaN(); ///< linear trend of loop scores (NaN = too few loops)
 };
 
 struct Scores {

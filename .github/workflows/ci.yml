@@ -59,6 +59,13 @@ jobs:
             echo "::warning::LunarG SDK download failed; using Ubuntu's validation layers"
           fi
 
+      - name: Find Qt add-on modules
+        run: |
+          python3 -m pip install --quiet --user "aqtinstall>=3.3"
+          mods="$(python3 -m aqt list-qt linux desktop --modules "$QT_VERSION" linux_gcc_64 | tr ' ' '\n' | grep -E '^qtwayland' | tr '\n' ' ' || true)"
+          echo "Qt add-on modules: ${mods:-none}"
+          echo "QT_LINUX_MODULES=${mods% }" >> "$GITHUB_ENV"
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -66,6 +73,7 @@ jobs:
           host: linux
           target: desktop
           arch: linux_gcc_64
+          modules: ${{ env.QT_LINUX_MODULES }}
           cache: true
 
       - name: Install Slang
@@ -103,7 +111,7 @@ jobs:
 
       - name: Package AppImage
         if: matrix.package
-        run: scripts/package-appimage.sh build/${{ matrix.preset }} dist
+        run: scripts/package-appimage.sh build/${{ matrix.preset }} dist 2>&1 | tee build/${{ matrix.preset }}/package.log; exit ${PIPESTATUS[0]}
 
       - name: Upload AppImage
         if: matrix.package
@@ -185,13 +193,24 @@ jobs:
         with:
           arch: x64
 
+      - name: Find Qt MSVC package
+        shell: pwsh
+        run: |
+          python -m pip install --quiet "aqtinstall>=3.3"
+          $archs = (python -m aqt list-qt windows desktop --arch $env:QT_VERSION) -split '\s+' | Where-Object { $_ -match '^win64_msvc\d+_64$' }
+          Write-Host "available MSVC archs for Qt $($env:QT_VERSION): $archs"
+          $arch = ($archs | Sort-Object -Descending | Select-Object -First 1)
+          if (-not $arch) { $arch = "win64_msvc2022_64" }
+          Add-Content -Path $env:GITHUB_ENV -Value "QT_ARCH=$arch"
+          Write-Host "::notice::Using Qt arch $arch"
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
           host: windows
           target: desktop
-          arch: win64_msvc2022_64
+          arch: ${{ env.QT_ARCH }}
           cache: true
 
       - name: Install Slang

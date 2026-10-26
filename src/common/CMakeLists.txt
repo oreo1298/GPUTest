@@ -3,6 +3,7 @@ add_library(gt_common STATIC
   stats.cpp
   duration.cpp
   paths.cpp
+  report.cpp
   results.cpp
   scoring.cpp
   sysinfo.cpp

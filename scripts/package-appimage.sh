@@ -22,8 +22,17 @@ fetch linuxdeploy-plugin-qt-x86_64.AppImage https://github.com/linuxdeploy/linux
 export PATH="$tools:$PATH"
 export APPIMAGE_EXTRACT_AND_RUN=1
 export QMAKE="${QMAKE:-$(command -v qmake6 || command -v qmake)}"
-export EXTRA_PLATFORM_PLUGINS="libqwayland-generic.so;libqwayland-egl.so;libqoffscreen.so"
-export EXTRA_QT_PLUGINS="waylandcompositor;wayland-shell-integration;wayland-decoration-client;wayland-graphics-integration-client"
+# Wayland client plugins are an add-on module in newer Qt packages; deploy them only
+# when present (without them the image still runs everywhere through XWayland).
+qt_plugins="$("$QMAKE" -query QT_INSTALL_PLUGINS)"
+platform_plugins="libqoffscreen.so"
+if [ -f "$qt_plugins/platforms/libqwayland-generic.so" ]; then
+    platform_plugins="libqwayland-generic.so;libqwayland-egl.so;$platform_plugins"
+    export EXTRA_QT_MODULES="waylandcompositor"
+else
+    echo "warning: Qt Wayland platform plugin not found in $qt_plugins; AppImage will use XWayland" >&2
+fi
+export EXTRA_PLATFORM_PLUGINS="$platform_plugins"
 export DISABLE_COPYRIGHT_FILES_DEPLOYMENT=1
 
 appdir="$(mktemp -d)/AppDir"

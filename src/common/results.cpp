@@ -106,6 +106,22 @@ const std::vector<std::string>& telemetryChannels() {
     return kChannels;
 }
 
+const std::vector<ChannelInfo>& telemetryChannelInfo() {
+    static const std::vector<ChannelInfo> kInfo{
+        {"GPU clock", "MHz"},         {"Memory clock", "MHz"}, {"GPU temperature", "°C"}, {"Hotspot temperature", "°C"},
+        {"Memory temperature", "°C"}, {"Board power", "W"},    {"Power limit", "W"},      {"Fan speed", "%"},
+        {"Fan speed", "rpm"},         {"GPU load", "%"},       {"Memory controller load", "%"},
+        {"VRAM used", "MiB"},         {"VRAM total", "MiB"}};
+    return kInfo;
+}
+
+const ChannelInfo* telemetryChannelInfo(const std::string& key) {
+    const auto& ch = telemetryChannels();
+    for (std::size_t i = 0; i < ch.size(); ++i)
+        if (ch[i] == key) return &telemetryChannelInfo()[i];
+    return nullptr;
+}
+
 float telemetryValue(const TelemetrySample& s, std::size_t c) {
     switch (c) {
     case 0: return s.gpuClockMhz;
@@ -456,7 +472,7 @@ json toJson(const RunResult& r) {
         j["stability"] = {{"ratio", round3(r.stability.ratio)},
                           {"threshold", r.stability.threshold},
                           {"passed", r.stability.passed},
-                          {"trend_percent_per_hour", round3(r.stability.trendPercentPerHour)}};
+                          {"trend_percent_per_hour", num(r.stability.trendPercentPerHour)}};
     json tel;
     tel["provider"] = r.telemetry.provider;
     tel["interval_s"] = r.telemetry.intervalS;
@@ -539,7 +555,7 @@ RunResult fromJson(const json& j) {
         r.stability.ratio = getNum(*it, "ratio");
         r.stability.threshold = getNum(*it, "threshold", 0.97);
         r.stability.passed = getBool(*it, "passed");
-        r.stability.trendPercentPerHour = getNum(*it, "trend_percent_per_hour");
+        r.stability.trendPercentPerHour = getNum(*it, "trend_percent_per_hour", std::numeric_limits<double>::quiet_NaN());
     }
     if (auto it = j.find("telemetry"); it != j.end()) {
         r.telemetry.provider = getStr(*it, "provider");

@@ -3,6 +3,7 @@
 #include "gt/app_info.h"
 #include "gt/bench/suites.h"
 #include "gt/log.h"
+#include "gt/report.h"
 #include "gt/sysinfo.h"
 #include "runner.h"
 #include "sysreport.h"
@@ -93,6 +94,10 @@ int main(int argc, char** argv) {
     info->add_flag("--sysinfo", showSys, "Print system information for the selected GPU/API");
     info->add_flag("--check-support", checkSupport, "Report which tests the selected GPU/API can run, and why not");
     info->add_flag("--json", json, "Machine-readable output for the information commands");
+    std::vector<std::string> exportHtml, exportCsv;
+    info->add_option("--export-html", exportHtml, "Convert a results file to a self-contained HTML report: IN OUT")
+        ->expected(2);
+    info->add_option("--export-csv", exportCsv, "Convert a results file to CSV: IN OUT")->expected(2);
 
     auto* sel = app.add_option_group("Selection");
     sel->add_option("--suite,-s", opt.suite, "Preset suite (quick, standard, extreme, raytracing, legacy, compute, "
@@ -148,6 +153,22 @@ int main(int argc, char** argv) {
     if (!logFile.empty() && !log::setFile(logFile)) log::warn("cannot open log file {}", logFile);
 
     // --- information commands ---------------------------------------------------------------
+    if (exportHtml.size() == 2 || exportCsv.size() == 2) {
+        const auto& args = exportHtml.size() == 2 ? exportHtml : exportCsv;
+        std::string err;
+        auto run = results::readFile(args[0], &err);
+        if (!run) {
+            std::fprintf(stderr, "cannot read %s: %s\n", args[0].c_str(), err.c_str());
+            return runner::kExitUsage;
+        }
+        const std::string content = exportHtml.size() == 2 ? report::toHtml(*run) : report::toCsv(*run);
+        if (!report::writeText(args[1], content, &err)) {
+            std::fprintf(stderr, "%s\n", err.c_str());
+            return runner::kExitSetupFailed;
+        }
+        std::printf("wrote %s\n", args[1].c_str());
+        return 0;
+    }
     if (listTests) {
         if (json) std::cout << testsJson().dump(2) << "\n";
         else
