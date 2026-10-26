@@ -116,10 +116,15 @@ void VulkanSwapchain::create(std::uint32_t width, std::uint32_t height) {
                     (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
     ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     ci.preTransform = caps.currentTransform;
-    ci.compositeAlpha = (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR)
-                            ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
-                            : static_cast<VkCompositeAlphaFlagBitsKHR>(caps.supportedCompositeAlpha &
-                                                                       -caps.supportedCompositeAlpha);
+    ci.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    if (!(caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR)) {
+        for (std::uint32_t bit = 1; bit != 0; bit <<= 1) {
+            if (caps.supportedCompositeAlpha & bit) {
+                ci.compositeAlpha = static_cast<VkCompositeAlphaFlagBitsKHR>(bit);
+                break;
+            }
+        }
+    }
     ci.presentMode = m_presentMode;
     ci.clipped = VK_TRUE;
     ci.oldSwapchain = VK_NULL_HANDLE;
