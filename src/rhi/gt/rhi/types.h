@@ -152,6 +152,8 @@ struct DeviceFeatures {
     bool atomicInt64 = false;
     bool bufferDeviceAddress = false;
     bool descriptorIndexing = false;
+    std::uint32_t maxBindlessTextures = 0; ///< TextureTable capacity limit (0 = no texture tables)
+    bool descriptorBuffer = false;         ///< VK_EXT_descriptor_buffer (reported only)
     bool rayQuery = false;
     bool rayTracingPipeline = false;
     bool meshShader = false;

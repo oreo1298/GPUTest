@@ -240,6 +240,7 @@ VulkanDevice::~VulkanDevice() {
         if (q->timeline) vkDestroySemaphore(m_device, q->timeline, nullptr);
     }
     for (VkFence f : m_freeFences) vkDestroyFence(m_device, f, nullptr);
+    if (m_tableLayout) vkDestroyDescriptorSetLayout(m_device, m_tableLayout, nullptr);
     if (m_allocator) vmaDestroyAllocator(m_allocator);
     vkDestroyDevice(m_device, nullptr);
 }
@@ -532,10 +533,42 @@ void VulkanDevice::fillFeatures() {
 
     VkPhysicalDeviceSubgroupProperties sub{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
     VkPhysicalDeviceSubgroupSizeControlProperties sizeControl{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES};
+    VkPhysicalDeviceDescriptorIndexingProperties indexing{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES};
     VkPhysicalDeviceProperties2 p2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
     p2.pNext = &sub;
-    if (v13 || extensionEnabled(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME)) sub.pNext = &sizeControl;
+    void** tail = &sub.pNext;
+    const bool hasIndexing = v12 || extensionEnabled(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+    if (hasIndexing) {
+        *tail = &indexing;
+        tail = &indexing.pNext;
+    }
+    if (v13 || extensionEnabled(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME)) *tail = &sizeControl;
     vkGetPhysicalDeviceProperties2(m_physical, &p2);
+    {
+        // Texture tables: a partially bound, variable-size array of sampled images in set 1.
+        const auto& ix = v12 ? f.v12 : VkPhysicalDeviceVulkan12Features{};
+        const bool runtimeArray = v12 ? ix.runtimeDescriptorArray : f.descriptorIndexing.runtimeDescriptorArray;
+        const bool nonUniform = v12 ? ix.shaderSampledImageArrayNonUniformIndexing
+                                    : f.descriptorIndexing.shaderSampledImageArrayNonUniformIndexing;
+        const bool partial = v12 ? ix.descriptorBindingPartiallyBound : f.descriptorIndexing.descriptorBindingPartiallyBound;
+        const bool variable = v12 ? ix.descriptorBindingVariableDescriptorCount
+                                  : f.descriptorIndexing.descriptorBindingVariableDescriptorCount;
+        m_tableUpdateAfterBind = v12 ? ix.descriptorBindingSampledImageUpdateAfterBind
+                                     : f.descriptorIndexing.descriptorBindingSampledImageUpdateAfterBind;
+        if (hasIndexing && runtimeArray && nonUniform && partial && variable) {
+            const std::uint64_t setLimit = m_tableUpdateAfterBind ? indexing.maxDescriptorSetUpdateAfterBindSampledImages
+                                                                  : m_props.limits.maxDescriptorSetSampledImages;
+            const std::uint64_t stageLimit = m_tableUpdateAfterBind
+                                                 ? std::min(indexing.maxPerStageDescriptorUpdateAfterBindSampledImages,
+                                                            indexing.maxPerStageUpdateAfterBindResources)
+                                                 : std::min(m_props.limits.maxPerStageDescriptorSampledImages,
+                                                            m_props.limits.maxPerStageResources);
+            // Leave room for the ordinary set-0 bindings of the same pipeline.
+            const std::uint64_t n = std::min<std::uint64_t>({65536, setLimit, stageLimit > 64 ? stageLimit - 64 : 0});
+            d.maxBindlessTextures = n >= 256 ? static_cast<std::uint32_t>(n) : 0;
+        }
+    }
+    d.descriptorBuffer = extensionEnabled(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME);
     d.subgroupSize = sub.subgroupSize;
     d.minSubgroupSize = sizeControl.minSubgroupSize ? sizeControl.minSubgroupSize : sub.subgroupSize;
     d.maxSubgroupSize = sizeControl.maxSubgroupSize ? sizeControl.maxSubgroupSize : sub.subgroupSize;
@@ -707,6 +740,8 @@ VkRenderPass VulkanDevice::renderPass(const std::vector<VkFormat>& colors, VkFor
     for (std::size_t i = 0; i < colors.size(); ++i)
         key += std::format("{}:{},", static_cast<int>(colors[i]),
                            static_cast<int>(i < colorLoads.size() ? colorLoads[i] : LoadOp::Load));
+    // Pipelines may be created from several threads (feature.pipelines compiles in parallel).
+    std::lock_guard lock(m_renderPassMutex);
     if (auto it = m_renderPasses.find(key); it != m_renderPasses.end()) return it->second;
 
     auto loadOp = [](LoadOp l) {

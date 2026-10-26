@@ -206,6 +206,7 @@ void VulkanCommandList::setPipeline(Pipeline* pipeline) {
     vkCmdBindPipeline(m_cmd, p->bindPoint(), p->handle());
     m_pipeline = p;
     m_bindingsDirty = true;
+    m_tableDirty = true;
 }
 
 void VulkanCommandList::setVertexBuffer(std::uint32_t binding, Buffer* buffer, std::uint64_t offset) {
@@ -288,6 +289,11 @@ void VulkanCommandList::pushConstants(const void* data, std::uint32_t size, std:
 void VulkanCommandList::flushBindings() {
     if (!m_pipeline) throw Error("draw/dispatch without a pipeline");
     if (m_accelDirty) accelBarrier(); // work after a build sees the finished structure
+    if (m_tableDirty && m_pipeline->layoutDesc().textureTable) {
+        if (!m_tableSet) throw Error(std::format("pipeline '{}': no texture table bound", m_pipeline->name()));
+        vkCmdBindDescriptorSets(m_cmd, m_pipeline->bindPoint(), m_pipeline->layoutHandle(), 1, 1, &m_tableSet, 0, nullptr);
+        m_tableDirty = false;
+    }
     if (!m_bindingsDirty) return;
     const auto& layout = m_pipeline->layoutDesc();
     if (layout.bindings.empty()) {

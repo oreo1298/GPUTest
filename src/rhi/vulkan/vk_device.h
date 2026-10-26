@@ -8,6 +8,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <memory>
 #include <set>
 #include <unordered_map>
@@ -248,6 +249,7 @@ public:
                              std::uint32_t stride) override;
     void dispatch(std::uint32_t x, std::uint32_t y, std::uint32_t z) override;
     void dispatchIndirect(Buffer* args, std::uint64_t offset) override;
+    void setTextureTable(TextureTable* table) override;
     void drawMeshTasks(std::uint32_t x, std::uint32_t y, std::uint32_t z) override;
     void setShadingRate(std::uint32_t width, std::uint32_t height) override;
     void copyBuffer(Buffer* dst, std::uint64_t dstOffset, Buffer* src, std::uint64_t srcOffset,
@@ -297,6 +299,8 @@ private:
     VulkanPipeline* m_pipeline = nullptr;
     bool m_bindingsDirty = true;
     bool m_accelDirty = false; ///< a build was recorded since the last acceleration-structure barrier
+    VkDescriptorSet m_tableSet = VK_NULL_HANDLE;
+    bool m_tableDirty = false;
     std::array<Bound, kSlots> m_b{}, m_t{}, m_u{}, m_s{};
     std::vector<std::pair<VulkanTexture*, VulkanTexture*>> m_pendingResolves;
     // transient memory
@@ -430,6 +434,9 @@ public:
     const std::vector<std::string>& enabledExtensions() const { return m_enabledExtensions; }
     QueueState& queue(QueueType type) { return *m_queueFor[static_cast<int>(type)]; }
     bool pushDescriptors() const { return m_pushDescriptors; }
+    /// Set layout of TextureTable descriptor sets (set 1), created on first use.
+    VkDescriptorSetLayout textureTableLayout();
+    std::unique_ptr<TextureTable> createTextureTable(std::uint32_t capacity) override;
     /// Shader stages that may appear in descriptor-set layouts on this device.
     VkShaderStageFlags supportedShaderStages() const;
     bool debugUtils() const { return m_debugUtils; }
@@ -478,6 +485,8 @@ private:
     std::vector<std::unique_ptr<QueueState>> m_queues;
     std::array<QueueState*, 3> m_queueFor{};
     bool m_pushDescriptors = false;
+    VkDescriptorSetLayout m_tableLayout = VK_NULL_HANDLE;
+    bool m_tableUpdateAfterBind = false;
     bool m_debugUtils = false;
     bool m_timeline = false;
     bool m_memoryBudgetExt = false;
@@ -496,6 +505,7 @@ private:
     };
     std::deque<Garbage> m_garbage;
     std::map<std::string, VkRenderPass> m_renderPasses;
+    std::mutex m_renderPassMutex;
     struct FbEntry {
         VkFramebuffer fb;
         std::vector<VkImageView> views;

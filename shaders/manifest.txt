@@ -63,3 +63,13 @@ features/subgroups.slang       csWaveCheck    compute         vk,d3d12
 features/subgroups.slang       csReduceAtomic compute         vk,d3d12
 features/subgroups.slang       csReduceShared compute         vk,d3d12
 features/subgroups.slang       csReduceWave   compute         vk,d3d12
+features/bindless.slang        csBindlessCheck  compute       vk,d3d12   d3d12=sm_6_0
+features/bindless.slang        csFetchBound     compute       vk,d3d12
+features/bindless.slang        csFetchUniform   compute       vk,d3d12
+features/bindless.slang        csFetchDivergent compute       vk,d3d12
+features/pipelines.slang       vsMaterial     vertex          vk,d3d12
+features/pipelines.slang       psMaterial     fragment        vk,d3d12
+features/drawcalls.slang       vsPush         vertex          vk,d3d12,d3d11,gl
+features/drawcalls.slang       vsUniform      vertex          vk,d3d12,d3d11,gl
+features/drawcalls.slang       vsIndirect     vertex          vk,d3d12,d3d11,gl
+features/drawcalls.slang       psDraw         fragment        vk,d3d12,d3d11,gl

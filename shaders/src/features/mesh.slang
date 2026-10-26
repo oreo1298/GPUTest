@@ -72,24 +72,23 @@ VSOut shadeVertex(float3 p, Instance inst) {
 VSOut vsSpheres(float3 pos: POSITION, uint inst: SV_InstanceID) { return shadeVertex(pos, instanceData(inst)); }
 
 // --- mesh shaders -----------------------------------------------------------------------
-void emitMeshlet(uint meshletIndex, uint inst, uint tid, OutputVertices<VSOut, kMaxVerts> verts,
-                 OutputIndices<uint3, kMaxPrims> tris) {
-    Meshlet m = meshlets[meshletIndex];
-    SetMeshOutputCounts(m.vertexCount, m.primCount);
-    Instance data = instanceData(inst);
-    if (tid < m.vertexCount) verts[tid] = shadeVertex(positions[meshletVertices[m.vertexOffset + tid]].xyz, data);
-    for (uint p = tid; p < m.primCount; p += kMaxVerts) {
-        uint packed = meshletPrims[m.primOffset + p];
-        tris[p] = uint3(packed & 255u, (packed >> 8) & 255u, (packed >> 16) & 255u);
+// Written as a macro rather than a function: DXC loses track of mesh outputs passed to functions.
+#define EMIT_MESHLET(MESHLET_INDEX, INSTANCE)                                                                  \
+    Meshlet m = meshlets[MESHLET_INDEX];                                                                      \
+    SetMeshOutputCounts(m.vertexCount, m.primCount);                                                         \
+    Instance data = instanceData(INSTANCE);                                                                  \
+    if (tid < m.vertexCount) verts[tid] = shadeVertex(positions[meshletVertices[m.vertexOffset + tid]].xyz, data); \
+    for (uint p = tid; p < m.primCount; p += kMaxVerts) {                                                   \
+        uint packed = meshletPrims[m.primOffset + p];                                                         \
+        tris[p] = uint3(packed & 255u, (packed >> 8) & 255u, (packed >> 16) & 255u);                          \
     }
-}
 
 [shader("mesh")]
 [numthreads(64, 1, 1)]
 [outputtopology("triangle")]
 void msDirect(uint tid: SV_GroupThreadID, uint3 gid: SV_GroupID, OutputVertices<VSOut, kMaxVerts> verts,
               OutputIndices<uint3, kMaxPrims> tris) {
-    emitMeshlet(gid.x, gid.y, tid, verts, tris);
+    EMIT_MESHLET(gid.x, gid.y)
 }
 
 struct TaskPayload {
@@ -137,7 +136,7 @@ void tsCull(uint tid: SV_GroupThreadID, uint3 gid: SV_GroupID) {
 [outputtopology("triangle")]
 void msFromTask(uint tid: SV_GroupThreadID, uint3 gid: SV_GroupID, in payload TaskPayload p,
                 OutputVertices<VSOut, kMaxVerts> verts, OutputIndices<uint3, kMaxPrims> tris) {
-    emitMeshlet(p.meshlets[gid.x], p.instance, tid, verts, tris);
+    EMIT_MESHLET(p.meshlets[gid.x], p.instance)
 }
 
 // --- shading ----------------------------------------------------------------------------

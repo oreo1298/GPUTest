@@ -108,8 +108,9 @@ void VulkanPipeline::createLayout(const LayoutDesc& layout) {
 
     VkPushConstantRange pcr{VK_SHADER_STAGE_ALL, 0, layout.pushConstantBytes};
     VkPipelineLayoutCreateInfo lci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    lci.setLayoutCount = 1;
-    lci.pSetLayouts = &m_setLayout;
+    const VkDescriptorSetLayout sets[2] = {m_setLayout, layout.textureTable ? m_dev.textureTableLayout() : VK_NULL_HANDLE};
+    lci.setLayoutCount = layout.textureTable ? 2 : 1;
+    lci.pSetLayouts = sets;
     lci.pushConstantRangeCount = layout.pushConstantBytes ? 1 : 0;
     lci.pPushConstantRanges = &pcr;
     check(vkCreatePipelineLayout(m_dev.vkDevice(), &lci, nullptr, &m_layout), "vkCreatePipelineLayout");

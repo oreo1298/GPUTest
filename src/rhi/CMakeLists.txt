@@ -12,6 +12,7 @@ if(GT_ENABLE_VULKAN)
     vulkan/vk_commandlist.cpp
     vulkan/vk_swapchain.cpp
     vulkan/vk_raytracing.cpp
+    vulkan/vk_bindless.cpp
     vulkan/vk_caps.cpp
     vulkan/vk_vma.cpp)
   list(APPEND _rhi_defs GT_HAS_VULKAN=1)

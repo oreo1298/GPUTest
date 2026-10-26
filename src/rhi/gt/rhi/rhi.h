@@ -186,6 +186,23 @@ struct Binding {
 struct LayoutDesc {
     std::vector<Binding> bindings;
     std::uint32_t pushConstantBytes = 0; ///< <= 128 (portable minimum)
+    /// Also bind a TextureTable: `Texture2D textures[] : register(t0, space1)` with
+    /// `[[vk::binding(0, 1)]]` (Device::features().maxBindlessTextures > 0).
+    bool textureTable = false;
+};
+
+class Texture;
+/// A large array of sampled textures that shaders index dynamically (descriptor indexing,
+/// "bindless"). Entries may be changed while the table is in use by recorded work.
+class TextureTable {
+public:
+    virtual ~TextureTable() = default;
+    std::uint32_t capacity() const { return m_capacity; }
+    /// Textures must be in ResourceState::ShaderRead whenever shaders read them.
+    virtual void set(std::uint32_t index, Texture* texture) = 0;
+
+protected:
+    std::uint32_t m_capacity = 0;
 };
 
 // --- graphics pipeline state -------------------------------------------------------
@@ -469,6 +486,8 @@ public:
                                      std::uint32_t stride) = 0;
     virtual void dispatch(std::uint32_t x, std::uint32_t y = 1, std::uint32_t z = 1) = 0;
     virtual void dispatchIndirect(Buffer* args, std::uint64_t offset) = 0;
+    /// Binds the table read by pipelines created with LayoutDesc::textureTable.
+    virtual void setTextureTable(TextureTable*) { throw Error("texture tables are not supported by this backend"); }
     /// Launches task (or mesh) workgroups of the bound mesh pipeline.
     virtual void drawMeshTasks(std::uint32_t, std::uint32_t = 1, std::uint32_t = 1) {
         throw Error("mesh shaders are not supported by this backend");
@@ -603,6 +622,9 @@ public:
     /// Allocates a bottom-level structure (with scratch memory) sized for `desc`; build it with CommandList::buildBlas.
     virtual std::unique_ptr<AccelerationStructure> createBlas(const BlasDesc&) {
         throw Error("ray tracing is not supported by this backend");
+    }
+    virtual std::unique_ptr<TextureTable> createTextureTable(std::uint32_t /*capacity*/) {
+        throw Error("texture tables are not supported by this backend");
     }
     virtual std::unique_ptr<AccelerationStructure> createTlas(std::uint32_t /*maxInstances*/, bool /*allowUpdate*/ = false) {
         throw Error("ray tracing is not supported by this backend");
