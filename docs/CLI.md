@@ -12,6 +12,8 @@ The runner is the benchmark engine. Everything the GUI does goes through it, so 
 | `--sysinfo [--api A] [--gpu N]` | Host + GPU report (JSON): CPU, RAM, OS, driver, VBIOS, PCIe link, key features |
 | `--caps [--json]` | Full capability listing (extensions, features, properties, limits) |
 | `--check-support [--json]` | Which tests the GPU/API can run and, if not, why |
+| `--export-html IN OUT` | Convert a results file to a self-contained, printable HTML report (inline SVG charts) |
+| `--export-csv IN OUT` | Convert a results file to CSV (tests, frame times per test, telemetry samples) |
 
 ## Running
 ```

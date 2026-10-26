@@ -53,6 +53,25 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **`--screenshots DIR` debug mode** renders every page in light and dark (with `--results`/`--replay` for data) — used for UI review and docs.
 - **CI failure triage via annotations**: logs live on blob storage this VM cannot reach, so CI turns error lines into `::error` annotations readable through the REST API (the GitHub MCP `get_job_logs` tool also works).
 
+- **Run history = SQLite index over the results folder; the JSON files stay the source of truth.** The database
+  (`<data dir>/history.sqlite`, QtSql/QSQLITE) can be deleted at any time and is rebuilt by rescanning; "Forget"
+  records the path in a `forgotten` table so rescans do not re-add it, an explicit import clears that.
+- **Compare matches tests by id; scores are averaged over loops, frame data comes from the first loop.** Differences
+  under ±2 % are shown as "about the same" (no arrow), larger ones with ▲/▼ coloured by better/worse; the sign in
+  the text carries the same information, so colour is never the only cue. Runs with different comparable keys can
+  still be compared, with a warning naming the settings that differ.
+- **Frame-time histogram: y = share of frames (%), "nice" bin width over the 0.5–99.9th percentile range**, slower
+  frames counted and reported as "beyond axis" rather than dropped; two runs share one bin layout.
+- **Telemetry charts are small multiples, one per unit** (°C, W, MHz, %, rpm, GiB) — never two y axes; throttle
+  periods are shaded on every chart (warning = power/driver limits, serious = thermal/current/voltage, critical =
+  hardware slowdown) and listed in the hover tooltip.
+- **Icons are tinted when painted** (a QIconEngine reading the current palette), so every icon follows live theme
+  changes without its owner re-creating it.
+- **TabView instead of QTabWidget for content tabs**: QTabWidget/QStackedLayout size to the tallest page (QStackedLayout's
+  height-for-width is the maximum over all pages), which left large empty areas under short tabs.
+- **Windows CI installs the newest Qt that aqt can fetch** (configured 6.12.0, falling back through older minor
+  releases) instead of pinning: aqt currently cannot read 6.12.0's Windows repository metadata.
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.

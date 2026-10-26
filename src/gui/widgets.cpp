@@ -3,11 +3,13 @@
 #include <QApplication>
 #include <QFile>
 #include <QHash>
+#include <QIconEngine>
 #include <QKeyEvent>
+#include <QLayout>
 #include <QPainter>
 #include <QPainterPath>
 #include <QSvgRenderer>
-#include <QLayout>
+#include <QTabBar>
 #include <QVBoxLayout>
 
 namespace gt::gui {
@@ -31,15 +33,49 @@ QPixmap themedPixmap(const QString& name, int size, const QColor& color, qreal d
     return pm;
 }
 
-QIcon themedIcon(const QString& name, const QColor& color) {
-    const QColor c = color.isValid() ? color : qApp->palette().color(QPalette::WindowText);
-    QIcon icon;
-    for (int s : {16, 20, 24, 32})
-        for (qreal dpr : {1.0, 2.0}) icon.addPixmap(themedPixmap(name, s, c, dpr));
-    const QColor disabled = qApp->palette().color(QPalette::Disabled, QPalette::WindowText);
-    for (int s : {16, 24}) icon.addPixmap(themedPixmap(name, s, disabled, 1.0), QIcon::Disabled);
-    return icon;
-}
+namespace {
+
+/// Tints the monochrome SVG when it is drawn, so icons follow live theme changes
+/// (light/dark switches, accent changes) without every owner re-creating them.
+class TintedIconEngine : public QIconEngine {
+public:
+    TintedIconEngine(QString name, QColor fixed) : m_name(std::move(name)), m_fixed(std::move(fixed)) {}
+    void paint(QPainter* p, const QRect& rect, QIcon::Mode mode, QIcon::State state) override {
+        const qreal dpr = p->device() ? p->device()->devicePixelRatio() : 1.0;
+        p->drawPixmap(rect, scaledPixmap(rect.size(), mode, state, dpr));
+    }
+    QPixmap pixmap(const QSize& size, QIcon::Mode mode, QIcon::State state) override {
+        return scaledPixmap(size, mode, state, 1.0);
+    }
+    QPixmap scaledPixmap(const QSize& size, QIcon::Mode mode, QIcon::State, qreal scale) override {
+        QColor c = m_fixed;
+        if (mode == QIcon::Disabled) c = qApp->palette().color(QPalette::Disabled, QPalette::WindowText);
+        else if (!c.isValid()) c = qApp->palette().color(QPalette::WindowText);
+        const int s = std::min(size.width(), size.height());
+        const QString key = QStringLiteral("%1|%2|%3|%4").arg(m_name).arg(s).arg(c.rgba()).arg(scale);
+        auto it = m_cache.find(key);
+        if (it == m_cache.end()) {
+            if (m_cache.size() > 32) m_cache.clear();
+            it = m_cache.insert(key, themedPixmap(m_name, s, c, scale));
+        }
+        return *it;
+    }
+    QSize actualSize(const QSize& size, QIcon::Mode, QIcon::State) override {
+        const int s = std::min(size.width(), size.height());
+        return {s, s};
+    }
+    QIconEngine* clone() const override { return new TintedIconEngine(m_name, m_fixed); }
+    QString key() const override { return QStringLiteral("gt-tinted"); }
+
+private:
+    QString m_name;
+    QColor m_fixed;
+    QHash<QString, QPixmap> m_cache;
+};
+
+} // namespace
+
+QIcon themedIcon(const QString& name, const QColor& color) { return QIcon(new TintedIconEngine(name, color)); }
 
 // --- Card -----------------------------------------------------------------------------------
 Card::Card(QWidget* parent) : QFrame(parent) {
@@ -313,6 +349,41 @@ void clearLayout(QLayout* layout) {
         delete it;
     }
 }
+
+TabView::TabView(QWidget* parent) : QWidget(parent) {
+    m_layout = new QVBoxLayout(this);
+    m_layout->setContentsMargins(0, 0, 0, 0);
+    m_layout->setSpacing(0);
+    m_bar = new QTabBar;
+    m_bar->setDocumentMode(true);
+    m_bar->setExpanding(false);
+    m_bar->setDrawBase(true);
+    m_layout->addWidget(m_bar);
+    connect(m_bar, &QTabBar::currentChanged, this, [this](int i) {
+        // Only the current page is visible, so layouts (size hints, height-for-width)
+        // only see that page; QStackedLayout would report the tallest page.
+        for (int k = 0; k < m_pages.size(); ++k) m_pages[k]->setVisible(k == i);
+        Q_EMIT currentChanged(i);
+    });
+}
+
+int TabView::addTab(QWidget* page, const QIcon& icon, const QString& text) {
+    m_pages.push_back(page);
+    m_layout->addWidget(page);
+    const int i = m_bar->addTab(icon, text);
+    page->setVisible(i == m_bar->currentIndex());
+    return i;
+}
+
+void TabView::setTabVisible(int index, bool visible) { m_bar->setTabVisible(index, visible); }
+bool TabView::isTabVisible(int index) const { return m_bar->isTabVisible(index); }
+int TabView::indexOf(QWidget* page) const { return static_cast<int>(m_pages.indexOf(page)); }
+int TabView::count() const { return static_cast<int>(m_pages.size()); }
+int TabView::currentIndex() const { return m_bar->currentIndex(); }
+void TabView::setCurrentIndex(int index) { m_bar->setCurrentIndex(index); }
+QWidget* TabView::widget(int index) const { return index >= 0 && index < m_pages.size() ? m_pages[index] : nullptr; }
+
+QString capitalized(const QString& s) { return s.isEmpty() ? s : s.left(1).toUpper() + s.mid(1); }
 
 QString formatBytes(double bytes) {
     if (bytes >= 1024.0 * 1024 * 1024) return QStringLiteral("%1 GiB").arg(bytes / (1024.0 * 1024 * 1024), 0, 'f', 1);

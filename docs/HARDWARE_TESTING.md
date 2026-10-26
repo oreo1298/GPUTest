@@ -21,6 +21,18 @@ and screenshots into one archive — commit it under `hardware-reports/` or atta
 
 ## Pending checks
 
+### M4 — results, history, compare (GUI)
+Use the GUI (`./Kiln-*.AppImage` / `kiln.exe`) after a few runs on the RTX 4090 and the iGPU:
+1. **Sensors tab** (Results): temperature, power (with the power-limit line), clocks, load, fan and VRAM charts
+   should show real NVML / amdgpu data; throttle periods shaded. Do the shaded periods match what you expect
+   (e.g. power-limited during heavy load)? Screenshot the Sensors tab in your desktop's light and dark mode.
+2. **History**: all runs appear; filter works; "Score history" shows comparable runs.
+3. **Compare**: select a 4090 run and an iGPU run with the same settings (History → select two → Compare); check
+   the per-test deltas and the frame-time overlay. Screenshot it.
+4. **Export**: Export → HTML report; open it in a browser and print to PDF — does it look right on paper?
+5. **Theme**: switch the desktop between light and dark (and change the KDE accent colour) while Kiln is open;
+   all pages, charts and icons should follow without a restart.
+
 ### M2 — vertical slice (Vulkan runner, telemetry)
 Run `hw-report.sh` on the CachyOS rig (RTX 4090 + 9950X3D iGPU) and `hw-report.ps1` on Windows if possible. Then check:
 1. **Both adapters listed** (`kiln-run --list-devices`): the 4090 is the default; the Raphael iGPU (RADV) is listed too.

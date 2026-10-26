@@ -179,7 +179,9 @@ void TestContext::progress(double fraction, const std::string& status) {
 }
 
 void TestContext::setFrameResult(const FrameLoopResult& r) {
-    m_result.frameTimesMs.assign(r.frameMs.begin(), r.frameMs.end());
+    m_result.frameTimesMs.clear();
+    m_result.frameTimesMs.reserve(r.frameMs.size());
+    for (double f : r.frameMs) m_result.frameTimesMs.push_back(static_cast<float>(f));
     m_result.gpuTimesMs.clear();
     std::vector<double> gpuValid;
     for (double g : r.gpuMs) {

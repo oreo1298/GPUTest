@@ -2,9 +2,13 @@
 
 #include "appstate.h"
 #include "chart.h"
+#include "history.h"
+#include "telemetryview.h"
 #include "widgets.h"
 
 #include <QWidget>
+
+#include <optional>
 
 class QCheckBox;
 class QComboBox;
@@ -17,7 +21,9 @@ class QProgressBar;
 class QPushButton;
 class QSpinBox;
 class QStackedWidget;
+class QTabWidget;
 class QTableWidget;
+class QToolButton;
 class QTreeView;
 class QTreeWidget;
 class QVBoxLayout;
@@ -143,18 +149,108 @@ public:
     void showRun(const gt::results::RunResult& run, const QString& file);
     bool loadFile(const QString& path);
     const gt::results::RunResult& run() const { return m_run; }
+    QString file() const { return m_file; }
+Q_SIGNALS:
+    void compareRequested(const QString& file);
 
 private:
     void showTest(int row);
+    void showLoops();
+    void showSystem();
+    void exportHtml();
+    void exportCsv();
+    void saveCopy();
+    void copySummary();
+    void setNote(const QString& text);
+    QString exportBaseName(const QString& ext) const;
     AppState* m_state;
     gt::results::RunResult m_run;
     QString m_file;
+    bool m_loaded = false;
     QLabel* m_header;
     QLabel* m_banner;
+    QLabel* m_note;
     QWidget* m_scoreBox;
+    QToolButton* m_export;
+    QPushButton* m_compare;
+    TabView* m_tabs;
     QTableWidget* m_table;
-    LineChart* m_frameChart;
     QLabel* m_testDetails;
+    LineChart* m_frameChart;
+    HistogramChart* m_hist;
+    TelemetryView* m_testTelemetry;
+    TelemetryView* m_runTelemetry;
+    QWidget* m_loopsTab;
+    LineChart* m_loopChart;
+    QLabel* m_loopNote;
+    QTableWidget* m_loopTable;
+    QTreeWidget* m_system;
+};
+
+class HistoryPage : public Page {
+    Q_OBJECT
+public:
+    HistoryPage(AppState* state, QWidget* parent = nullptr);
+    void refresh();
+Q_SIGNALS:
+    void openRun(const QString& file);
+    void compareRuns(const QString& a, const QString& b);
+
+private:
+    QVector<int> selectedRows() const;
+    void updateButtons();
+    void updateTrend();
+    void importFiles();
+    void removeSelected(bool deleteFiles);
+    AppState* m_state;
+    QLineEdit* m_filter;
+    QTableWidget* m_table;
+    QPushButton* m_open;
+    QPushButton* m_compare;
+    QPushButton* m_remove;
+    QPushButton* m_delete;
+    QLabel* m_status;
+    LineChart* m_trend;
+    QLabel* m_trendNote;
+    QVector<HistoryEntry> m_entries;
+};
+
+class ComparePage : public Page {
+    Q_OBJECT
+public:
+    ComparePage(AppState* state, QWidget* parent = nullptr);
+    void setRuns(const QString& a, const QString& b);
+    void refreshChoices();
+
+private:
+    struct Row {
+        QString id, name;
+        const gt::results::TestResult* a = nullptr;
+        const gt::results::TestResult* b = nullptr;
+        double scoreA = 0, scoreB = 0;
+        bool scoredA = false, scoredB = false;
+    };
+    void load();
+    void rebuild();
+    void showTest(int row);
+    AppState* m_state;
+    QComboBox* m_a;
+    QComboBox* m_b;
+    QPushButton* m_swap;
+    QLabel* m_warning;
+    QLabel* m_infoA;
+    QLabel* m_infoB;
+    QWidget* m_tiles;
+    QTableWidget* m_table;
+    LineChart* m_frames;
+    HistogramChart* m_hist;
+    QTableWidget* m_telemetry;
+    QLabel* m_empty;
+    QWidget* m_body;
+    std::optional<gt::results::RunResult> m_runA, m_runB;
+    QString m_fileA, m_fileB;
+    QVector<Row> m_rows;
+    bool m_updating = false;
 };
 
 class SystemPage : public Page {

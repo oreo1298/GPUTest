@@ -65,4 +65,23 @@ double geometricMean(std::span<const double> values);
 /// Least-squares slope of y over x (0 when fewer than two points).
 double linearSlope(std::span<const double> x, std::span<const double> y);
 
+/// Fixed-width histogram. Values below `lo` / at or above `lo + width * bins` are
+/// counted in `under` / `over` so no sample is silently dropped.
+struct Histogram {
+    double lo = 0.0;
+    double binWidth = 1.0;
+    std::vector<std::size_t> counts;
+    std::size_t under = 0;
+    std::size_t over = 0;
+    std::size_t total = 0;
+    double binStart(std::size_t i) const { return lo + binWidth * static_cast<double>(i); }
+};
+
+Histogram histogram(std::span<const double> values, double lo, double binWidth, std::size_t bins);
+
+/// Histogram of frame times with a "nice" bin width (1/2/2.5/5 x 10^n) chosen so
+/// the 0.5th..99.9th percentile range spans about `targetBins` bins. Outliers land
+/// in `over`/`under`.
+Histogram frameTimeHistogram(std::span<const double> frameTimesMs, std::size_t targetBins = 40);
+
 } // namespace gt

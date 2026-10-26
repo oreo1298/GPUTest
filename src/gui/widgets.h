@@ -11,6 +11,9 @@
 #include <QListWidget>
 #include <QStyledItemDelegate>
 
+class QTabBar;
+class QVBoxLayout;
+
 namespace gt::gui {
 
 /// Monochrome Lucide icon tinted with `color` (default: current text colour).
@@ -96,6 +99,29 @@ public:
     QSize sizeHint(const QStyleOptionViewItem& opt, const QModelIndex& idx) const override;
 };
 
+/// Tab bar over a stack of pages whose height follows the *current* page (QTabWidget
+/// always reserves the tallest page, leaving empty space under short tabs).
+class TabView : public QWidget {
+    Q_OBJECT
+public:
+    explicit TabView(QWidget* parent = nullptr);
+    int addTab(QWidget* page, const QIcon& icon, const QString& text);
+    void setTabVisible(int index, bool visible);
+    bool isTabVisible(int index) const;
+    int indexOf(QWidget* page) const;
+    int count() const;
+    int currentIndex() const;
+    void setCurrentIndex(int index);
+    QWidget* widget(int index) const;
+Q_SIGNALS:
+    void currentChanged(int index);
+
+private:
+    QVBoxLayout* m_layout;
+    QTabBar* m_bar;
+    QVector<QWidget*> m_pages;
+};
+
 /// Bold section title used at the top of pages and cards.
 QLabel* makeTitle(const QString& text, int pointDelta = 6, QWidget* parent = nullptr);
 QLabel* makeSubtitle(const QString& text, QWidget* parent = nullptr);
@@ -103,6 +129,8 @@ QLabel* makeSubtitle(const QString& text, QWidget* parent = nullptr);
 QLabel* makeHint(const QString& text, QWidget* parent = nullptr);
 
 QString formatBytes(double bytes);
+/// "scene" -> "Scene".
+QString capitalized(const QString& s);
 
 /// Removes and (deferred-)deletes every item of a layout. Deferred so a widget can
 /// trigger a rebuild from its own signal handler.

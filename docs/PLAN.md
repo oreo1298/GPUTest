@@ -19,15 +19,15 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 - [x] Lavapipe smoke test in CI with validation layers, frame dumps (PNG) + golden signatures
 
 ## 3. Qt GUI shell
-- [ ] Theme manager: OS light/dark + accent, live updates (portal, KDE kdeglobals, Windows 11 style)
-- [ ] Main window with sidebar navigation; Home (GPU list), Tests, Live run, Results, Settings pages
-- [ ] Runner process management (survives runner crash), basic results view
-- [ ] Offscreen screenshot mode for every screen (light + dark)
+- [x] Theme manager: OS light/dark + accent, live updates (portal, KDE kdeglobals, Windows 11 style)
+- [x] Main window with sidebar navigation; Home (GPU list), Tests, Live run, Results, Settings pages
+- [x] Runner process management (survives runner crash), basic results view
+- [x] Offscreen screenshot mode for every screen (light + dark)
 
 ## 4. Full results
-- [ ] Custom QPainter graphs (frame times, telemetry, throttle markers), interactive (hover, zoom)
-- [ ] SQLite history, compare two runs / GPUs
-- [ ] Export JSON, CSV, self-contained printable HTML
+- [x] Custom QPainter graphs (frame times, histogram, telemetry small multiples, throttle shading), interactive (hover, zoom)
+- [x] SQLite history, compare two runs / GPUs (per-test deltas, frame-time overlays, sensor deltas)
+- [x] Export JSON, CSV, self-contained printable HTML (GUI + `kiln-run --export-html/--export-csv`)
 
 ## 5. Run modes
 - [ ] Loops: N, timed, infinite; per-loop scores; stability score + trend

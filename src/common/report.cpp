@@ -196,8 +196,16 @@ std::string svgChart(const std::string& title, const std::string& xLabel, const 
     for (const auto& b : bands) {
         const double x0 = std::max(L, X(b.start)), x1 = std::min(L + pw, X(b.end));
         if (x1 > x0)
-            o << std::format(R"(<rect x="{:.1f}" y="{:.1f}" width="{:.1f}" height="{:.1f}" fill="#fab219" opacity="0.18"/>)", x0, T,
-                             std::max(1.5, x1 - x0), ph);
+        {
+            // Same severity colours as the GUI: power/driver limits = warning, thermal/current/voltage = serious,
+            // hardware slowdown = critical.
+            using namespace results::throttle;
+            const char* fill = (b.reasons & kHwSlowdown)                                    ? "#d03b3b"
+                               : (b.reasons & (kThermal | kMemThermal | kCurrent | kVoltage)) ? "#ec835a"
+                                                                                               : "#fab219";
+            o << std::format(R"(<rect x="{:.1f}" y="{:.1f}" width="{:.1f}" height="{:.1f}" fill="{}" opacity="0.18"/>)", x0, T,
+                             std::max(1.5, x1 - x0), ph, fill);
+        }
     }
     double ys = 1;
     for (double v : niceTicks(ylo, yhi, 4, ys)) {

@@ -3,6 +3,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <vector>
 
 using Catch::Approx;
@@ -74,4 +75,28 @@ TEST_CASE("geometric mean and slope", "[stats]") {
     CHECK(gt::geometricMean(std::vector<double>{}) == 0);
     std::vector<double> x{0, 1, 2, 3}, y{1, 3, 5, 7};
     CHECK(gt::linearSlope(x, y) == Approx(2.0));
+}
+
+TEST_CASE("histogram counts every finite sample once", "[stats]") {
+    const std::vector<double> v{0.5, 1.0, 1.5, 2.0, 2.99, 3.0, 10.0, -1.0, std::nan("")};
+    const auto h = gt::histogram(v, 1.0, 1.0, 2);
+    REQUIRE(h.counts.size() == 2);
+    CHECK(h.counts[0] == 2); // 1.0, 1.5
+    CHECK(h.counts[1] == 2); // 2.0, 2.99
+    CHECK(h.under == 2);     // 0.5, -1.0
+    CHECK(h.over == 2);      // 3.0, 10.0
+    CHECK(h.total == 8);
+}
+
+TEST_CASE("frame time histogram picks a nice bin width", "[stats]") {
+    std::vector<double> v;
+    for (int i = 0; i < 1000; ++i) v.push_back(8.0 + 0.004 * i); // 8..12 ms
+    const auto h = gt::frameTimeHistogram(v, 40);
+    CHECK(h.binWidth == Catch::Approx(0.1));
+    CHECK(h.lo <= 8.02);
+    std::size_t sum = h.under + h.over;
+    for (auto c : h.counts) sum += c;
+    CHECK(sum == v.size());
+    CHECK(h.counts.size() >= 38);
+    CHECK(h.counts.size() <= 42);
 }

@@ -22,12 +22,16 @@ qt_add_executable(gt_gui WIN32
   theme.cpp
   widgets.cpp
   chart.cpp
+  history.cpp
+  telemetryview.cpp
   pages/pages.h
   pages/page.cpp
   pages/homepage.cpp
   pages/testspage.cpp
   pages/runpage.cpp
   pages/resultspage.cpp
+  pages/historypage.cpp
+  pages/comparepage.cpp
   pages/systempage.cpp
   pages/settingspage.cpp
 )

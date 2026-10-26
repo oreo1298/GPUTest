@@ -13,13 +13,17 @@ namespace gt::gui {
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    enum PageId { Home = 0, Tests, Run, Results, System, SettingsPage_, PageCount };
+    enum PageId { Home = 0, Tests, Run, Results, HistoryPage_, Compare, System, SettingsPage_, PageCount };
     MainWindow(AppState* state, QWidget* parent = nullptr);
     void showPage(int index);
     int currentPage() const;
     QString pageKey(int index) const;
     ResultsPage* resultsPage() { return m_results; }
     RunPage* runPage() { return m_run; }
+    ComparePage* comparePage() { return m_compare; }
+    QWidget* pageWidget(int index) const;
+    /// Opens the Compare page with `file` as B and the newest earlier comparable run as A.
+    void compareWithPrevious(const QString& file);
     void startRun(const RunRequest& req);
 
 protected:
@@ -34,6 +38,8 @@ private:
     TestsPage* m_tests;
     RunPage* m_run;
     ResultsPage* m_results;
+    HistoryPage* m_history;
+    ComparePage* m_compare;
     SystemPage* m_system;
     SettingsPage* m_settings;
 };

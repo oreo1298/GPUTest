@@ -126,4 +126,48 @@ double linearSlope(std::span<const double> x, std::span<const double> y) {
     return den > 0.0 ? num / den : 0.0;
 }
 
+Histogram histogram(std::span<const double> values, double lo, double binWidth, std::size_t bins) {
+    Histogram h;
+    h.lo = lo;
+    h.binWidth = binWidth > 0.0 ? binWidth : 1.0;
+    h.counts.assign(bins, 0);
+    for (double v : values) {
+        if (!std::isfinite(v)) continue;
+        ++h.total;
+        if (v < lo) {
+            ++h.under;
+            continue;
+        }
+        const double idx = std::floor((v - lo) / h.binWidth);
+        if (idx >= static_cast<double>(bins)) {
+            ++h.over;
+            continue;
+        }
+        ++h.counts[static_cast<std::size_t>(idx)];
+    }
+    return h;
+}
+
+Histogram frameTimeHistogram(std::span<const double> frameTimesMs, std::size_t targetBins) {
+    std::vector<double> sorted;
+    sorted.reserve(frameTimesMs.size());
+    for (double v : frameTimesMs)
+        if (std::isfinite(v)) sorted.push_back(v);
+    if (sorted.empty() || targetBins == 0) return histogram(frameTimesMs, 0.0, 1.0, 0);
+    std::sort(sorted.begin(), sorted.end());
+    const double p0 = percentileSorted(sorted, 0.5);
+    const double p1 = percentileSorted(sorted, 99.9);
+    const double span = std::max(p1 - p0, std::max(p1 * 0.02, 0.01));
+    const double raw = span / static_cast<double>(targetBins);
+    const double mag = std::pow(10.0, std::floor(std::log10(raw)));
+    double width = mag;
+    for (double m : {1.0, 2.0, 2.5, 5.0, 10.0}) {
+        width = m * mag;
+        if (width >= raw) break;
+    }
+    const double lo = std::floor(p0 / width) * width;
+    const auto bins = static_cast<std::size_t>(std::floor((p1 - lo) / width)) + 1;
+    return histogram(frameTimesMs, lo, width, bins);
+}
+
 } // namespace gt
