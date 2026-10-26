@@ -329,6 +329,7 @@ void Runner::writeResults() {
 
 int Runner::run() {
     m_t0 = std::chrono::steady_clock::now();
+    m_sink.setStart(m_t0);
     m_outPath = m_opt.out.empty()
                     ? (paths::resultsDir() / std::format("{}_{}.json", paths::timestampForFilename(), m_suite.id)).string()
                     : m_opt.out;

@@ -1,5 +1,6 @@
 #include "events.h"
 
+#include <cmath>
 #include <cstdio>
 #include <format>
 
@@ -9,7 +10,14 @@ void StdoutSink::emit(const nlohmann::json& e) {
     if (m_mode == ProgressMode::Quiet) return;
     std::lock_guard lock(m_mutex);
     if (m_mode == ProgressMode::JsonLines) {
-        const std::string line = e.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+        std::string line;
+        if (!e.contains("t")) {
+            nlohmann::json stamped = e;
+            stamped["t"] = std::round(std::chrono::duration<double>(std::chrono::steady_clock::now() - m_t0).count() * 1000.0) / 1000.0;
+            line = stamped.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+        } else {
+            line = e.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+        }
         std::fwrite(line.data(), 1, line.size(), stdout);
         std::fputc('\n', stdout);
         std::fflush(stdout);

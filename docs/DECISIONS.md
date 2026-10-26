@@ -45,6 +45,14 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **Safety defaults: 90 °C GPU, 105 °C hotspot, 100 °C memory, sustained for 2 s**: below every vendor's own shutdown limits, above normal gaming temperatures, so false aborts are rare.
 - **Runner control via stdin** (`--control-stdin`, command `stop`; EOF = controller gone): portable, unlike signals to GUI-spawned processes on Windows.
 
+- **GUI: Fusion style + palette built from the system on Linux, native `windows11` style on Windows**; custom widgets (cards, badges, nav, charts) paint with ThemeManager colours instead of a global style sheet, so native widgets stay native.
+- **KDE: read the Plasma colour scheme from kdeglobals (watched + KGlobalSettings D-Bus signal)**, because the AppImage's Qt cannot load Plasma's platform-theme plugin (built against the distro Qt). **Others: xdg-desktop-portal color-scheme and accent-color** (Qt does not read the portal accent colour itself).
+- **Chart colours: the validated reference categorical palette (light/dark steps) and fixed status colours**; series keep their colour slot when toggled; text never uses series colours.
+- **Icons: Lucide (ISC), tinted at runtime from the palette** so they follow light/dark/accent.
+- **The GUI learns everything from the runner** (`--list-devices/--list-tests/--list-suites/--sysinfo/--caps/--check-support --json`) and runs benchmarks as a child process with `--progress jsonl --control-stdin`; no GPU code in the GUI process.
+- **`--screenshots DIR` debug mode** renders every page in light and dark (with `--results`/`--replay` for data) — used for UI review and docs.
+- **CI failure triage via annotations**: logs live on blob storage this VM cannot reach, so CI turns error lines into `::error` annotations readable through the REST API (the GitHub MCP `get_job_logs` tool also works).
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.

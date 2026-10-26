@@ -8,6 +8,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 build="$(cd "${1:?usage: package-appimage.sh <build-dir> [out-dir]}" && pwd)"
 out="${2:-$root/dist}"
 mkdir -p "$out"
+out="$(cd "$out" && pwd)"
 eval "$("$root/scripts/app-info.sh")"
 rev="$(git -C "$root" rev-parse --short=8 HEAD 2>/dev/null || echo local)"
 
@@ -35,7 +36,7 @@ install -Dm755 "$root/scripts/hw-report.sh" "$appdir/usr/share/$APP_ID/hw-report
 install -Dm644 "$root/LICENSE" "$appdir/usr/share/doc/$APP_ID/LICENSE"
 install -Dm644 "$root/THIRD_PARTY.md" "$appdir/usr/share/doc/$APP_ID/THIRD_PARTY.md" 2>/dev/null || true
 
-export OUTPUT="$out/${APP_DISPLAY_NAME}-${APP_VERSION}-${rev}-x86_64.AppImage"
+export LDAI_OUTPUT="$out/${APP_DISPLAY_NAME}-${APP_VERSION}-${rev}-x86_64.AppImage"
 cd "$out"
 linuxdeploy-x86_64.AppImage --appdir "$appdir" \
     --desktop-file "$appdir/usr/share/applications/$APP_RDNN.desktop" \
@@ -44,4 +45,4 @@ linuxdeploy-x86_64.AppImage --appdir "$appdir" \
     --executable "$appdir/usr/bin/$APP_RUNNER_NAME" \
     --custom-apprun "$build/_appimage-tools/AppRun" \
     --plugin qt --output appimage
-echo "AppImage: $OUTPUT"
+echo "AppImage: $LDAI_OUTPUT"

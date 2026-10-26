@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  QT_VERSION: "6.8.3"
+  QT_VERSION: "6.12.0"
   SLANG_VERSION: "2026.20"
   VULKAN_SDK_VERSION: "1.4.363.0"
 
@@ -84,7 +84,7 @@ jobs:
         run: cmake --preset ${{ matrix.preset }}
 
       - name: Build
-        run: cmake --build --preset ${{ matrix.preset }} -- -k 0
+        run: cmake --build --preset ${{ matrix.preset }} -- -k 0 2>&1 | tee build/${{ matrix.preset }}/build.log; exit ${PIPESTATUS[0]}
 
       - name: Unit tests
         run: ctest --preset ${{ matrix.preset }}
@@ -112,6 +112,10 @@ jobs:
           name: linux-appimage
           path: dist/*.AppImage
           if-no-files-found: error
+
+      - name: Annotate failures
+        if: failure()
+        run: scripts/ci-annotate.sh build/${{ matrix.preset }}
 
   linux-sanitizers:
     name: Linux ASan+UBSan
@@ -152,7 +156,7 @@ jobs:
       - name: Configure
         run: cmake --preset ci-linux-asan
       - name: Build
-        run: cmake --build --preset ci-linux-asan -- -k 0
+        run: cmake --build --preset ci-linux-asan -- -k 0 2>&1 | tee build/ci-linux-asan/build.log; exit ${PIPESTATUS[0]}
       - name: Unit tests
         env:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
@@ -163,6 +167,10 @@ jobs:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: scripts/ci-smoke.sh build/ci-linux-asan --quick
+
+      - name: Annotate failures
+        if: failure()
+        run: scripts/ci-annotate.sh build/ci-linux-asan
 
   windows:
     name: Windows MSVC
@@ -200,7 +208,8 @@ jobs:
         run: cmake --preset ci-windows
 
       - name: Build
-        run: cmake --build --preset ci-windows -- -k 0
+        shell: bash
+        run: cmake --build --preset ci-windows -- -k 0 2>&1 | tee build/ci-windows/build.log; exit ${PIPESTATUS[0]}
 
       - name: Unit tests
         run: ctest --preset ci-windows
@@ -228,3 +237,8 @@ jobs:
           name: windows-portable
           path: dist/*-portable.zip
           if-no-files-found: error
+
+      - name: Annotate failures
+        if: failure()
+        shell: bash
+        run: scripts/ci-annotate.sh build/ci-windows
