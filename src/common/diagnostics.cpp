@@ -134,4 +134,30 @@ SoakAnalysis analyzeSoak(std::span<const double> frameMs, std::span<const result
     return a;
 }
 
+std::vector<LatencyLevel> latencyLevels(std::span<const std::uint64_t> sizes, std::span<const double> ns, double jump) {
+    std::vector<LatencyLevel> out;
+    const std::size_t n = std::min(sizes.size(), ns.size());
+    std::vector<double> plateau;
+    auto median = [](std::vector<double> v) {
+        std::sort(v.begin(), v.end());
+        return v.empty() ? 0.0 : v[v.size() / 2];
+    };
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!plateau.empty() && ns[i] > median(plateau) * (1.0 + jump)) {
+            out.push_back({sizes[i - 1], median(plateau)});
+            plateau.clear();
+        }
+        plateau.push_back(ns[i]);
+    }
+    if (!plateau.empty()) out.push_back({sizes[n - 1], median(plateau)});
+    // A level made of a single transitional point between two plateaus is not a cache.
+    std::vector<LatencyLevel> merged;
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        const bool single = i + 1 < out.size() && i > 0 && out[i].upToBytes == out[i - 1].upToBytes * 2;
+        if (single && out.size() > 2) continue;
+        merged.push_back(out[i]);
+    }
+    return merged;
+}
+
 } // namespace gt::diag

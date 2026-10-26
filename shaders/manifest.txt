@@ -21,3 +21,25 @@ diagnostics/stress.slang       psStress       fragment   vk,d3d12,d3d11
 diagnostics/stress.slang       csCompare      compute    vk,d3d12,d3d11
 diagnostics/compute.slang      csIntChain     compute    vk,d3d12,d3d11
 diagnostics/compute.slang      csFloatChain   compute    vk,d3d12,d3d11
+
+# --- synthetic ----------------------------------------------------------------
+synthetic/throughput.slang     csFp32         compute    vk,d3d12,d3d11
+synthetic/throughput.slang     csFp16         compute    vk,d3d12          d3d12=sm_6_2
+synthetic/throughput.slang     csFp64         compute    vk,d3d12,d3d11
+synthetic/throughput.slang     csInt32        compute    vk,d3d12,d3d11
+synthetic/throughput.slang     csDot8         compute    vk,d3d12          d3d12=sm_6_4
+synthetic/memory.slang         csRead         compute    vk,d3d12,d3d11
+synthetic/memory.slang         csWrite        compute    vk,d3d12,d3d11
+synthetic/memory.slang         csCopy         compute    vk,d3d12,d3d11
+synthetic/memory.slang         csChase        compute    vk,d3d12,d3d11
+synthetic/memory.slang         csAtomicAdd    compute    vk,d3d12,d3d11
+synthetic/memory.slang         csAtomicAdd64  compute    vk,d3d12          d3d12=sm_6_6
+synthetic/raster.slang         vsFull         vertex     vk,d3d12,d3d11
+synthetic/raster.slang         psSolid        fragment   vk,d3d12,d3d11
+synthetic/raster.slang         psTexel        fragment   vk,d3d12,d3d11
+synthetic/raster.slang         vsTiny         vertex     vk,d3d12,d3d11
+synthetic/raster.slang         psFlat         fragment   vk,d3d12,d3d11
+synthetic/raster.slang         psShade        fragment   vk,d3d12,d3d11
+synthetic/raster.slang         vsPatch        vertex     vk,d3d12,d3d11
+synthetic/raster.slang         hsTess         hull       vk,d3d12,d3d11
+synthetic/raster.slang         dsTess         domain     vk,d3d12,d3d11

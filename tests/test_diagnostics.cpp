@@ -70,3 +70,23 @@ TEST_CASE("soak without sensors still reports performance", "[diag]") {
     CHECK_FALSE(a.hasSensors);
     CHECK(a.perfDropPct == Approx(0.0).margin(1e-9));
 }
+
+TEST_CASE("latency curve is split into cache levels", "[diag]") {
+    // 16 KiB L1 at ~30 ns, L2 up to 4 MiB at ~150 ns, one transition point, DRAM at ~500 ns.
+    std::vector<std::uint64_t> sizes;
+    std::vector<double> ns;
+    for (std::uint64_t s = 4096; s <= (64ull << 20); s *= 2) {
+        sizes.push_back(s);
+        if (s <= 16384) ns.push_back(30.0);
+        else if (s <= (4ull << 20)) ns.push_back(150.0 + (s % 3));
+        else if (s == (8ull << 20)) ns.push_back(320.0); // partly cached
+        else ns.push_back(500.0);
+    }
+    const auto levels = diag::latencyLevels(sizes, ns);
+    REQUIRE(levels.size() == 3);
+    CHECK(levels[0].upToBytes == 16384);
+    CHECK(levels[0].latencyNs == Approx(30.0));
+    CHECK(levels[1].upToBytes == (4ull << 20));
+    CHECK(levels[1].latencyNs == Approx(150.0).margin(3));
+    CHECK(levels[2].latencyNs == Approx(500.0));
+}

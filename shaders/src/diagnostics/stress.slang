@@ -64,6 +64,7 @@ float4 psStress(VSOut v) : SV_Target {
     float3 rd = normalize(fw * 1.6 + rt * q.x - up * q.y);
     float dist = 0.0;
     bool hit = false;
+    [loop]
     for (uint i = 0u; i < pc.steps; ++i) {
         float d = sdScene(ro + rd * dist, t);
         if (d < 0.0005) {
@@ -79,6 +80,7 @@ float4 psStress(VSOut v) : SV_Target {
     float3 n = normalAt(p, t);
     float3 l = normalize(float3(0.5, 0.8, 0.3));
     float shade = 1.0, s = 0.02;
+    [loop]
     for (uint j = 0u; j < pc.shadowSteps; ++j) {
         float h = sdScene(p + l * s, t);
         shade = min(shade, 12.0 * h / s);

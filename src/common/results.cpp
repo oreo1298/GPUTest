@@ -276,10 +276,8 @@ json toJson(const TestResult& t) {
         j["verdict"] = toString(t.verdict);
         j["verdict_message"] = t.verdictMessage;
     }
-    if (t.scored) {
-        j["score"] = round3(t.score);
-        j["primary_metric"] = t.primaryMetric;
-    }
+    if (t.scored) j["score"] = round3(t.score);
+    if (!t.primaryMetric.empty()) j["primary_metric"] = t.primaryMetric;
     json metrics = json::array();
     for (const auto& m : t.metrics)
         metrics.push_back({{"name", m.name}, {"label", m.label}, {"value", num(m.value)}, {"unit", m.unit},
@@ -312,8 +310,8 @@ TestResult testFromJson(const json& j) {
     if (j.contains("score")) {
         t.scored = true;
         t.score = getNum(j, "score");
-        t.primaryMetric = getStr(j, "primary_metric");
     }
+    t.primaryMetric = getStr(j, "primary_metric");
     if (auto it = j.find("metrics"); it != j.end() && it->is_array()) {
         for (const auto& m : *it) {
             Metric mm;

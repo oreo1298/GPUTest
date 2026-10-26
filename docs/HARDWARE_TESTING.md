@@ -21,6 +21,13 @@ and screenshots into one archive — commit it under `hardware-reports/` or atta
 
 ## Pending checks
 
+### M7 — synthetic tests
+Run `kiln-run --suite compute` and `kiln-run --test synth.fill.pixel,synth.fill.texel,synth.geometry,synth.msaa` on
+the RTX 4090 (and the iGPU if you like) and send the results. Sanity ranges for a 4090: FP32 ≈ 60–82 TFLOPS,
+FP16 about the same (no 2x on Ada for non-tensor math), FP64 ≈ 1.3 TFLOPS, memory read ≈ 850–1000 GB/s, latency
+curve with steps near 128 KiB (L1) and 72 MiB (L2), upload ≈ 22–26 GB/s on Gen4 x16, Resizable BAR on/off as set
+in the BIOS. Numbers far outside these ranges point to a measurement problem — tell me which.
+
 ### M6 — diagnostics
 Run `kiln-run --suite diagnostics` (Standard: ~8 minutes) on the RTX 4090 and on the iGPU, or in the GUI pick the
 Diagnostics suite. Send the results files. Check:

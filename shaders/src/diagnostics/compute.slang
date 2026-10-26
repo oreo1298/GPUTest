@@ -22,6 +22,7 @@ void csIntChain(uint3 tid: SV_DispatchThreadID) {
     if (i >= pc.count) return;
     uint x = i * 2654435761u + pc.seed;
     uint y = x ^ 0x6A09E667u;
+    [loop]
     for (uint k = 0u; k < pc.iterations; ++k) {
         x = x * 1664525u + 1013904223u;
         y ^= rotl(x, 7u) + (y >> 3u);
@@ -37,6 +38,7 @@ void csFloatChain(uint3 tid: SV_DispatchThreadID) {
     if (i >= pc.count) return;
     float a = float(i % 1024u) * (1.0 / 1024.0) + 0.5;
     float b = float((i * 7u + pc.seed) % 997u) * (1.0 / 997.0);
+    [loop]
     for (uint k = 0u; k < pc.iterations; ++k) {
         a = mad(a, 0.999, b * 0.001);
         b = sqrt(abs(sin(a * 3.1) * 0.5 + b * 0.5)) + 0.25;

@@ -359,10 +359,10 @@ results::TestResult Runner::runTest(const std::string& id, int loop, int index, 
     const auto validationAfter = m_device ? m_device->validationCounts() : validationBefore;
     if (validationAfter.errors > validationBefore.errors)
         tr.details["validation_errors"] = validationAfter.errors - validationBefore.errors;
+    if (tr.metric(info->primaryMetric)) tr.primaryMetric = info->primaryMetric; // headline value, scored or not
     if (tr.status == results::Status::Completed && info->reference > 0.0) {
         if (const results::Metric* m = tr.metric(info->primaryMetric)) {
             tr.scored = true;
-            tr.primaryMetric = info->primaryMetric;
             tr.score = scoring::testScore(m->value, info->reference, info->higherIsBetter);
         }
     }

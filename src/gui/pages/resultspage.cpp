@@ -45,6 +45,15 @@ QTableWidget* makeTable(const QStringList& headers, const QString& accessibleNam
 
 QString formatDurationText(double s) { return QString::fromStdString(formatDuration(s)); }
 
+/// Three significant digits, without exponent notation for everyday magnitudes.
+QString formatMetricValue(double v) {
+    const double a = std::abs(v);
+    if (a >= 100) return QString::number(v, 'f', 0);
+    if (a >= 10) return QString::number(v, 'f', 1);
+    if (a >= 1) return QString::number(v, 'f', 2);
+    return QString::number(v, 'g', 3);
+}
+
 } // namespace
 
 ResultsPage::ResultsPage(AppState* state, QWidget* parent)
@@ -112,7 +121,8 @@ ResultsPage::ResultsPage(AppState* state, QWidget* parent)
     auto* tl = new QVBoxLayout(testsTab);
     tl->setContentsMargins(0, 10, 0, 0);
     tl->setSpacing(10);
-    m_table = makeTable({tr("Test"), tr("Status"), tr("Score"), tr("Avg FPS"), tr("1% low"), tr("p99 ms"), tr("Verdict")},
+    m_table = makeTable({tr("Test"), tr("Status"), tr("Result"), tr("Score"), tr("Avg FPS"), tr("1% low"), tr("p99 ms"),
+                         tr("Verdict")},
                         tr("Test results"));
     m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
     m_table->setMinimumHeight(170);
@@ -323,7 +333,7 @@ void ResultsPage::showRun(const results::RunResult& run, const QString& file) {
         const auto& t = run.tests[static_cast<std::size_t>(i)];
         auto set = [&](int col, const QString& text) {
             auto* item = new QTableWidgetItem(text);
-            if (col >= 2 && col <= 5) item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            if (col >= 2 && col <= 6) item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
             m_table->setItem(i, col, item);
         };
         QString name = QString::fromStdString(t.name);
@@ -333,22 +343,25 @@ void ResultsPage::showRun(const results::RunResult& run, const QString& file) {
         if (!t.message.empty()) st += QStringLiteral(": ") + QString::fromStdString(t.message);
         set(1, st);
         m_table->item(i, 1)->setToolTip(st);
-        set(2, t.scored ? QString::number(t.score, 'f', 0) : QStringLiteral("—"));
-        set(3, t.frameStats ? QString::number(t.frameStats->avgFps, 'f', 1) : QStringLiteral("—"));
-        set(4, t.frameStats ? QString::number(t.frameStats->low1Fps, 'f', 1) : QStringLiteral("—"));
-        set(5, t.frameStats ? QString::number(t.frameStats->p99Ms, 'f', 2) : QStringLiteral("—"));
+        const results::Metric* headline = t.metric(t.primaryMetric);
+        set(2, headline ? QStringLiteral("%1 %2").arg(formatMetricValue(headline->value), QString::fromStdString(headline->unit))
+                        : QStringLiteral("—"));
+        set(3, t.scored ? QString::number(t.score, 'f', 0) : QStringLiteral("—"));
+        set(4, t.frameStats ? QString::number(t.frameStats->avgFps, 'f', 1) : QStringLiteral("—"));
+        set(5, t.frameStats ? QString::number(t.frameStats->low1Fps, 'f', 1) : QStringLiteral("—"));
+        set(6, t.frameStats ? QString::number(t.frameStats->p99Ms, 'f', 2) : QStringLiteral("—"));
         QString verdict;
         if (t.verdict != results::Verdict::None)
             verdict = QString::fromStdString(results::toString(t.verdict)).toUpper() + QStringLiteral(": ") +
                       QString::fromStdString(t.verdictMessage);
-        set(6, verdict);
-        m_table->item(i, 6)->setToolTip(verdict);
+        set(7, verdict);
+        m_table->item(i, 7)->setToolTip(verdict);
     }
     // Long status / verdict texts are elided (full text in the tooltip) instead of widening the table.
     m_table->resizeColumnsToContents();
     m_table->setColumnWidth(1, std::min(m_table->columnWidth(1), 220));
     m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    m_table->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Stretch);
+    m_table->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Stretch);
     const int rows = std::min<int>(static_cast<int>(run.tests.size()), 10);
     m_table->setFixedHeight(m_table->horizontalHeader()->sizeHint().height() + 6 +
                             std::max(rows, 3) * m_table->verticalHeader()->defaultSectionSize());

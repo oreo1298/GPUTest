@@ -55,6 +55,7 @@ void csMemtest(uint3 tid: SV_DispatchThreadID) {
     if (t >= pc.wordCount) return;
     uint n = (pc.wordCount - 1u - t) / pc.threads + 1u; // words owned by this thread
     bool descending = (pc.flags & 1u) != 0u;
+    [loop]
     for (uint k = 0u; k < n; ++k) {
         uint idx = descending ? (n - 1u - k) : k;
         uint w = t + idx * pc.threads;

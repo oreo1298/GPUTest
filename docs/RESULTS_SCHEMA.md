@@ -30,7 +30,8 @@ the same code). Units are in the key names. Unknown keys must be ignored by read
     "api": "vulkan", "loop": 0,
     "status": "completed | skipped | error | aborted | device_lost", "message": "skip reason / error",
     "verdict": "pass | warn | fail", "verdict_message": "plain-language explanation",   // diagnostics, golden checks
-    "score": 1234.5, "primary_metric": "avg_fps",                                          // scored tests only
+    "score": 1234.5,                                                                       // scored tests only
+    "primary_metric": "avg_fps",                                                           // headline metric (optional)
     "metrics": [{"name", "label", "value", "unit", "higher_is_better"}],
     "frame_stats": {"frames", "total_ms", "avg_fps", "min_fps", "max_fps", "low_1pct_fps", "low_01pct_fps",
                     "mean_ms", "min_ms", "max_ms", "stddev_ms", "p50_ms", "p90_ms", "p95_ms", "p99_ms", "p999_ms",

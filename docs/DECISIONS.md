@@ -97,6 +97,17 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **Every detector is proven in CI by fault injection** (`diag.*.inject`), since a detector that never fires is
   indistinguishable from a broken one.
 
+- **Micro-benchmark timing**: GPU timestamps around a submission of R repetitions, R calibrated so a submission
+  lasts ~10 ms (2 ms at smoke size, 20 ms for transfers) — far above timer resolution and launch overhead, far
+  below OS GPU watchdogs; the result is the median per-repetition time of 2/5/9/15 samples (smoke/quick/standard/
+  extreme) with the spread recorded. Operation counts: FMA / multiply-add = 2 ops, 4×int8 dot = 8 ops; copy
+  bandwidth counts bytes read + written; fill rates count pixels/texels written/read, not bytes.
+- **Synthetic workloads are sized for the hardware class**: 1 Mi threads and 512 MiB buffers on real GPUs (beyond
+  the largest last-level caches, e.g. 128 MB Infinity Cache), much smaller on software renderers, whose numbers
+  only prove the code works.
+- **ALU kernels use 8 independent chains with runtime constants** so no compiler can fold or shorten them; the
+  int8 kernel feeds each dot product's result back as its packed input for the same reason.
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.

@@ -59,4 +59,14 @@ struct SoakAnalysis {
 /// recorded during it (t in seconds, any origin).
 SoakAnalysis analyzeSoak(std::span<const double> frameMs, std::span<const results::TelemetrySample> samples);
 
+// --- memory latency ---------------------------------------------------------------------------
+struct LatencyLevel {
+    std::uint64_t upToBytes = 0; ///< largest working set still at this latency
+    double latencyNs = 0.0;      ///< median latency of the plateau
+};
+/// Splits a latency-vs-working-set curve (ascending sizes) into plateaus: a new level
+/// starts where latency rises more than `jump` (relative) above the current plateau.
+/// The levels approximate the cache hierarchy (L1, L2, last-level cache, DRAM).
+std::vector<LatencyLevel> latencyLevels(std::span<const std::uint64_t> sizes, std::span<const double> ns, double jump = 0.3);
+
 } // namespace gt::diag

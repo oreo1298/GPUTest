@@ -80,6 +80,12 @@ expect_exit 0 "$runner" --suite smoke --duration smoke --loop 4s "${common[@]}" 
 check_json "$out/timed.json" 'r["status"] == "completed" and len(r["loops"]) >= 2 and r["duration_s"] >= 4'
 end
 
+step "standard suite at smoke size (every synthetic test + scenes) with validation"
+"$runner" --suite standard --duration smoke --quality low --validation --fail-on-validation "${common[@]}" --out "$out/standard.json"
+python3 "$root/scripts/check-results.py" "$out/standard.json" --require-completed
+check_json "$out/standard.json" 'sum(1 for t in r["tests"] if t["category"] == "synthetic") >= 10'
+end
+
 step "diagnostics: clean run with validation, and injected faults must be detected"
 "$runner" --suite diagnostics --duration smoke --validation --fail-on-validation "${common[@]}" --out "$out/diag.json"
 check_json "$out/diag.json" 'all(t.get("verdict") == "pass" or t["status"] == "skipped" for t in r["tests"]) and len(r["tests"]) == 5'

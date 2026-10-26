@@ -1,6 +1,7 @@
 add_library(gt_bench STATIC
   registry.cpp
   context.cpp
+  micro.cpp
   presenter.cpp
   suites.cpp
   stb_impl.cpp
@@ -21,6 +22,10 @@ add_library(gt_bench_tests OBJECT
   tests/diagnostics/thermal.cpp
   tests/diagnostics/compute_check.cpp
   tests/diagnostics/pcie.cpp
+  tests/synthetic/alu.cpp
+  tests/synthetic/memory.cpp
+  tests/synthetic/transfer.cpp
+  tests/synthetic/raster.cpp
 )
 target_link_libraries(gt_bench_tests PUBLIC gt_bench)
 gt_set_warnings(gt_bench_tests)

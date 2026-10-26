@@ -371,6 +371,7 @@ public:
     MemoryBudget memoryBudget() const override;
     ValidationCounts validationCounts() const override { return globalValidationCounts(); }
     DeviceFaultReport deviceFaultReport() override;
+    std::uint32_t renderTargetSampleCounts(Format format) const override;
     void setDebugName(Buffer* b, const char* name) override;
     void setDebugName(Texture* t, const char* name) override;
 

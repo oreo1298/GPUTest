@@ -43,11 +43,11 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 - [x] PASS/WARN/FAIL verdicts with explanations (Diagnosis card in the GUI; fault injection proves detection in CI)
 
 ## 7. Synthetic / micro
-- [ ] Compute throughput FP32/FP16/FP64/INT32/INT8 (+dot products)
-- [ ] VRAM bandwidth (read/write/copy, patterns); cache/memory latency (pointer chase) + cache-size inference
-- [ ] Host↔device transfer, ReBAR/SAM detection
-- [ ] Pixel/ROP fill (blend, FP16), texel fill (formats, filtering, aniso)
-- [ ] Geometry + tessellation throughput, MSAA cost, atomics throughput
+- [x] Compute throughput FP32/FP16/FP64/INT32/INT8 (+dot products)
+- [x] VRAM bandwidth (read/write/copy); cache/memory latency (pointer chase) + cache-size inference
+- [x] Host↔device transfer, ReBAR/SAM detection
+- [x] Pixel/ROP fill (blend, FP16), texel fill (formats, filtering, aniso)
+- [x] Geometry + tessellation throughput, MSAA cost, atomics throughput
 
 ## 8. Vulkan feature tests
 - [ ] RT: BVH build/refit, pipeline vs ray query, coherent vs incoherent, SER, OMM

@@ -874,6 +874,15 @@ std::vector<std::uint8_t> VulkanDevice::readbackTexture(Texture* src, std::uint3
     return out;
 }
 
+std::uint32_t VulkanDevice::renderTargetSampleCounts(Format format) const {
+    const bool depth = formatInfo(format).depth;
+    VkImageFormatProperties props{};
+    const VkResult r = vkGetPhysicalDeviceImageFormatProperties(
+        m_physical, toVk(format), VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL,
+        depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, 0, &props);
+    return r == VK_SUCCESS ? static_cast<std::uint32_t>(props.sampleCounts) : 1u;
+}
+
 DeviceFaultReport VulkanDevice::deviceFaultReport() {
     DeviceFaultReport r;
     if (!m_deviceFault) return r;

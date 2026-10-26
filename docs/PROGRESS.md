@@ -39,7 +39,11 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   chains vs CPU, float chains vs first GPU round), `diag.artifacts` (bit-exact reference frames under a ray-marched
   load), `diag.thermal` (5/20 min soak: perf drop, plateau, clocks, throttle reasons, reference checks). Analysis
   helpers in `src/common/diagnostics.*` (unit-tested). Each detector has an injection parameter used by CI.
-- Next: Milestone 7 (synthetic / micro benchmarks).
+- **Milestone 7 (synthetic): done.** 13 micro-benchmarks (`synth.alu.{fp32,fp16,fp64,int32,int8dot}`,
+  `synth.mem.{bandwidth,latency,atomics}`, `synth.transfer`, `synth.fill.{pixel,texel}`, `synth.geometry`,
+  `synth.msaa`), timed with `measureMicro` (calibrated repetitions per submission, median of N samples). Score
+  references provisional (docs/SCORING.md). Results/Compare tables show each test's headline metric.
+- Next: Milestone 8 (Vulkan feature tests).
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
@@ -82,3 +86,8 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   checks (safety exit 4, device lost exit 5 abort/recover, stdin stop exit 3, timed loop).
 - M6: five diagnostics + Diagnosis card/tile in the GUI; first compute pipelines through the RHI; explicit test run
   order (`TestInfo::order`); debug-tagged tests excluded from "full".
+- Windows: D3D11 (fxc) shader fixes — `[loop]` on dynamic loops, explicit-gradient sampling in loops; per-entry
+  D3D12 shader models (FP16 sm_6_2, DP4a sm_6_4, 64-bit atomics sm_6_6). No DXC is reachable from the VM, so
+  D3D shader compilation is only verified by Windows CI.
+- M7: synthetic tests; RHI `renderTargetSampleCounts(format)` (lavapipe has 4x but not 2x MSAA for RGBA8);
+  software renderers get reduced problem sizes (lavapipe tessellation is ~1000x slower than rasterization).

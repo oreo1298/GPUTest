@@ -48,3 +48,17 @@ The intent is that a mid-range 2024 GPU scores roughly 1000 per test at 1080p/hi
 | Test | Metric | Reference | Status |
 |---|---|---|---|
 | scene.lattice | avg FPS | 600 | provisional |
+| synth.alu.fp32 | TFLOPS | 30 | provisional |
+| synth.alu.fp16 | TFLOPS | 60 | provisional |
+| synth.alu.fp64 | TFLOPS | 1 | provisional |
+| synth.alu.int32 | TOPS | 15 | provisional |
+| synth.alu.int8dot | TOPS | 120 | provisional |
+| synth.mem.bandwidth | read GB/s | 700 | provisional |
+| synth.mem.atomics | G atomics/s (spread) | 150 | provisional |
+| synth.transfer | upload GB/s | 25 | provisional |
+| synth.fill.pixel | RGBA8 Gpixel/s | 250 | provisional |
+| synth.fill.texel | RGBA8 bilinear Gtexel/s | 800 | provisional |
+| synth.geometry | Gtris/s (small triangles) | 8 | provisional |
+
+Unscored (reported only): `synth.mem.latency` (latency curve and cache levels), `synth.msaa` (relative cost),
+all diagnostics (PASS/WARN/FAIL verdicts).

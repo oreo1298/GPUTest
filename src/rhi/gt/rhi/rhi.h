@@ -532,6 +532,14 @@ public:
     /// What the driver reports about a device loss (VK_EXT_device_fault, D3D12 DRED).
     /// Call after a DeviceLostError, before destroying the device.
     virtual DeviceFaultReport deviceFaultReport() { return {}; }
+    /// Bit mask of the sample counts (1, 2, 4, 8, ...) usable for a render target or depth
+    /// buffer of `format`. Formats differ: e.g. some drivers offer 4x but not 2x for RGBA8.
+    virtual std::uint32_t renderTargetSampleCounts(Format format) const {
+        (void)format;
+        std::uint32_t mask = 0;
+        for (std::uint32_t s = 1; s <= m_features.maxMsaaSamples; s *= 2) mask |= s;
+        return mask;
+    }
     virtual void setDebugName(Buffer*, const char*) {}
     virtual void setDebugName(Texture*, const char*) {}
 

@@ -169,8 +169,8 @@ ComparePage::ComparePage(AppState* state, QWidget* parent)
 
     m_table = new QTableWidget;
     m_table->setColumnCount(10);
-    m_table->setHorizontalHeaderLabels({tr("Test"), tr("Score A"), tr("Score B"), tr("Δ score"), tr("FPS A"), tr("FPS B"),
-                                        tr("Δ FPS"), tr("p99 ms A"), tr("p99 ms B"), tr("Δ p99")});
+    m_table->setHorizontalHeaderLabels({tr("Test"), tr("Score A"), tr("Score B"), tr("Δ score"), tr("Result A"), tr("Result B"),
+                                        tr("Δ result"), tr("p99 ms A"), tr("p99 ms B"), tr("Δ p99")});
     m_table->verticalHeader()->hide();
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -404,8 +404,18 @@ void ComparePage::rebuild() {
         auto fs = [](const results::TestResult* t, auto f) {
             return t && t->frameStats ? static_cast<double>(f(*t->frameStats)) : NAN;
         };
-        const double fpsA = fs(row.a, [](const FrameStats& f) { return f.avgFps; });
-        const double fpsB = fs(row.b, [](const FrameStats& f) { return f.avgFps; });
+        // Headline metric: FPS for scenes, the test's primary metric (TFLOPS, GB/s, ...) otherwise.
+        auto headline = [](const results::TestResult* t) -> const results::Metric* {
+            if (!t) return nullptr;
+            if (const auto* m = t->metric(t->primaryMetric)) return m;
+            return t->metric("avg_fps");
+        };
+        const results::Metric* ha = headline(row.a);
+        const results::Metric* hb = headline(row.b);
+        const double fpsA = ha ? ha->value : NAN;
+        const double fpsB = hb ? hb->value : NAN;
+        const QString unit = QString::fromStdString((ha ? ha : hb) ? (ha ? ha : hb)->unit : std::string());
+        const bool higherBetter = (ha ? ha : hb) ? (ha ? ha : hb)->higherIsBetter : true;
         const double p99A = fs(row.a, [](const FrameStats& f) { return f.p99Ms; });
         const double p99B = fs(row.b, [](const FrameStats& f) { return f.p99Ms; });
         QString name = row.name;
@@ -415,9 +425,14 @@ void ComparePage::rebuild() {
         m_table->setItem(i, 1, numItem(row.scoreA, 0));
         m_table->setItem(i, 2, numItem(row.scoreB, 0));
         m_table->setItem(i, 3, deltaItem(row.scoreA, row.scoreB, true));
-        m_table->setItem(i, 4, numItem(fpsA, 1));
-        m_table->setItem(i, 5, numItem(fpsB, 1));
-        m_table->setItem(i, 6, deltaItem(fpsA, fpsB, true));
+        auto valueItem = [&](double v) {
+            auto* it = numItem(v, std::abs(v) >= 100 ? 0 : std::abs(v) >= 10 ? 1 : 2);
+            if (std::isfinite(v) && !unit.isEmpty()) it->setText(it->text() + QLatin1Char(' ') + unit);
+            return it;
+        };
+        m_table->setItem(i, 4, valueItem(fpsA));
+        m_table->setItem(i, 5, valueItem(fpsB));
+        m_table->setItem(i, 6, deltaItem(fpsA, fpsB, higherBetter));
         m_table->setItem(i, 7, numItem(p99A, 2));
         m_table->setItem(i, 8, numItem(p99B, 2));
         m_table->setItem(i, 9, deltaItem(p99A, p99B, false));
