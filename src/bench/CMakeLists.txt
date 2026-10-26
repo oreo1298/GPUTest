@@ -29,6 +29,10 @@ add_library(gt_bench_tests OBJECT
   tests/features/rt_common.cpp
   tests/features/rt_bvh.cpp
   tests/features/rt_rays.cpp
+  tests/features/mesh_shaders.cpp
+  tests/features/vrs.cpp
+  tests/features/async_queues.cpp
+  tests/features/subgroups.cpp
 )
 target_link_libraries(gt_bench_tests PUBLIC gt_bench)
 gt_set_warnings(gt_bench_tests)

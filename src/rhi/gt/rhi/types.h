@@ -155,13 +155,17 @@ struct DeviceFeatures {
     bool rayQuery = false;
     bool rayTracingPipeline = false;
     bool meshShader = false;
+    bool taskShader = false; ///< mesh pipelines may have a task (amplification) stage
     bool variableRateShading = false;
+    std::uint32_t maxShadingRate = 1; ///< largest square per-draw shading rate (2 or 4) with variableRateShading
     bool multiDrawIndirect = false;
     bool drawIndirectCount = false;
     bool pipelineStatistics = false;
     bool memoryBudget = false;
     bool resizableBar = false; ///< a device-local, host-visible heap larger than 256 MiB exists
     std::uint32_t subgroupSize = 0;
+    std::uint32_t minSubgroupSize = 0; ///< range selectable with subgroup size control (= subgroupSize without it)
+    std::uint32_t maxSubgroupSize = 0;
     std::uint32_t maxTexture2D = 0;
     std::uint32_t maxMsaaSamples = 1;
     std::uint32_t maxComputeSharedMemory = 0;

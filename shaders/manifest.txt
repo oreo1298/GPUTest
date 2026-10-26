@@ -51,3 +51,15 @@ features/raytracing.slang      msRays         miss            vk,d3d12   vk=spir
 features/raytracing.slang      chRays         closesthit      vk,d3d12   vk=spirv_1_4 d3d12=lib_6_3
 features/bvh.slang             csDisplace     compute         vk,d3d12
 features/bvh.slang             csProbe        compute         vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5
+features/mesh.slang            vsSpheres      vertex          vk,d3d12
+features/mesh.slang            psSpheres      fragment        vk,d3d12
+features/mesh.slang            msDirect       mesh            vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5
+features/mesh.slang            tsCull         amplification   vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5
+features/mesh.slang            msFromTask     mesh            vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5
+features/vrs.slang             vsFull         vertex          vk,d3d12
+features/vrs.slang             psHeavy        fragment        vk,d3d12
+features/vrs.slang             psRateProbe    fragment        vk,d3d12
+features/subgroups.slang       csWaveCheck    compute         vk,d3d12
+features/subgroups.slang       csReduceAtomic compute         vk,d3d12
+features/subgroups.slang       csReduceShared compute         vk,d3d12
+features/subgroups.slang       csReduceWave   compute         vk,d3d12

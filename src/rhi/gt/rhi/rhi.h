@@ -249,6 +249,9 @@ struct GraphicsPipelineDesc {
     ShaderRef hull;
     ShaderRef domain;
     ShaderRef geometry;
+    ShaderRef task; ///< mesh pipelines (Device::features().meshShader): optional task/amplification stage
+    ShaderRef mesh; ///< set instead of vertex; vertex input and topology are ignored
+    bool variableRate = false; ///< allow CommandList::setShadingRate (features().variableRateShading)
     std::vector<VertexAttribute> attributes;
     std::vector<VertexBinding> vertexBindings;
     PrimitiveTopology topology = PrimitiveTopology::TriangleList;
@@ -466,6 +469,14 @@ public:
                                      std::uint32_t stride) = 0;
     virtual void dispatch(std::uint32_t x, std::uint32_t y = 1, std::uint32_t z = 1) = 0;
     virtual void dispatchIndirect(Buffer* args, std::uint64_t offset) = 0;
+    /// Launches task (or mesh) workgroups of the bound mesh pipeline.
+    virtual void drawMeshTasks(std::uint32_t, std::uint32_t = 1, std::uint32_t = 1) {
+        throw Error("mesh shaders are not supported by this backend");
+    }
+    /// Per-draw shading rate in pixels (1, 2 or 4 per axis) for pipelines created with variableRate.
+    virtual void setShadingRate(std::uint32_t /*width*/, std::uint32_t /*height*/) {
+        throw Error("variable-rate shading is not supported by this backend");
+    }
 
     // Transfers.
     virtual void copyBuffer(Buffer* dst, std::uint64_t dstOffset, Buffer* src, std::uint64_t srcOffset,

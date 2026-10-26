@@ -420,6 +420,21 @@ void VulkanCommandList::dispatch(std::uint32_t x, std::uint32_t y, std::uint32_t
     vkCmdDispatch(m_cmd, x, y, z);
 }
 
+void VulkanCommandList::drawMeshTasks(std::uint32_t x, std::uint32_t y, std::uint32_t z) {
+    if (!m_dev.features().meshShader) throw Error("drawMeshTasks: mesh shaders are not supported by this GPU");
+    flushBindings();
+    vkCmdDrawMeshTasksEXT(m_cmd, x, y, z);
+}
+
+void VulkanCommandList::setShadingRate(std::uint32_t width, std::uint32_t height) {
+    requireRecording("setShadingRate");
+    if (!m_dev.features().variableRateShading) throw Error("setShadingRate: variable-rate shading is not supported");
+    const VkExtent2D size{width, height};
+    const VkFragmentShadingRateCombinerOpKHR ops[2] = {VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR,
+                                                       VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR};
+    vkCmdSetFragmentShadingRateKHR(m_cmd, &size, ops);
+}
+
 void VulkanCommandList::dispatchIndirect(Buffer* args, std::uint64_t offset) {
     flushBindings();
     vkCmdDispatchIndirect(m_cmd, static_cast<VulkanBuffer*>(args)->handle(), offset);

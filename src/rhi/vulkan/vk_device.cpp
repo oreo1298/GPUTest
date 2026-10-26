@@ -249,6 +249,17 @@ bool VulkanDevice::extensionSupported(std::string_view name) const {
                        [&](const VkExtensionProperties& e) { return name == e.extensionName; });
 }
 
+VkShaderStageFlags VulkanDevice::supportedShaderStages() const {
+    VkShaderStageFlags f = VK_SHADER_STAGE_ALL_GRAPHICS | VK_SHADER_STAGE_COMPUTE_BIT;
+    const auto& e = enabledFeatures();
+    if (e.mesh.taskShader) f |= VK_SHADER_STAGE_TASK_BIT_EXT;
+    if (e.mesh.meshShader) f |= VK_SHADER_STAGE_MESH_BIT_EXT;
+    if (e.rtPipeline.rayTracingPipeline)
+        f |= VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR |
+             VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_INTERSECTION_BIT_KHR | VK_SHADER_STAGE_CALLABLE_BIT_KHR;
+    return f;
+}
+
 bool VulkanDevice::extensionEnabled(std::string_view name) const {
     return std::find(m_enabledExtensions.begin(), m_enabledExtensions.end(), name) != m_enabledExtensions.end();
 }
@@ -504,15 +515,30 @@ void VulkanDevice::fillFeatures() {
     d.rayQuery = f.rayQuery.rayQuery;
     d.rayTracingPipeline = f.rtPipeline.rayTracingPipeline;
     d.meshShader = f.mesh.meshShader;
+    d.taskShader = f.mesh.meshShader && f.mesh.taskShader;
     d.variableRateShading = f.fsr.pipelineFragmentShadingRate;
+    if (d.variableRateShading) {
+        d.maxShadingRate = 2; // 1x1, 1x2, 2x1 and 2x2 are always supported
+        std::uint32_t n = 0;
+        vkGetPhysicalDeviceFragmentShadingRatesKHR(m_physical, &n, nullptr);
+        std::vector<VkPhysicalDeviceFragmentShadingRateKHR> rates(n, {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_KHR});
+        vkGetPhysicalDeviceFragmentShadingRatesKHR(m_physical, &n, rates.data());
+        for (const auto& r : rates)
+            if (r.fragmentSize.width == 4 && r.fragmentSize.height == 4 && (r.sampleCounts & VK_SAMPLE_COUNT_1_BIT))
+                d.maxShadingRate = 4;
+    }
     d.memoryBudget = m_memoryBudgetExt;
     d.resizableBar = m_rebar && m_adapter.type == AdapterType::Discrete;
 
     VkPhysicalDeviceSubgroupProperties sub{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
+    VkPhysicalDeviceSubgroupSizeControlProperties sizeControl{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES};
     VkPhysicalDeviceProperties2 p2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
     p2.pNext = &sub;
+    if (v13 || extensionEnabled(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME)) sub.pNext = &sizeControl;
     vkGetPhysicalDeviceProperties2(m_physical, &p2);
     d.subgroupSize = sub.subgroupSize;
+    d.minSubgroupSize = sizeControl.minSubgroupSize ? sizeControl.minSubgroupSize : sub.subgroupSize;
+    d.maxSubgroupSize = sizeControl.maxSubgroupSize ? sizeControl.maxSubgroupSize : sub.subgroupSize;
     d.subgroupOps = (sub.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) &&
                     (sub.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT);
     const auto& l = m_props.limits;

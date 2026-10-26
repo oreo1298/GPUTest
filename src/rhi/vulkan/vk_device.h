@@ -248,6 +248,8 @@ public:
                              std::uint32_t stride) override;
     void dispatch(std::uint32_t x, std::uint32_t y, std::uint32_t z) override;
     void dispatchIndirect(Buffer* args, std::uint64_t offset) override;
+    void drawMeshTasks(std::uint32_t x, std::uint32_t y, std::uint32_t z) override;
+    void setShadingRate(std::uint32_t width, std::uint32_t height) override;
     void copyBuffer(Buffer* dst, std::uint64_t dstOffset, Buffer* src, std::uint64_t srcOffset,
                     std::uint64_t size) override;
     void copyTexture(Texture* dst, Texture* src) override;
@@ -428,6 +430,8 @@ public:
     const std::vector<std::string>& enabledExtensions() const { return m_enabledExtensions; }
     QueueState& queue(QueueType type) { return *m_queueFor[static_cast<int>(type)]; }
     bool pushDescriptors() const { return m_pushDescriptors; }
+    /// Shader stages that may appear in descriptor-set layouts on this device.
+    VkShaderStageFlags supportedShaderStages() const;
     bool debugUtils() const { return m_debugUtils; }
     bool timelineSemaphores() const { return m_timeline; }
 

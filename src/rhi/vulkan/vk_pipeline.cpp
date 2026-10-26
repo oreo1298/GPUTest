@@ -96,6 +96,7 @@ void VulkanPipeline::createLayout(const LayoutDesc& layout) {
                         : m_bindPoint == VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR
                             ? kRtStages
                             : toVkStages(b.stages) & ~static_cast<VkShaderStageFlags>(VK_SHADER_STAGE_COMPUTE_BIT);
+        lb.stageFlags &= m_dev.supportedShaderStages();
         if (lb.stageFlags == 0) lb.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
         bindings.push_back(lb);
     }
@@ -132,6 +133,12 @@ VulkanPipeline::VulkanPipeline(VulkanDevice& dev, const GraphicsPipelineDesc& d)
         s.pName = "main";
         stages.push_back(s);
     };
+    const bool meshPipeline = d.mesh.valid();
+    if (meshPipeline && !dev.features().meshShader) throw Error("mesh shaders are not supported by this GPU");
+    if (d.variableRate && !dev.features().variableRateShading)
+        throw Error("variable-rate shading is not supported by this GPU");
+    addStage(d.task, VK_SHADER_STAGE_TASK_BIT_EXT);
+    addStage(d.mesh, VK_SHADER_STAGE_MESH_BIT_EXT);
     addStage(d.vertex, VK_SHADER_STAGE_VERTEX_BIT);
     addStage(d.hull, VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT);
     addStage(d.domain, VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT);
@@ -198,17 +205,17 @@ VulkanPipeline::VulkanPipeline(VulkanDevice& dev, const GraphicsPipelineDesc& d)
     cb.attachmentCount = static_cast<std::uint32_t>(blends.size());
     cb.pAttachments = blends.data();
 
-    VkDynamicState dyn[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkDynamicState dyn[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR};
     VkPipelineDynamicStateCreateInfo dy{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-    dy.dynamicStateCount = 2;
+    dy.dynamicStateCount = d.variableRate ? 3 : 2;
     dy.pDynamicStates = dyn;
 
     VkGraphicsPipelineCreateInfo ci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
     ci.stageCount = static_cast<std::uint32_t>(stages.size());
     ci.pStages = stages.data();
-    ci.pVertexInputState = &vi;
-    ci.pInputAssemblyState = &ia;
-    ci.pTessellationState = d.topology == PrimitiveTopology::PatchList ? &ts : nullptr;
+    ci.pVertexInputState = meshPipeline ? nullptr : &vi;
+    ci.pInputAssemblyState = meshPipeline ? nullptr : &ia;
+    ci.pTessellationState = !meshPipeline && d.topology == PrimitiveTopology::PatchList ? &ts : nullptr;
     ci.pViewportState = &vp;
     ci.pRasterizationState = &rs;
     ci.pMultisampleState = &ms;
