@@ -85,6 +85,12 @@ VulkanBuffer::VulkanBuffer(VulkanDevice& dev, const BufferDesc& desc) : m_dev(de
     ci.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     if (dev.features().bufferDeviceAddress && any(u & (BufferUsage::Storage | BufferUsage::Vertex | BufferUsage::Index)))
         ci.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    if (any(u & BufferUsage::AccelInput))
+        ci.usage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    if (any(u & BufferUsage::AccelStorage))
+        ci.usage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    if (any(u & BufferUsage::ShaderTable))
+        ci.usage |= VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
     // Buffers are shared between queue families (cheap for buffers, needed for async compute).
     std::vector<std::uint32_t> families;

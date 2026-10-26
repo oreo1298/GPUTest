@@ -287,6 +287,7 @@ void VulkanCommandList::pushConstants(const void* data, std::uint32_t size, std:
 
 void VulkanCommandList::flushBindings() {
     if (!m_pipeline) throw Error("draw/dispatch without a pipeline");
+    if (m_accelDirty) accelBarrier(); // work after a build sees the finished structure
     if (!m_bindingsDirty) return;
     const auto& layout = m_pipeline->layoutDesc();
     if (layout.bindings.empty()) {
@@ -297,6 +298,7 @@ void VulkanCommandList::flushBindings() {
     std::vector<VkWriteDescriptorSet> writes(n);
     std::vector<VkDescriptorBufferInfo> bufInfos(n);
     std::vector<VkDescriptorImageInfo> imgInfos(n);
+    std::vector<VkWriteDescriptorSetAccelerationStructureKHR> accelInfos(n);
     for (std::size_t i = 0; i < n; ++i) {
         const Binding& bd = layout.bindings[i];
         const Bound* b = nullptr;
@@ -339,7 +341,13 @@ void VulkanCommandList::flushBindings() {
             w.pImageInfo = &imgInfos[i];
             break;
         case BindingType::AccelerationStructure:
-            throw Error("acceleration structures are bound natively by ray tracing tests");
+            if (!b->accel)
+                throw Error(std::format("pipeline '{}': acceleration structure slot t{} not bound", m_pipeline->name(), bd.slot));
+            accelInfos[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR};
+            accelInfos[i].accelerationStructureCount = 1;
+            accelInfos[i].pAccelerationStructures = &b->accel;
+            w.pNext = &accelInfos[i];
+            break;
         }
     }
     if (m_dev.pushDescriptors()) {
@@ -353,10 +361,12 @@ void VulkanCommandList::flushBindings() {
                                                 {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, kSetsPerPool * 4},
                                                 {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kSetsPerPool * 4},
                                                 {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, kSetsPerPool * 2},
-                                                {VK_DESCRIPTOR_TYPE_SAMPLER, kSetsPerPool * 2}};
+                                                {VK_DESCRIPTOR_TYPE_SAMPLER, kSetsPerPool * 2},
+                                                {VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, kSetsPerPool}};
                 VkDescriptorPoolCreateInfo pci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
                 pci.maxSets = kSetsPerPool;
-                pci.poolSizeCount = 5;
+                // The acceleration-structure pool size is only valid when the extension is enabled.
+                pci.poolSizeCount = m_dev.extensionEnabled(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) ? 6 : 5;
                 pci.pPoolSizes = sizes;
                 VkDescriptorPool pool = VK_NULL_HANDLE;
                 check(vkCreateDescriptorPool(m_dev.vkDevice(), &pci, nullptr, &pool), "vkCreateDescriptorPool");

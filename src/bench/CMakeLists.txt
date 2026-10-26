@@ -26,6 +26,9 @@ add_library(gt_bench_tests OBJECT
   tests/synthetic/memory.cpp
   tests/synthetic/transfer.cpp
   tests/synthetic/raster.cpp
+  tests/features/rt_common.cpp
+  tests/features/rt_bvh.cpp
+  tests/features/rt_rays.cpp
 )
 target_link_libraries(gt_bench_tests PUBLIC gt_bench)
 gt_set_warnings(gt_bench_tests)

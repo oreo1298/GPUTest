@@ -43,3 +43,11 @@ synthetic/raster.slang         psShade        fragment   vk,d3d12,d3d11
 synthetic/raster.slang         vsPatch        vertex     vk,d3d12,d3d11
 synthetic/raster.slang         hsTess         hull       vk,d3d12,d3d11
 synthetic/raster.slang         dsTess         domain     vk,d3d12,d3d11
+
+# --- features -----------------------------------------------------------------
+features/raytracing.slang      csRayQuery     compute         vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5
+features/raytracing.slang      rgRays         raygeneration   vk,d3d12   vk=spirv_1_4 d3d12=lib_6_3
+features/raytracing.slang      msRays         miss            vk,d3d12   vk=spirv_1_4 d3d12=lib_6_3
+features/raytracing.slang      chRays         closesthit      vk,d3d12   vk=spirv_1_4 d3d12=lib_6_3
+features/bvh.slang             csDisplace     compute         vk,d3d12
+features/bvh.slang             csProbe        compute         vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5

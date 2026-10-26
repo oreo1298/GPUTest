@@ -88,8 +88,13 @@ void VulkanPipeline::createLayout(const LayoutDesc& layout) {
         lb.binding = bindingIndex(b.type, b.slot);
         lb.descriptorType = descriptorType(b.type);
         lb.descriptorCount = 1;
+        constexpr VkShaderStageFlags kRtStages = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR |
+                                                 VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR |
+                                                 VK_SHADER_STAGE_INTERSECTION_BIT_KHR | VK_SHADER_STAGE_CALLABLE_BIT_KHR;
         lb.stageFlags = m_bindPoint == VK_PIPELINE_BIND_POINT_COMPUTE
                             ? static_cast<VkShaderStageFlags>(VK_SHADER_STAGE_COMPUTE_BIT)
+                        : m_bindPoint == VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR
+                            ? kRtStages
                             : toVkStages(b.stages) & ~static_cast<VkShaderStageFlags>(VK_SHADER_STAGE_COMPUTE_BIT);
         if (lb.stageFlags == 0) lb.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
         bindings.push_back(lb);

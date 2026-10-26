@@ -21,7 +21,9 @@ struct MicroResult {
 std::uint32_t microSamples(const RunSettings& s);
 
 /// `record(cmd, rep)` records one repetition. Throws StopRequested when the run is stopped.
+/// `maxReps` bounds repetitions per submission (for workloads that use per-list transient memory).
 MicroResult measureMicro(TestContext& ctx, const std::function<void(rhi::CommandList&, std::uint32_t rep)>& record,
-                         double targetMs = 10.0, rhi::QueueType queue = rhi::QueueType::Graphics);
+                         double targetMs = 10.0, rhi::QueueType queue = rhi::QueueType::Graphics,
+                         std::uint32_t maxReps = 4096);
 
 } // namespace gt::bench

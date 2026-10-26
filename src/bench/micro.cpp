@@ -17,7 +17,7 @@ std::uint32_t microSamples(const RunSettings& s) {
 }
 
 MicroResult measureMicro(TestContext& ctx, const std::function<void(rhi::CommandList&, std::uint32_t)>& record,
-                         double targetMs, rhi::QueueType queue) {
+                         double targetMs, rhi::QueueType queue, std::uint32_t maxReps) {
     const RunSettings& s = ctx.settings();
     if (s.duration == DurationPreset::Smoke) targetMs = std::min(targetMs, 2.0);
     auto submit = [&](std::uint32_t reps) {
@@ -31,7 +31,7 @@ MicroResult measureMicro(TestContext& ctx, const std::function<void(rhi::Command
     // Calibrate in two steps: the first submission includes one-time costs, and the per-repetition
     // cost drops once the GPU is kept busy by many repetitions.
     auto repsFor = [&](double perRep) {
-        return static_cast<std::uint32_t>(std::clamp(std::ceil(targetMs / std::max(perRep, 1e-4)), 1.0, 4096.0));
+        return static_cast<std::uint32_t>(std::clamp(std::ceil(targetMs / std::max(perRep, 1e-4)), 1.0, static_cast<double>(std::max(maxReps, 1u))));
     };
     submit(1);
     std::uint32_t reps = repsFor(submit(1));

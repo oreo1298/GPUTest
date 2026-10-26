@@ -4,6 +4,7 @@
 
 #include "vk_common.h"
 
+#include <array>
 #include <deque>
 #include <functional>
 #include <map>
@@ -100,7 +101,13 @@ class VulkanPipeline final : public Pipeline {
 public:
     VulkanPipeline(VulkanDevice& dev, const GraphicsPipelineDesc& desc);
     VulkanPipeline(VulkanDevice& dev, const ComputePipelineDesc& desc);
+    VulkanPipeline(VulkanDevice& dev, const RayTracingPipelineDesc& desc);
     ~VulkanPipeline() override;
+    /// Shader-binding-table regions (ray-tracing pipelines only).
+    const VkStridedDeviceAddressRegionKHR& raygenRegion() const { return m_sbtRegions[0]; }
+    const VkStridedDeviceAddressRegionKHR& missRegion() const { return m_sbtRegions[1]; }
+    const VkStridedDeviceAddressRegionKHR& hitRegion() const { return m_sbtRegions[2]; }
+    const VkStridedDeviceAddressRegionKHR& callableRegion() const { return m_sbtRegions[3]; }
     VkPipeline handle() const { return m_pipeline; }
     VkPipelineLayout layoutHandle() const { return m_layout; }
     VkDescriptorSetLayout setLayout() const { return m_setLayout; }
@@ -117,6 +124,28 @@ private:
     VkPipelineBindPoint m_bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     LayoutDesc m_layoutDesc;
     std::string m_name;
+    std::unique_ptr<VulkanBuffer> m_sbt;
+    std::array<VkStridedDeviceAddressRegionKHR, 4> m_sbtRegions{};
+};
+
+class VulkanAccel final : public AccelerationStructure {
+public:
+    VulkanAccel(VulkanDevice& dev, bool topLevel, const VkAccelerationStructureBuildSizesInfoKHR& sizes,
+                std::uint32_t maxInstances, const char* name);
+    ~VulkanAccel() override;
+    VkAccelerationStructureKHR handle() const { return m_handle; }
+    VkDeviceAddress address() const { return m_address; }
+    VkDeviceAddress scratchAddress() const { return m_scratchAddress; }
+    VulkanBuffer* instanceBuffer() const { return m_instances.get(); }
+    std::uint32_t maxInstances() const { return m_maxInstances; }
+
+private:
+    VulkanDevice& m_dev;
+    VkAccelerationStructureKHR m_handle = VK_NULL_HANDLE;
+    VkDeviceAddress m_address = 0;
+    VkDeviceAddress m_scratchAddress = 0;
+    std::unique_ptr<VulkanBuffer> m_storage, m_scratchBuffer, m_instances;
+    std::uint32_t m_maxInstances = 0;
 };
 
 class VulkanQueryPool final : public QueryPool {
@@ -236,6 +265,11 @@ public:
     void beginMarker(const char* name) override;
     void endMarker() override;
     TransientAllocation allocTransient(std::uint64_t size, std::uint64_t alignment) override;
+    void buildBlas(AccelerationStructure* blas, const BlasDesc& desc, bool update) override;
+    void buildTlas(AccelerationStructure* tlas, std::span<const AccelInstance> instances, bool update) override;
+    void accelBarrier() override;
+    void setAccelerationStructure(std::uint32_t slot, AccelerationStructure* tlas) override;
+    void traceRays(std::uint32_t width, std::uint32_t height, std::uint32_t depth) override;
 
 private:
     struct Bound {
@@ -245,6 +279,7 @@ private:
         VkImageView view = VK_NULL_HANDLE;
         VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
         VkSampler sampler = VK_NULL_HANDLE;
+        VkAccelerationStructureKHR accel = VK_NULL_HANDLE;
     };
     static constexpr std::uint32_t kSlots = 16;
     Bound& slot(char cls, std::uint32_t index);
@@ -259,6 +294,7 @@ private:
     bool m_inRenderPass = false;
     VulkanPipeline* m_pipeline = nullptr;
     bool m_bindingsDirty = true;
+    bool m_accelDirty = false; ///< a build was recorded since the last acceleration-structure barrier
     std::array<Bound, kSlots> m_b{}, m_t{}, m_u{}, m_s{};
     std::vector<std::pair<VulkanTexture*, VulkanTexture*>> m_pendingResolves;
     // transient memory
@@ -355,6 +391,9 @@ public:
     std::unique_ptr<Sampler> createSampler(const SamplerDesc& desc) override;
     std::unique_ptr<Pipeline> createGraphicsPipeline(const GraphicsPipelineDesc& desc) override;
     std::unique_ptr<Pipeline> createComputePipeline(const ComputePipelineDesc& desc) override;
+    std::unique_ptr<Pipeline> createRayTracingPipeline(const RayTracingPipelineDesc& desc) override;
+    std::unique_ptr<AccelerationStructure> createBlas(const BlasDesc& desc) override;
+    std::unique_ptr<AccelerationStructure> createTlas(std::uint32_t maxInstances, bool allowUpdate) override;
     std::unique_ptr<QueryPool> createQueryPool(QueryType type, std::uint32_t count) override;
     std::unique_ptr<CommandList> createCommandList(QueueType queue) override;
     std::unique_ptr<Swapchain> createSwapchain(const SwapchainDesc& desc) override;
@@ -408,6 +447,12 @@ public:
     VkSurfaceKHR createSurface(void* window);
     void setObjectName(VkObjectType type, std::uint64_t handle, const char* name);
     bool hostVisibleDeviceLocalAvailable() const { return m_rebar; }
+    const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& rayTracingProperties();
+    const VkPhysicalDeviceAccelerationStructurePropertiesKHR& accelProperties();
+    bool tlasUpdatable(const AccelerationStructure* tlas) const {
+        auto it = m_tlasUpdatable.find(tlas);
+        return it != m_tlasUpdatable.end() && it->second;
+    }
 
 private:
     void pickQueues();
@@ -434,6 +479,10 @@ private:
     bool m_memoryBudgetExt = false;
     bool m_deviceFault = false; ///< VK_EXT_device_fault enabled
     bool m_rebar = false;
+    bool m_rtPropsQueried = false;
+    std::map<const AccelerationStructure*, bool> m_tlasUpdatable;
+    VkPhysicalDeviceRayTracingPipelinePropertiesKHR m_rtProps{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
+    VkPhysicalDeviceAccelerationStructurePropertiesKHR m_asProps{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
     std::uint32_t m_validationHeaderLimit = 0;
     std::vector<VkFence> m_freeFences;
 

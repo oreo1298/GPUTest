@@ -50,6 +50,9 @@ enum class BufferUsage : std::uint32_t {
     Indirect = 1u << 4,
     CopySrc = 1u << 5,
     CopyDst = 1u << 6,
+    AccelInput = 1u << 7,   ///< vertex / index data read by acceleration-structure builds
+    AccelStorage = 1u << 8, ///< backing memory of an acceleration structure (backend internal)
+    ShaderTable = 1u << 9,  ///< ray-tracing shader binding table (backend internal)
 };
 template <>
 struct EnableFlags<BufferUsage> : std::true_type {};
@@ -278,6 +281,64 @@ protected:
     double m_creationMs = 0.0;
 };
 
+// --- ray tracing ---------------------------------------------------------------------------
+/// Triangle geometry for a bottom-level acceleration structure. Positions are RGB32_FLOAT;
+/// indices (optional) are 32-bit. Buffers need BufferUsage::AccelInput.
+struct AccelTriangles {
+    Buffer* vertices = nullptr;
+    std::uint64_t vertexOffset = 0;
+    std::uint32_t vertexCount = 0;
+    std::uint32_t vertexStride = 12;
+    Buffer* indices = nullptr;
+    std::uint64_t indexOffset = 0;
+    std::uint32_t indexCount = 0; ///< 0 = non-indexed (vertexCount / 3 triangles)
+    bool opaque = true;
+};
+
+struct BlasDesc {
+    std::vector<AccelTriangles> geometries;
+    bool allowUpdate = false; ///< can be refit after the vertices move (same topology)
+    bool fastBuild = false;   ///< prefer build speed over trace speed
+    const char* name = "";
+};
+
+class AccelerationStructure {
+public:
+    virtual ~AccelerationStructure() = default;
+    bool isTopLevel() const { return m_topLevel; }
+    std::uint64_t sizeBytes() const { return m_size; }        ///< storage size
+    std::uint64_t scratchBytes() const { return m_scratch; }  ///< build scratch size
+
+protected:
+    bool m_topLevel = false;
+    std::uint64_t m_size = 0;
+    std::uint64_t m_scratch = 0;
+};
+
+struct AccelInstance {
+    float transform[3][4] = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}}; ///< row-major 3x4 object-to-world
+    std::uint32_t id = 0;              ///< InstanceID() in shaders (24 bits)
+    std::uint8_t mask = 0xFF;
+    std::uint32_t hitGroupOffset = 0;  ///< added to the hit-group index (24 bits)
+    bool forceOpaque = false;
+    AccelerationStructure* blas = nullptr;
+};
+
+struct RayTracingHitGroup {
+    ShaderRef closestHit;
+    ShaderRef anyHit;
+    ShaderRef intersection; ///< procedural geometry only
+};
+
+struct RayTracingPipelineDesc {
+    ShaderRef rayGen;
+    std::vector<ShaderRef> miss;
+    std::vector<RayTracingHitGroup> hitGroups;
+    std::uint32_t maxRecursion = 1;
+    LayoutDesc layout; ///< bindings are visible to every ray-tracing stage
+    const char* name = "";
+};
+
 // --- queries ---------------------------------------------------------------------------
 enum class QueryType : std::uint8_t { Timestamp, Occlusion, PipelineStatistics };
 
@@ -434,6 +495,25 @@ public:
     /// Linear per-list upload memory, valid until this list is re-begun.
     virtual TransientAllocation allocTransient(std::uint64_t size, std::uint64_t alignment = 256) = 0;
 
+    // Ray tracing (Device::features().rayQuery / rayTracingPipeline). Builds use the
+    // structure's own scratch memory; call accelBarrier() before reading a structure
+    // that was just built (tracing, ray queries or building a TLAS over a new BLAS).
+    virtual void buildBlas(AccelerationStructure*, const BlasDesc&, bool /*update*/ = false) {
+        throw Error("ray tracing is not supported by this backend");
+    }
+    virtual void buildTlas(AccelerationStructure*, std::span<const AccelInstance>, bool /*update*/ = false) {
+        throw Error("ray tracing is not supported by this backend");
+    }
+    virtual void accelBarrier() {}
+    /// Binds a top-level structure to t# (BindingType::AccelerationStructure).
+    virtual void setAccelerationStructure(std::uint32_t, AccelerationStructure*) {
+        throw Error("ray tracing is not supported by this backend");
+    }
+    /// Launches the bound ray-tracing pipeline's ray-generation shader over width x height x depth.
+    virtual void traceRays(std::uint32_t, std::uint32_t, std::uint32_t = 1) {
+        throw Error("ray tracing is not supported by this backend");
+    }
+
 protected:
     QueueType m_queue = QueueType::Graphics;
 };
@@ -506,6 +586,16 @@ public:
     virtual std::unique_ptr<Sampler> createSampler(const SamplerDesc& desc) = 0;
     virtual std::unique_ptr<Pipeline> createGraphicsPipeline(const GraphicsPipelineDesc& desc) = 0;
     virtual std::unique_ptr<Pipeline> createComputePipeline(const ComputePipelineDesc& desc) = 0;
+    virtual std::unique_ptr<Pipeline> createRayTracingPipeline(const RayTracingPipelineDesc&) {
+        throw Error("ray-tracing pipelines are not supported by this backend");
+    }
+    /// Allocates a bottom-level structure (with scratch memory) sized for `desc`; build it with CommandList::buildBlas.
+    virtual std::unique_ptr<AccelerationStructure> createBlas(const BlasDesc&) {
+        throw Error("ray tracing is not supported by this backend");
+    }
+    virtual std::unique_ptr<AccelerationStructure> createTlas(std::uint32_t /*maxInstances*/, bool /*allowUpdate*/ = false) {
+        throw Error("ray tracing is not supported by this backend");
+    }
     virtual std::unique_ptr<QueryPool> createQueryPool(QueryType type, std::uint32_t count) = 0;
     virtual std::unique_ptr<CommandList> createCommandList(QueueType queue) = 0;
     virtual std::unique_ptr<Swapchain> createSwapchain(const SwapchainDesc& desc) = 0;
