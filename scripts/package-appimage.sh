@@ -19,12 +19,31 @@ fetch() {
 }
 fetch linuxdeploy-x86_64.AppImage https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
 fetch linuxdeploy-plugin-qt-x86_64.AppImage https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+real_qmake="${QMAKE:-$(command -v qmake6 || command -v qmake)}"
 export PATH="$tools:$PATH"
 export APPIMAGE_EXTRACT_AND_RUN=1
-export QMAKE="${QMAKE:-$(command -v qmake6 || command -v qmake)}"
+# linuxdeploy-plugin-qt deploys every plugin of a used module type; for Qt SQL that
+# includes drivers whose client libraries (Mimer, Firebird, ...) are not installed and
+# not wanted. Point it at an overlay plugin directory with only the SQLite driver.
+qt_plugins_real="$("$real_qmake" -query QT_INSTALL_PLUGINS)"
+overlay="$tools/qt-plugins"
+rm -rf "$overlay" && mkdir -p "$overlay/sqldrivers"
+for d in "$qt_plugins_real"/*; do
+    [ "$(basename "$d")" = sqldrivers ] || ln -s "$d" "$overlay/$(basename "$d")"
+done
+if [ -f "$qt_plugins_real/sqldrivers/libqsqlite.so" ]; then
+    ln -s "$qt_plugins_real/sqldrivers/libqsqlite.so" "$overlay/sqldrivers/"
+fi
+cat > "$tools/qmake-overlay" <<QMAKE
+#!/bin/sh
+if [ "\$1" = "-query" ] && [ "\$2" = "QT_INSTALL_PLUGINS" ]; then echo "$overlay"; exit 0; fi
+"$real_qmake" "\$@" | sed 's#^\(QT_INSTALL_PLUGINS[^:]*\):.*#\1:$overlay#'
+QMAKE
+chmod +x "$tools/qmake-overlay"
+export QMAKE="$tools/qmake-overlay"
 # Wayland client plugins are an add-on module in newer Qt packages; deploy them only
 # when present (without them the image still runs everywhere through XWayland).
-qt_plugins="$("$QMAKE" -query QT_INSTALL_PLUGINS)"
+qt_plugins="$qt_plugins_real"
 platform_plugins="libqoffscreen.so"
 if [ -f "$qt_plugins/platforms/libqwayland-generic.so" ]; then
     platform_plugins="libqwayland-generic.so;libqwayland-egl.so;$platform_plugins"

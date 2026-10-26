@@ -24,7 +24,12 @@ if ($LASTEXITCODE -ne 0) { throw "cmake --install failed" }
 
 $gui = Join-Path $stage "$($info.APP_GUI_NAME).exe"
 if (Test-Path $gui) {
-    windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw --no-compiler-runtime $gui
+    $deployArgs = @("--release", "--no-translations", "--no-system-d3d-compiler", "--no-opengl-sw", "--no-compiler-runtime")
+    # Only the SQLite driver is used (run history); skip drivers that need client libraries we do not ship.
+    if ((windeployqt --help 2>&1 | Out-String) -match "exclude-plugins") {
+        $deployArgs += @("--exclude-plugins", "qsqlmimer,qsqlodbc,qsqlpsql,qsqlmysql,qsqlibase,qsqloci,qsqldb2")
+    }
+    windeployqt @deployArgs $gui
     if ($LASTEXITCODE -ne 0) { throw "windeployqt failed" }
 }
 
