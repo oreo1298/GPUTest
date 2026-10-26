@@ -250,6 +250,44 @@ bool VulkanDevice::extensionSupported(std::string_view name) const {
                        [&](const VkExtensionProperties& e) { return name == e.extensionName; });
 }
 
+std::vector<CooperativeMatrixConfig> VulkanDevice::cooperativeMatrixConfigs() {
+    std::vector<CooperativeMatrixConfig> out;
+    if (!m_features.cooperativeMatrix) return out;
+    std::uint32_t n = 0;
+    vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR(m_physical, &n, nullptr);
+    std::vector<VkCooperativeMatrixPropertiesKHR> props(n, {VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_KHR});
+    vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR(m_physical, &n, props.data());
+    const bool bf16 = m_feat.bfloat16.shaderBFloat16CooperativeMatrix != VK_FALSE;
+    const bool fp8 = m_feat.float8.shaderFloat8CooperativeMatrix != VK_FALSE;
+    auto name = [&](VkComponentTypeKHR t) -> std::string {
+        switch (t) {
+        case VK_COMPONENT_TYPE_FLOAT16_KHR: return "f16";
+        case VK_COMPONENT_TYPE_FLOAT32_KHR: return "f32";
+        case VK_COMPONENT_TYPE_FLOAT64_KHR: return "f64";
+        case VK_COMPONENT_TYPE_SINT8_KHR: return "s8";
+        case VK_COMPONENT_TYPE_SINT16_KHR: return "s16";
+        case VK_COMPONENT_TYPE_SINT32_KHR: return "s32";
+        case VK_COMPONENT_TYPE_SINT64_KHR: return "s64";
+        case VK_COMPONENT_TYPE_UINT8_KHR: return "u8";
+        case VK_COMPONENT_TYPE_UINT16_KHR: return "u16";
+        case VK_COMPONENT_TYPE_UINT32_KHR: return "u32";
+        case VK_COMPONENT_TYPE_UINT64_KHR: return "u64";
+        case VK_COMPONENT_TYPE_BFLOAT16_KHR: return bf16 ? "bf16" : "";
+        case VK_COMPONENT_TYPE_FLOAT8_E4M3_EXT: return fp8 ? "e4m3" : "";
+        case VK_COMPONENT_TYPE_FLOAT8_E5M2_EXT: return fp8 ? "e5m2" : "";
+        default: return ""; // types this build does not know or did not enable
+        }
+    };
+    for (const auto& p : props) {
+        if (p.scope != VK_SCOPE_SUBGROUP_KHR) continue;
+        CooperativeMatrixConfig c{p.MSize, p.NSize, p.KSize, name(p.AType), name(p.BType), name(p.CType), name(p.ResultType),
+                                  p.saturatingAccumulation != VK_FALSE};
+        if (c.a.empty() || c.b.empty() || c.c.empty() || c.result.empty()) continue;
+        out.push_back(std::move(c));
+    }
+    return out;
+}
+
 VkShaderStageFlags VulkanDevice::supportedShaderStages() const {
     VkShaderStageFlags f = VK_SHADER_STAGE_ALL_GRAPHICS | VK_SHADER_STAGE_COMPUTE_BIT;
     const auto& e = enabledFeatures();
@@ -515,6 +553,12 @@ void VulkanDevice::fillFeatures() {
     d.drawIndirectCount = v12 ? f.v12.drawIndirectCount : extensionEnabled(VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME);
     d.rayQuery = f.rayQuery.rayQuery;
     d.rayTracingPipeline = f.rtPipeline.rayTracingPipeline;
+    d.shaderExecutionReordering = d.rayTracingPipeline &&
+                                  extensionEnabled(VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME) &&
+                                  f.serExt.rayTracingInvocationReorder;
+    d.shaderExecutionReorderingNv = d.rayTracingPipeline && !d.shaderExecutionReordering &&
+                                    extensionEnabled(VK_NV_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME) &&
+                                    f.serNv.rayTracingInvocationReorder;
     d.meshShader = f.mesh.meshShader;
     d.taskShader = f.mesh.meshShader && f.mesh.taskShader;
     d.variableRateShading = f.fsr.pipelineFragmentShadingRate;
@@ -569,6 +613,9 @@ void VulkanDevice::fillFeatures() {
         }
     }
     d.descriptorBuffer = extensionEnabled(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME);
+    d.cooperativeMatrix = extensionEnabled(VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME) && f.coopMatrix.cooperativeMatrix &&
+                          f.v12.vulkanMemoryModel;
+    d.cooperativeVector = extensionEnabled(VK_NV_COOPERATIVE_VECTOR_EXTENSION_NAME) && f.coopVector.cooperativeVector;
     d.subgroupSize = sub.subgroupSize;
     d.minSubgroupSize = sizeControl.minSubgroupSize ? sizeControl.minSubgroupSize : sub.subgroupSize;
     d.maxSubgroupSize = sizeControl.maxSubgroupSize ? sizeControl.maxSubgroupSize : sub.subgroupSize;

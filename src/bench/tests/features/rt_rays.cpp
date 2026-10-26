@@ -19,13 +19,6 @@
 namespace gt::bench {
 namespace {
 
-struct RayParams {
-    float camPos[4], camFwd[4], camRight[4], camUp[4];
-    float boundsMin[4], boundsMax[4];
-    std::uint32_t width, height, mode, seed;
-};
-static_assert(sizeof(RayParams) == 112);
-
 constexpr std::uint32_t kMiss = 0xFFFFFFFFu;
 
 class RaysTest : public Test {
@@ -58,46 +51,11 @@ public:
         const auto& f = dev.features();
         const bool software = dev.adapter().isSoftware();
         const std::uint32_t width = software ? 160 : s.width, height = software ? 90 : s.height;
-        const int side = software ? 6 : 32;     // spheres per row
-        const int subdiv = software ? 2 : 4;    // 320 / 5120 triangles per sphere
-        const float spacing = 2.5f, half = spacing * float(side) / 2.0f;
-
-        // --- scene -------------------------------------------------------------------------------
-        const rt::Mesh sphere = rt::icosphere(subdiv);
-        const rt::Mesh ground = rt::grid(64, half * 2.0f + 20.0f);
-        rt::GpuMesh sphereGpu = rt::upload(dev, sphere, "rays-sphere");
-        rt::GpuMesh groundGpu = rt::upload(dev, ground, "rays-ground");
-        rhi::BlasDesc sphereDesc, groundDesc;
-        sphereDesc.geometries = {sphereGpu.triangles()};
-        sphereDesc.name = "rays-sphere-blas";
-        groundDesc.geometries = {groundGpu.triangles()};
-        groundDesc.name = "rays-ground-blas";
-        auto sphereBlas = dev.createBlas(sphereDesc);
-        auto groundBlas = dev.createBlas(groundDesc);
-
-        std::vector<rhi::AccelInstance> instances;
-        instances.push_back({});
-        instances.back().blas = groundBlas.get();
-        std::mt19937 rng(static_cast<std::uint32_t>(s.seed));
-        std::uniform_real_distribution<float> jitter(-0.5f, 0.5f), radius(0.4f, 1.0f);
-        for (int z = 0; z < side; ++z)
-            for (int x = 0; x < side; ++x) {
-                rhi::AccelInstance in;
-                const float r = radius(rng);
-                rt::scaleTranslate(in.transform, r, (float(x) + 0.5f) * spacing - half + jitter(rng),
-                                   r, (float(z) + 0.5f) * spacing - half + jitter(rng));
-                in.id = static_cast<std::uint32_t>(instances.size());
-                in.blas = sphereBlas.get();
-                instances.push_back(in);
-            }
-        auto tlas = dev.createTlas(static_cast<std::uint32_t>(instances.size()));
-        ctx.timeGpu([&](rhi::CommandList& cmd) {
-            cmd.buildBlas(sphereBlas.get(), sphereDesc);
-            cmd.buildBlas(groundBlas.get(), groundDesc);
-            cmd.accelBarrier();
-            cmd.buildTlas(tlas.get(), instances);
-            cmd.accelBarrier();
-        });
+        const int side = software ? 6 : 32;  // spheres per row
+        const int subdiv = software ? 2 : 4; // 320 / 5120 triangles per sphere
+        rt::SphereField field = rt::buildSphereField(dev, side, subdiv, s.seed, width, height,
+                                                     [&](const auto& record) { ctx.timeGpu(record); });
+        rhi::AccelerationStructure* tlas = field.tlas.get();
 
         using U = rhi::BufferUsage;
         const std::uint64_t rays = std::uint64_t(width) * height;
@@ -106,7 +64,7 @@ public:
 
         rhi::LayoutDesc layout;
         layout.bindings = {{rhi::BindingType::AccelerationStructure, 0}, {rhi::BindingType::StorageBufferRW, 0}};
-        layout.pushConstantBytes = sizeof(RayParams);
+        layout.pushConstantBytes = sizeof(rt::RayParams);
         std::unique_ptr<rhi::Pipeline> queryPipe, rtPipe;
         if (f.rayQuery) {
             rhi::ComputePipelineDesc pd;
@@ -125,25 +83,7 @@ public:
             rtPipe = dev.createRayTracingPipeline(pd);
         }
 
-        // Camera above the near edge of the field, looking across it.
-        RayParams p{};
-        const float eye[3] = {0.0f, 5.0f, -half - 4.0f}, target[3] = {0.0f, 0.0f, half * 0.3f};
-        float fwd[3] = {target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]};
-        normalize(fwd);
-        float right[3] = {fwd[2], 0.0f, -fwd[0]};
-        normalize(right);
-        const float up[3] = {fwd[1] * right[2] - fwd[2] * right[1], fwd[2] * right[0] - fwd[0] * right[2],
-                             fwd[0] * right[1] - fwd[1] * right[0]};
-        set4(p.camPos, eye, std::tan(0.5f * 50.0f * 3.14159265f / 180.0f));
-        set4(p.camFwd, fwd, float(width) / float(height));
-        set4(p.camRight, right, 0.0f);
-        set4(p.camUp, up, 0.0f);
-        const float bmin[3] = {-half, 0.05f, -half}, bmax[3] = {half, 3.0f, half};
-        set4(p.boundsMin, bmin, 0.0f);
-        set4(p.boundsMax, bmax, 0.0f);
-        p.width = width;
-        p.height = height;
-        p.seed = static_cast<std::uint32_t>(s.seed);
+        rt::RayParams p = field.params;
 
         struct Run {
             const char* method;
@@ -163,7 +103,7 @@ public:
                 auto record = [&](rhi::CommandList& cmd, std::uint32_t) {
                     cmd.transition(hits.get(), rhi::ResourceState::UnorderedAccess);
                     cmd.setPipeline(pipe);
-                    cmd.setAccelerationStructure(0, tlas.get());
+                    cmd.setAccelerationStructure(0, tlas);
                     cmd.setStorageBuffer(0, hits.get());
                     cmd.pushConstants(&p, sizeof(p));
                     if (pipe == queryPipe.get())
@@ -206,8 +146,8 @@ public:
         d["rays_per_launch"] = rays;
         d["width"] = width;
         d["height"] = height;
-        d["instances"] = instances.size();
-        d["triangles_per_sphere"] = sphere.triangleCount();
+        d["instances"] = field.instances;
+        d["triangles_per_sphere"] = field.trianglesPerSphere;
         d["methods"] = queryPipe && rtPipe ? "ray query + pipeline" : queryPipe ? "ray query" : "pipeline";
         if (software) d["note"] = "software renderer: reduced problem size";
 
@@ -267,14 +207,6 @@ private:
             for (int k = 0; k < 3; ++k) px[k] = static_cast<std::uint8_t>(float((c >> (8 * k)) & 0xFF) * shade);
         }
         writePng(std::format("{}/feature.rt.rays_{}.png", s.dumpDir, method), w, h, rgba.data());
-    }
-
-    static void normalize(float (&v)[3]) {
-        const float l = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-        for (float& c : v) c /= l;
-    }
-    static void set4(float (&dst)[4], const float (&src)[3], float w) {
-        dst[0] = src[0], dst[1] = src[1], dst[2] = src[2], dst[3] = w;
     }
 
     TestInfo m_info;

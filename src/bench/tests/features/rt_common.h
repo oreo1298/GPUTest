@@ -4,6 +4,7 @@
 #include "gt/rhi/rhi.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -36,5 +37,27 @@ GpuMesh upload(rhi::Device& dev, const Mesh& mesh, const char* name);
 
 /// Row-major 3x4 transform: uniform scale, then translation.
 void scaleTranslate(float (&m)[3][4], float scale, float x, float y, float z);
+
+/// Push constants of shaders/src/features/rt_common.slang.
+struct RayParams {
+    float camPos[4], camFwd[4], camRight[4], camUp[4];
+    float boundsMin[4], boundsMax[4];
+    std::uint32_t width, height, mode, seed;
+};
+static_assert(sizeof(RayParams) == 112);
+
+/// A ground plane with side x side instanced spheres of random size, built and ready to trace
+/// (instance i has InstanceID i; the ground is instance 0), plus a camera looking across it.
+struct SphereField {
+    GpuMesh sphereMesh, groundMesh;
+    std::unique_ptr<rhi::AccelerationStructure> sphereBlas, groundBlas, tlas;
+    std::uint32_t instances = 0;
+    std::uint32_t trianglesPerSphere = 0;
+    RayParams params{};
+};
+/// Records the builds with `submit` (e.g. TestContext::timeGpu).
+SphereField buildSphereField(rhi::Device& dev, int side, int subdivisions, std::uint64_t seed, std::uint32_t width,
+                             std::uint32_t height,
+                             const std::function<void(const std::function<void(rhi::CommandList&)>&)>& submit);
 
 } // namespace gt::bench::rt

@@ -148,6 +148,8 @@ struct DeviceFeatures {
     bool storage16Bit = false;
     bool storage8Bit = false;
     bool integerDotProduct = false;
+    bool cooperativeMatrix = false; ///< VK_KHR_cooperative_matrix (see Device::cooperativeMatrixConfigs)
+    bool cooperativeVector = false; ///< VK_NV_cooperative_vector (reported only)
     bool subgroupOps = false;
     bool atomicInt64 = false;
     bool bufferDeviceAddress = false;
@@ -156,6 +158,8 @@ struct DeviceFeatures {
     bool descriptorBuffer = false;         ///< VK_EXT_descriptor_buffer (reported only)
     bool rayQuery = false;
     bool rayTracingPipeline = false;
+    bool shaderExecutionReordering = false; ///< VK_EXT_ray_tracing_invocation_reorder (HitObject / ReorderThread)
+    bool shaderExecutionReorderingNv = false; ///< only the NVIDIA-specific SER extension is available
     bool meshShader = false;
     bool taskShader = false; ///< mesh pipelines may have a task (amplification) stage
     bool variableRateShading = false;

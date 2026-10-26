@@ -73,3 +73,14 @@ features/drawcalls.slang       vsPush         vertex          vk,d3d12,d3d11,gl
 features/drawcalls.slang       vsUniform      vertex          vk,d3d12,d3d11,gl
 features/drawcalls.slang       vsIndirect     vertex          vk,d3d12,d3d11,gl
 features/drawcalls.slang       psDraw         fragment        vk,d3d12,d3d11,gl
+features/ser.slang             rgShade        raygeneration   vk,d3d12   vk=spirv_1_4 d3d12=lib_6_3
+features/ser.slang             rgShadeSer     raygeneration   vk         vk=spirv_1_4
+features/ser.slang             msShade        miss            vk,d3d12   vk=spirv_1_4 d3d12=lib_6_3
+features/ser.slang             chShade        closesthit      vk,d3d12   vk=spirv_1_4 d3d12=lib_6_3
+features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=f16_16x16x16 defines=AB_TYPE=half,C_TYPE=float,TILE_M=16,TILE_N=16,TILE_K=16
+features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=f16_8x16x16 defines=AB_TYPE=half,C_TYPE=float,TILE_M=8,TILE_N=16,TILE_K=16
+features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=bf16_16x16x16 defines=AB_TYPE=BFloat16,C_TYPE=float,TILE_M=16,TILE_N=16,TILE_K=16
+features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=s8_16x16x16 defines=AB_TYPE=int8_t,C_TYPE=int,TILE_M=16,TILE_N=16,TILE_K=16
+features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=s8_16x16x32 defines=AB_TYPE=int8_t,C_TYPE=int,TILE_M=16,TILE_N=16,TILE_K=32
+features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=e4m3_16x16x16 defines=AB_TYPE=FloatE4M3,C_TYPE=float,TILE_M=16,TILE_N=16,TILE_K=16
+features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=e4m3_16x16x32 defines=AB_TYPE=FloatE4M3,C_TYPE=float,TILE_M=16,TILE_N=16,TILE_K=32

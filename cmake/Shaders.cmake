@@ -7,7 +7,7 @@
 #   <file.slang> <entry> <stage> <apis> [key=value ...]
 # apis: comma list of vk,d3d12,d3d11,gl
 # keys: vk=<slang spirv profile, default spirv_1_3>  d3d12=<sm_6_0>  d3d11=<sm_5_0>
-#       glsl=<330|430>  defines=<A=1;B>  name=<variant suffix>
+#       glsl=<330|430>  defines=<A=1,B>  name=<variant suffix>
 # Blob keys at runtime: "<file-without-.slang>:<entry>[@<name>]:<format>".
 
 find_program(GT_SLANGC slangc HINTS "$ENV{SLANG_DIR}/bin" /opt/slang/current/bin REQUIRED)
@@ -61,7 +61,6 @@ function(gt_compile_shaders)
         elseif(_k STREQUAL "glsl")
           set(_glsl "${_v}")
         elseif(_k STREQUAL "defines")
-          string(REPLACE ";" "\;" _v "${_v}")
           set(_defines "${_v}")
         elseif(_k STREQUAL "name")
           set(_variant "@${_v}")
@@ -79,13 +78,13 @@ function(gt_compile_shaders)
     set(_src "${ARG_SOURCE_DIR}/${_file}")
     set(_defargs)
     if(_defines)
-      string(REPLACE "\;" ";" _deflist "${_defines}")
+      string(REPLACE "," ";" _deflist "${_defines}")
       foreach(_d IN LISTS _deflist)
         list(APPEND _defargs "-D${_d}")
       endforeach()
     endif()
     set(_common -I "${ARG_SOURCE_DIR}" -entry ${_entry} -stage ${_stage} -matrix-layout-column-major
-                ${_defargs} -warnings-disable 39001)
+                ${_defargs} -warnings-disable 39001,41012)
 
     # SPIR-V: always for vk and gl (GL goes through SPIR-V -> SPIRV-Cross).
     if("vk" IN_LIST _apis OR "gl" IN_LIST _apis)

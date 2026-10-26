@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <map>
+#include <random>
 #include <utility>
 
 namespace gt::bench::rt {
@@ -90,6 +91,76 @@ void scaleTranslate(float (&m)[3][4], float scale, float x, float y, float z) {
     m[0][0] = scale, m[0][1] = 0, m[0][2] = 0, m[0][3] = x;
     m[1][0] = 0, m[1][1] = scale, m[1][2] = 0, m[1][3] = y;
     m[2][0] = 0, m[2][1] = 0, m[2][2] = scale, m[2][3] = z;
+}
+
+SphereField buildSphereField(rhi::Device& dev, int side, int subdivisions, std::uint64_t seed, std::uint32_t width,
+                             std::uint32_t height,
+                             const std::function<void(const std::function<void(rhi::CommandList&)>&)>& submit) {
+    const float spacing = 2.5f, half = spacing * float(side) / 2.0f;
+    SphereField f;
+    const Mesh sphere = icosphere(subdivisions);
+    f.trianglesPerSphere = sphere.triangleCount();
+    f.sphereMesh = upload(dev, sphere, "field-sphere");
+    f.groundMesh = upload(dev, grid(64, half * 2.0f + 20.0f), "field-ground");
+    rhi::BlasDesc sphereDesc, groundDesc;
+    sphereDesc.geometries = {f.sphereMesh.triangles()};
+    sphereDesc.name = "field-sphere-blas";
+    groundDesc.geometries = {f.groundMesh.triangles()};
+    groundDesc.name = "field-ground-blas";
+    f.sphereBlas = dev.createBlas(sphereDesc);
+    f.groundBlas = dev.createBlas(groundDesc);
+
+    std::vector<rhi::AccelInstance> instances(1);
+    instances[0].blas = f.groundBlas.get();
+    std::mt19937 rng(static_cast<std::uint32_t>(seed));
+    std::uniform_real_distribution<float> jitter(-0.5f, 0.5f), radius(0.4f, 1.0f);
+    for (int z = 0; z < side; ++z)
+        for (int x = 0; x < side; ++x) {
+            rhi::AccelInstance in;
+            const float r = radius(rng);
+            scaleTranslate(in.transform, r, (float(x) + 0.5f) * spacing - half + jitter(rng), r,
+                           (float(z) + 0.5f) * spacing - half + jitter(rng));
+            in.id = static_cast<std::uint32_t>(instances.size());
+            in.blas = f.sphereBlas.get();
+            instances.push_back(in);
+        }
+    f.instances = static_cast<std::uint32_t>(instances.size());
+    f.tlas = dev.createTlas(f.instances);
+    submit([&](rhi::CommandList& cmd) {
+        cmd.buildBlas(f.sphereBlas.get(), sphereDesc);
+        cmd.buildBlas(f.groundBlas.get(), groundDesc);
+        cmd.accelBarrier();
+        cmd.buildTlas(f.tlas.get(), instances);
+        cmd.accelBarrier();
+    });
+
+    // Camera above the near edge of the field, looking across it.
+    auto normalize = [](float (&v)[3]) {
+        const float l = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        for (float& c : v) c /= l;
+    };
+    auto set4 = [](float (&dst)[4], const float (&src)[3], float w) {
+        dst[0] = src[0], dst[1] = src[1], dst[2] = src[2], dst[3] = w;
+    };
+    RayParams& p = f.params;
+    const float eye[3] = {0.0f, 5.0f, -half - 4.0f}, target[3] = {0.0f, 0.0f, half * 0.3f};
+    float fwd[3] = {target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]};
+    normalize(fwd);
+    float right[3] = {fwd[2], 0.0f, -fwd[0]};
+    normalize(right);
+    const float up[3] = {fwd[1] * right[2] - fwd[2] * right[1], fwd[2] * right[0] - fwd[0] * right[2],
+                         fwd[0] * right[1] - fwd[1] * right[0]};
+    set4(p.camPos, eye, std::tan(0.5f * 50.0f * 3.14159265f / 180.0f));
+    set4(p.camFwd, fwd, float(width) / float(height));
+    set4(p.camRight, right, 0.0f);
+    set4(p.camUp, up, 0.0f);
+    const float bmin[3] = {-half, 0.05f, -half}, bmax[3] = {half, 3.0f, half};
+    set4(p.boundsMin, bmin, 0.0f);
+    set4(p.boundsMax, bmax, 0.0f);
+    p.width = width;
+    p.height = height;
+    p.seed = static_cast<std::uint32_t>(seed);
+    return f;
 }
 
 } // namespace gt::bench::rt

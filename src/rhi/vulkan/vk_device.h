@@ -437,6 +437,7 @@ public:
     /// Set layout of TextureTable descriptor sets (set 1), created on first use.
     VkDescriptorSetLayout textureTableLayout();
     std::unique_ptr<TextureTable> createTextureTable(std::uint32_t capacity) override;
+    std::vector<CooperativeMatrixConfig> cooperativeMatrixConfigs() override;
     /// Shader stages that may appear in descriptor-set layouts on this device.
     VkShaderStageFlags supportedShaderStages() const;
     bool debugUtils() const { return m_debugUtils; }

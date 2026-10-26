@@ -582,6 +582,14 @@ struct SubmitInfo {
     Swapchain* present = nullptr; ///< wait for its acquire and present it after this submission
 };
 
+/// One matrix multiply-accumulate shape the GPU runs on its matrix units (cooperative
+/// matrices / wave matrix ops): Result(MxN) = A(MxK) * B(KxN) + C(MxN), per subgroup.
+struct CooperativeMatrixConfig {
+    std::uint32_t m = 0, n = 0, k = 0;
+    std::string a, b, c, result; ///< "f16", "bf16", "f32", "f64", "e4m3", "e5m2", "s8", "u8", "s32", "u32", ...
+    bool saturating = false;
+};
+
 // --- device ----------------------------------------------------------------------------------------
 struct DeviceCreateInfo {
     Api api = Api::Vulkan;
@@ -623,6 +631,8 @@ public:
     virtual std::unique_ptr<AccelerationStructure> createBlas(const BlasDesc&) {
         throw Error("ray tracing is not supported by this backend");
     }
+    /// Shapes usable with subgroup-scope cooperative matrices (empty = none).
+    virtual std::vector<CooperativeMatrixConfig> cooperativeMatrixConfigs() { return {}; }
     virtual std::unique_ptr<TextureTable> createTextureTable(std::uint32_t /*capacity*/) {
         throw Error("texture tables are not supported by this backend");
     }
