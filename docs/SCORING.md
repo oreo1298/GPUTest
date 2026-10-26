@@ -59,6 +59,13 @@ The intent is that a mid-range 2024 GPU scores roughly 1000 per test at 1080p/hi
 | synth.fill.pixel | RGBA8 Gpixel/s | 250 | provisional |
 | synth.fill.texel | RGBA8 bilinear Gtexel/s | 800 | provisional |
 | synth.geometry | Gtris/s (small triangles) | 8 | provisional |
+| feature.rt.bvh | BLAS build Mtri/s (fast trace) | 1000 | provisional |
+| feature.rt.rays | incoherent Grays/s (best of ray query / pipeline) | 5 | provisional |
+| feature.mesh | Gtri/s (best mesh-shader path) | 20 | provisional |
+| feature.subgroups | G values/s (subgroup reduction) | 2000 | provisional |
+| feature.bindless | Gtexel/s (per-thread table index) | 400 | provisional |
+| feature.coopmat | FP16 TFLOPS (FP32 accumulate) | 150 | provisional |
 
 Unscored (reported only): `synth.mem.latency` (latency curve and cache levels), `synth.msaa` (relative cost),
-all diagnostics (PASS/WARN/FAIL verdicts).
+all diagnostics (PASS/WARN/FAIL verdicts), and the ratio / CPU-bound feature tests: `feature.rt.ser`,
+`feature.rt.omm`, `feature.vrs`, `feature.async`, `feature.pipelines`, `feature.drawcalls`.

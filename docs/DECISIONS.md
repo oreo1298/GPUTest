@@ -108,6 +108,42 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **ALU kernels use 8 independent chains with runtime constants** so no compiler can fold or shorten them; the
   int8 kernel feeds each dot product's result back as its packed input for the same reason.
 
+- **Ray tracing in the RHI**: each acceleration structure owns its storage and its build scratch (no shared
+  scratch pool to synchronise); TLAS instance records go through per-list upload memory into a device-local
+  instance buffer; ray-tracing pipelines own a shader binding table laid out raygen | misses | hit groups. Builds
+  mark the list dirty and the next draw/dispatch/trace gets an acceleration-structure barrier automatically
+  (`accelBarrier()` exists for build-after-build). Vulkan only until D3D12 (M10) implements the same interface.
+- **Feature tests check their own results** — BVH probe rays against a CPU reference (before and after a refit),
+  ray queries vs pipeline per ray, mesh vs vertex pipeline images, VRS coarse-shading probe, subgroup ops against a
+  CPU model of the reported lane layout, every bindless table entry, SER and opacity micromaps vs their plain
+  versions bit for bit, cooperative matrices against exact CPU products. A feature that is fast but wrong FAILs.
+  `feature.rt.bvh.inject` proves the probe check in CI.
+- **Hardware-only features keep a runnable baseline**: SER and opacity micromaps are not in lavapipe, so their
+  tests take `baseline_only=1` in CI to run everything except the feature itself; VRS and cooperative matrices are
+  gated and skip with the exact missing extension.
+- **SER uses VK_EXT_ray_tracing_invocation_reorder only** (what Slang emits by default); GPUs with only the NV
+  extension skip with "update the driver". HLSL SER needs SM 6.9 — added with the D3D12 backend if its DXC has it.
+- **Opacity micromaps at subdivision level 0** (one 4-state value per triangle, one byte per micromap triangle):
+  avoids the bird-curve micro-triangle ordering, which cannot be verified without hardware, while still moving the
+  alpha test of fully inside/outside triangles into traversal. VK_EXT_opacity_micromap now; the new
+  VK_KHR_opacity_micromap (micromaps as acceleration structures) when drivers ship it.
+- **Texture tables (bindless)** are descriptor set 1 / `space1`: one partially bound, variable-count sampled-image
+  array (update-after-bind when supported), capped at 65 536 and below the per-stage limits; ordinary bindings stay
+  push descriptors in set 0. Descriptor buffers are reported, not used.
+- **Pipeline-compilation test salts SPIR-V**: a 32-bit constant in the fragment shader is patched with a random
+  value per pipeline and per run, so neither the driver's memory cache nor its disk cache has seen the pipeline
+  (cold), then the same pipelines are created again (warm). Parallel compilation uses up to 8 threads; the render-
+  pass cache is mutex-protected for it.
+- **Ratios are shown, not scored** (VRS speed-up, async/copy overlap gain, SER/OMM speed-up, draw-call and
+  pipeline-compile costs, which mostly measure the CPU and driver); absolute rates with a clear hardware meaning
+  (BVH Mtri/s, Grays/s, mesh Gtri/s, subgroup and bindless rates, matrix TFLOPS) get provisional references.
+- **Not in M8, recorded**: Vulkan work graphs (only the provisional VK_AMDX_shader_enqueue exists and Slang has no
+  SPIR-V node shaders) — D3D12 work graphs come with M10; cooperative vectors (NVIDIA-only on Vulkan) move to M10
+  with Shader Model 6.9's cross-vendor version; image-based VRS (Vulkan attachment rate / D3D12 tier 2) moves to M10.
+- **Shader manifest defines are comma-separated** (`defines=A=1,B=2`): CMake turned `;` into list separators.
+- **No local DXC/fxc**: Windows compiler binaries can be downloaded but this environment does not allow running
+  them, so D3D shader compilation is verified only by Windows CI (which builds with `-k 0` to report every error).
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.

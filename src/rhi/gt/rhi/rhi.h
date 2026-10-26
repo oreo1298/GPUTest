@@ -53,6 +53,7 @@ enum class BufferUsage : std::uint32_t {
     AccelInput = 1u << 7,   ///< vertex / index data read by acceleration-structure builds
     AccelStorage = 1u << 8, ///< backing memory of an acceleration structure (backend internal)
     ShaderTable = 1u << 9,  ///< ray-tracing shader binding table (backend internal)
+    Micromap = 1u << 10,    ///< opacity-micromap build input and storage (backend internal)
 };
 template <>
 struct EnableFlags<BufferUsage> : std::true_type {};
@@ -302,6 +303,11 @@ protected:
 };
 
 // --- ray tracing ---------------------------------------------------------------------------
+/// Opacity of one triangle for opacity micromaps: Opaque and Transparent triangles are
+/// resolved by the traversal hardware; Unknown ones still reach any-hit shaders / ray-query
+/// candidate processing.
+enum class TriangleOpacity : std::uint8_t { Transparent = 0, Opaque = 1, Unknown = 2 };
+
 /// Triangle geometry for a bottom-level acceleration structure. Positions are RGB32_FLOAT;
 /// indices (optional) are 32-bit. Buffers need BufferUsage::AccelInput.
 struct AccelTriangles {
@@ -313,6 +319,9 @@ struct AccelTriangles {
     std::uint64_t indexOffset = 0;
     std::uint32_t indexCount = 0; ///< 0 = non-indexed (vertexCount / 3 triangles)
     bool opaque = true;
+    /// Optional per-triangle opacity (Device::features().opacityMicromap; geometry must not be
+    /// opaque). Read when the BLAS is created; one opacity micromap is built per geometry.
+    std::span<const TriangleOpacity> opacity{};
 };
 
 struct BlasDesc {

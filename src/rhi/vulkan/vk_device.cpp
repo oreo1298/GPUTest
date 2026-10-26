@@ -553,6 +553,8 @@ void VulkanDevice::fillFeatures() {
     d.drawIndirectCount = v12 ? f.v12.drawIndirectCount : extensionEnabled(VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME);
     d.rayQuery = f.rayQuery.rayQuery;
     d.rayTracingPipeline = f.rtPipeline.rayTracingPipeline;
+    d.opacityMicromap = (d.rayQuery || d.rayTracingPipeline) && extensionEnabled(VK_EXT_OPACITY_MICROMAP_EXTENSION_NAME) &&
+                        f.omm.micromap && (v13 ? f.v13.synchronization2 : f.sync2.synchronization2);
     d.shaderExecutionReordering = d.rayTracingPipeline &&
                                   extensionEnabled(VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME) &&
                                   f.serExt.rayTracingInvocationReorder;

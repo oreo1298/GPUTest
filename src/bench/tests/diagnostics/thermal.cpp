@@ -104,7 +104,9 @@ public:
                                            "delivery or cooling fault)",
                                            pct("hw_slowdown")));
         }
-        if (a.perfDropPct > 10.0) {
+        // A CPU rasterizer shares the CPU with everything else on the machine: its frame rate drifts for reasons
+        // that have nothing to do with heat, so the drop is reported but not judged there.
+        if (a.perfDropPct > 10.0 && !ctx.device().adapter().isSoftware()) {
             worse(results::Verdict::Warn);
             findings.push_back(std::format("performance fell {:.0f} % once hot", a.perfDropPct));
         }

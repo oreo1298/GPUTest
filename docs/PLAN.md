@@ -50,11 +50,14 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 - [x] Geometry + tessellation throughput, MSAA cost, atomics throughput
 
 ## 8. Vulkan feature tests
-- [ ] RT: BVH build/refit, pipeline vs ray query, coherent vs incoherent, SER, OMM
-- [ ] Mesh/task vs traditional; VRS; work graphs (VK_AMDX_shader_enqueue)
-- [ ] Cooperative matrix / vectors, FP16/BF16/FP8/INT8 throughput
-- [ ] Bindless / descriptor indexing / descriptor buffer, async compute, multi-queue, copy queue, 64-bit atomics, subgroup ops
-- [ ] Pipeline compile time / cache effectiveness (stutter), draw-call overhead
+- [x] RT: BVH build/refit (`feature.rt.bvh`), pipeline vs ray query + coherent vs incoherent (`feature.rt.rays`),
+      SER (`feature.rt.ser`), OMM (`feature.rt.omm`, level-0 micromaps)
+- [x] Mesh/task vs traditional (`feature.mesh`); per-draw VRS (`feature.vrs`)
+- [x] Cooperative matrix FP16/BF16/FP8/INT8 (`feature.coopmat`); FP16/INT8 ALU rates are in M7
+- [x] Bindless / descriptor indexing (`feature.bindless`, descriptor buffer reported), async compute + copy queue
+      overlap (`feature.async`), 64-bit atomics (M7 `synth.mem.atomics`), subgroup ops (`feature.subgroups`)
+- [x] Pipeline compile time / cache effectiveness (`feature.pipelines`), draw-call overhead (`feature.drawcalls`)
+- Moved to M10 (see DECISIONS): work graphs (no ratified Vulkan version), cooperative vectors, image-based VRS
 
 ## 9. Scene benchmarks
 - [ ] Legacy tier (forward/deferred, shadows, tessellation)
@@ -64,7 +67,8 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 
 ## 10. D3D12
 - [ ] Backend, scenes, synthetic tests on D3D12
-- [ ] DXR 1.1/1.2 (SER, OMM), mesh shaders, VRS, sampler feedback, work graphs, cooperative vectors
+- [ ] DXR 1.1/1.2 (SER, OMM), mesh shaders, VRS tiers 1+2 (also Vulkan attachment rate), sampler feedback, work
+      graphs, cooperative vectors (SM 6.9; also VK_NV_cooperative_vector)
 - [ ] WARP smoke tests in CI, debug layer clean
 
 ## 11. Legacy backends

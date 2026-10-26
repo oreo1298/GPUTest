@@ -57,6 +57,9 @@ via `VK_EXT_device_fault` where available, and the last sensor sample), keeps th
 - Diagnostics fault injection (each must then report FAIL): `--param diag.vram.inject=1` (corrupts 4 words),
   `--param diag.artifacts.inject=1` (one reference frame rendered differently), `--param diag.compute.inject=1`
   (one wrong value). `--param diag.pcie.force=1` runs the PCIe check on software renderers.
+- `--param feature.rt.bvh.inject=1` moves the BVH test's geometry without refitting; its probe rays must FAIL.
+- `--param feature.rt.ser.baseline_only=1` / `feature.rt.omm.baseline_only=1` run the plain halves of the SER and
+  opacity-micromap tests on GPUs without those features (CI on lavapipe).
 
 ## Diagnostic parameters
 | Parameter | Meaning |
@@ -86,4 +89,4 @@ Every line is an object with a `type`:
 | 4 | Safety cutoff |
 | 5 | Device lost (driver reset / TDR), also when the run recovered and continued |
 | 6 | Validation errors with `--fail-on-validation` |
-| 7 | A diagnostic test reported FAIL |
+| 7 | A test reported FAIL (a diagnostic, or a feature test's correctness check) |

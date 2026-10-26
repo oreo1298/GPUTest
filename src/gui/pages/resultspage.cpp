@@ -102,10 +102,11 @@ ResultsPage::ResultsPage(AppState* state, QWidget* parent)
     sl->setSpacing(10);
     m_content->addWidget(m_scoreBox);
 
-    // Diagnosis: one row per test that delivered a PASS / WARN / FAIL verdict.
+    // Diagnosis / checks: one row per test that delivered a PASS / WARN / FAIL verdict.
     m_verdictCard = new Card;
     auto* vl = static_cast<QVBoxLayout*>(m_verdictCard->layout());
-    vl->addWidget(makeSubtitle(tr("Diagnosis")));
+    m_verdictTitle = makeSubtitle(tr("Diagnosis"));
+    vl->addWidget(m_verdictTitle);
     m_verdictGrid = new QGridLayout;
     m_verdictGrid->setHorizontalSpacing(12);
     m_verdictGrid->setVerticalSpacing(8);
@@ -274,8 +275,14 @@ void ResultsPage::showRun(const results::RunResult& run, const QString& file) {
                                                             : QString());
         box->addWidget(overall);
     }
+    // "Diagnosis" when diagnostics ran; otherwise the verdicts are the correctness checks of feature tests.
+    const bool diagnostics = std::any_of(run.tests.begin(), run.tests.end(), [](const results::TestResult& t) {
+        return t.category == "diagnostic" && t.verdict != results::Verdict::None;
+    });
+    const QString verdictTitle = diagnostics ? tr("Diagnosis") : tr("Checks");
+    m_verdictTitle->setText(verdictTitle);
     if (passed + warned + failed > 0) {
-        auto* diag = new StatTile(tr("Diagnosis"));
+        auto* diag = new StatTile(verdictTitle);
         diag->setValue(failed ? tr("FAIL") : warned ? tr("WARN") : tr("PASS"),
                        tr("%1 failed · %2 · %3 passed").arg(failed).arg(warned == 1 ? tr("1 warning") : tr("%1 warnings").arg(warned)).arg(passed));
         diag->setStatus(static_cast<int>(failed ? ThemeManager::Status::Critical
@@ -343,7 +350,7 @@ void ResultsPage::showRun(const results::RunResult& run, const QString& file) {
         if (!t.message.empty()) st += QStringLiteral(": ") + QString::fromStdString(t.message);
         set(1, st);
         m_table->item(i, 1)->setToolTip(st);
-        const results::Metric* headline = t.metric(t.primaryMetric);
+        const results::Metric* headline = t.headline();
         set(2, headline ? QStringLiteral("%1 %2").arg(formatMetricValue(headline->value), QString::fromStdString(headline->unit))
                         : QStringLiteral("—"));
         set(3, t.scored ? QString::number(t.score, 'f', 0) : QStringLiteral("—"));
@@ -406,13 +413,20 @@ void ResultsPage::showTest(int row) {
     if (t.frames > 0) misc << tr("%1 frames in %2 s").arg(t.frames).arg(t.durationS, 0, 'f', 1);
     else misc << tr("took %1").arg(formatDurationText(t.durationS));
     lines << misc.join(QStringLiteral(" · "));
-    QStringList metrics;
-    for (const auto& m : t.metrics)
-        metrics << QStringLiteral("%1: %2 %3")
-                       .arg(QString::fromStdString(m.label))
-                       .arg(m.value, 0, 'g', 5)
-                       .arg(QString::fromStdString(m.unit));
-    if (!metrics.isEmpty()) lines << metrics.join(QStringLiteral(" · ")).toHtmlEscaped();
+    // Metrics as a two-pair-per-row table: feature tests report up to a dozen.
+    if (!t.metrics.empty()) {
+        QString table = QStringLiteral("<table cellspacing=\"0\" cellpadding=\"2\">");
+        for (std::size_t i = 0; i < t.metrics.size(); ++i) {
+            const auto& m = t.metrics[i];
+            if (i % 2 == 0) table += QStringLiteral("<tr>");
+            table += QStringLiteral("<td>%1</td><td align=\"right\" style=\"padding-left:12px\"><b>%2</b> %3</td>")
+                         .arg(QString::fromStdString(m.label).toHtmlEscaped(), formatMetricValue(m.value),
+                              QString::fromStdString(m.unit).toHtmlEscaped());
+            table += i % 2 == 0 ? QStringLiteral("<td style=\"padding-left:32px\"></td>") : QStringLiteral("</tr>");
+        }
+        if (t.metrics.size() % 2) table += QStringLiteral("</tr>");
+        lines << table + QStringLiteral("</table>");
+    }
     if (t.timeLimited) lines << tr("⚠ Hit the time limit — partial result.");
     if (!t.message.empty()) lines << QString::fromStdString(t.message).toHtmlEscaped();
     m_testDetails->setText(lines.join(QStringLiteral("<br>")));

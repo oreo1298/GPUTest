@@ -338,11 +338,10 @@ std::string toHtml(const results::RunResult& run) {
          "<th>p99 ms</th><th>Result</th></tr>";
     for (const auto& t : run.tests) {
         std::string result;
-        if (t.verdict != results::Verdict::None) result = verdictPill(t.verdict) + " " + htmlEscape(t.verdictMessage);
-        else if (!t.frameStats) {
-            if (const auto* m = t.metric(t.primaryMetric.empty() && !t.metrics.empty() ? t.metrics.front().name : t.primaryMetric))
-                result = htmlEscape(std::format("{}: {:.4g} {}", m->label, m->value, m->unit));
-        }
+        if (!t.frameStats)
+            if (const auto* m = t.headline()) result = htmlEscape(std::format("{}: {:.4g} {}", m->label, m->value, m->unit));
+        if (t.verdict != results::Verdict::None)
+            result += (result.empty() ? "" : "<br>") + verdictPill(t.verdict) + " " + htmlEscape(t.verdictMessage);
         const auto* f = t.frameStats ? &*t.frameStats : nullptr;
         o << "<tr><td>" << htmlEscape(t.name) << (run.loops.size() > 1 ? std::format(" <span class=\"sub\">(loop {})</span>", t.loop + 1) : "")
           << "</td><td>" << htmlEscape(results::toString(t.status)) << (t.message.empty() ? "" : "<br><span class=\"sub\">" + htmlEscape(t.message) + "</span>")

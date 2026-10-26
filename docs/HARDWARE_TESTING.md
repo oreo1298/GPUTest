@@ -21,6 +21,23 @@ and screenshots into one archive — commit it under `hardware-reports/` or atta
 
 ## Pending checks
 
+### M8 — feature tests
+Run `kiln-run --suite raytracing` and `kiln-run --test feature.mesh,feature.vrs,feature.async,feature.subgroups,feature.bindless,feature.pipelines,feature.drawcalls,feature.coopmat`
+on the RTX 4090 and on the Radeon iGPU, with `--validation` once and without it once, and send both results files.
+These features are not in the CI rasterizer, so this is their first real run:
+1. **Every feature test should PASS** — each one checks its own results (probe rays, identical hits/images,
+   exact matrix products). A FAIL is either a driver bug or mine; the details say which values differed.
+2. **SER** (`feature.rt.ser`, 4090): speed-up > 1 and "not a single shaded value" changed. If it is skipped with
+   "only NVIDIA's own SER extension", tell me the driver version.
+3. **Opacity micromaps** (`feature.rt.omm`, 4090): identical hits; alpha tests per ray should drop a lot.
+4. **Cooperative matrices** (4090): FP16 ≈ 165, FP8 ≈ 330 TFLOPS dense, INT8 ≈ 660 TOPS; the details list every
+   shape the driver offers — send that list (it decides which shapes I compile next).
+5. **VRS**: speed-up at 2x2 ≈ 2–3.5x and "Coarse shading verified". A WARN means the driver ignored the rate.
+6. **Mesh shaders**: images match; note the task-shader culled share and the speed-ups vs the vertex pipeline.
+7. **Async / copy overlap**: gains between 1.0 and ~1.8 are plausible; below 1.0 is interesting — tell me.
+8. **Pipelines / draw calls**: compare with your feel of shader-compile stutter in games; draw-call numbers are
+   CPU-bound (your 9950X3D) and mostly useful to compare APIs later.
+
 ### M7 — synthetic tests
 Run `kiln-run --suite compute` and `kiln-run --test synth.fill.pixel,synth.fill.texel,synth.geometry,synth.msaa` on
 the RTX 4090 (and the iGPU if you like) and send the results. Sanity ranges for a 4090: FP32 ≈ 60–82 TFLOPS,

@@ -407,7 +407,7 @@ void ComparePage::rebuild() {
         // Headline metric: FPS for scenes, the test's primary metric (TFLOPS, GB/s, ...) otherwise.
         auto headline = [](const results::TestResult* t) -> const results::Metric* {
             if (!t) return nullptr;
-            if (const auto* m = t->metric(t->primaryMetric)) return m;
+            if (const auto* m = t->headline()) return m;
             return t->metric("avg_fps");
         };
         const results::Metric* ha = headline(row.a);

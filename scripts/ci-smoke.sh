@@ -80,10 +80,18 @@ expect_exit 0 "$runner" --suite smoke --duration smoke --loop 4s "${common[@]}" 
 check_json "$out/timed.json" 'r["status"] == "completed" and len(r["loops"]) >= 2 and r["duration_s"] >= 4'
 end
 
-step "standard suite at smoke size (every synthetic test + scenes) with validation"
-"$runner" --suite standard --duration smoke --quality low --validation --fail-on-validation "${common[@]}" --out "$out/standard.json"
+step "standard suite at smoke size (scenes, synthetic and feature tests) with validation"
+# SER and opacity micromaps are not in lavapipe: their baseline halves still run.
+"$runner" --suite standard --duration smoke --quality low --validation --fail-on-validation \
+    --param feature.rt.ser.baseline_only=1 --param feature.rt.omm.baseline_only=1 "${common[@]}" --out "$out/standard.json"
 python3 "$root/scripts/check-results.py" "$out/standard.json" --require-completed
 check_json "$out/standard.json" 'sum(1 for t in r["tests"] if t["category"] == "synthetic") >= 10'
+check_json "$out/standard.json" 'sum(1 for t in r["tests"] if t["category"] == "feature" and t["status"] == "completed") >= 10'
+check_json "$out/standard.json" 'all(t.get("verdict") == "pass" for t in r["tests"] if t["category"] == "feature" and t["status"] == "completed")'
+# The BVH probe check must catch a structure that was not refit after the geometry moved.
+expect_exit 7 "$runner" --test feature.rt.bvh --duration smoke --param feature.rt.bvh.inject=1 "${common[@]}" \
+    --out "$out/bvh-bad.json"
+check_json "$out/bvh-bad.json" 'r["tests"][0]["verdict"] == "fail"'
 end
 
 step "diagnostics: clean run with validation, and injected faults must be detected"

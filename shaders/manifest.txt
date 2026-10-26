@@ -84,3 +84,4 @@ features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 
 features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=s8_16x16x32 defines=AB_TYPE=int8_t,C_TYPE=int,TILE_M=16,TILE_N=16,TILE_K=32
 features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=e4m3_16x16x16 defines=AB_TYPE=FloatE4M3,C_TYPE=float,TILE_M=16,TILE_N=16,TILE_K=16
 features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=e4m3_16x16x32 defines=AB_TYPE=FloatE4M3,C_TYPE=float,TILE_M=16,TILE_N=16,TILE_K=32
+features/omm.slang             csAlphaTrace   compute         vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5

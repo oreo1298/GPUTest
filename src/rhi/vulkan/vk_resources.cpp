@@ -89,6 +89,9 @@ VulkanBuffer::VulkanBuffer(VulkanDevice& dev, const BufferDesc& desc) : m_dev(de
         ci.usage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     if (any(u & BufferUsage::AccelStorage))
         ci.usage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    if (any(u & BufferUsage::Micromap))
+        ci.usage |= VK_BUFFER_USAGE_MICROMAP_BUILD_INPUT_READ_ONLY_BIT_EXT | VK_BUFFER_USAGE_MICROMAP_STORAGE_BIT_EXT |
+                    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     if (any(u & BufferUsage::ShaderTable))
         ci.usage |= VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 

@@ -219,10 +219,15 @@ void TelemetryView::setTelemetry(const results::Telemetry& tel, double t0, doubl
                             : tr("No telemetry samples in this time range (provider: %1).")
                                   .arg(QString::fromStdString(tel.provider)));
     } else {
-        QString note = tr("%1 samples from %2 every %3 s.")
-                           .arg(samples)
-                           .arg(QString::fromStdString(tel.provider))
-                           .arg(tel.intervalS, 0, 'g', 3);
+        // Without a sensor provider only the API's memory budget is sampled.
+        QString note = tel.provider.empty() || tel.provider == "none"
+                           ? tr("%1 samples every %2 s (memory use only: no sensor provider for this GPU).")
+                                 .arg(samples)
+                                 .arg(tel.intervalS, 0, 'g', 3)
+                           : tr("%1 samples from %2 every %3 s.")
+                                 .arg(samples)
+                                 .arg(QString::fromStdString(tel.provider))
+                                 .arg(tel.intervalS, 0, 'g', 3);
         const double span = last - first;
         if (throttled > 0 && span > 0) {
             QStringList parts;

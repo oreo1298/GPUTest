@@ -158,6 +158,7 @@ struct DeviceFeatures {
     bool descriptorBuffer = false;         ///< VK_EXT_descriptor_buffer (reported only)
     bool rayQuery = false;
     bool rayTracingPipeline = false;
+    bool opacityMicromap = false; ///< VK_EXT_opacity_micromap
     bool shaderExecutionReordering = false; ///< VK_EXT_ray_tracing_invocation_reorder (HitObject / ReorderThread)
     bool shaderExecutionReorderingNv = false; ///< only the NVIDIA-specific SER extension is available
     bool meshShader = false;

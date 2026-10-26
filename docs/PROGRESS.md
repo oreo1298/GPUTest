@@ -43,7 +43,14 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   `synth.mem.{bandwidth,latency,atomics}`, `synth.transfer`, `synth.fill.{pixel,texel}`, `synth.geometry`,
   `synth.msaa`), timed with `measureMicro` (calibrated repetitions per submission, median of N samples). Score
   references provisional (docs/SCORING.md). Results/Compare tables show each test's headline metric.
-- Next: Milestone 8 (Vulkan feature tests).
+- **Milestone 8 (Vulkan feature tests): done.** RHI: acceleration structures + ray-tracing pipelines, mesh/task
+  pipelines, per-draw VRS, texture tables (descriptor indexing), opacity micromaps (level 0), cooperative-matrix
+  shape queries. Tests (each verifies its own results): `feature.rt.bvh`, `feature.rt.rays`, `feature.rt.ser`,
+  `feature.rt.omm`, `feature.mesh`, `feature.vrs`, `feature.async`, `feature.subgroups`, `feature.bindless`,
+  `feature.pipelines`, `feature.drawcalls`, `feature.coopmat`. On lavapipe 10 run (SER/OMM as baselines); VRS,
+  SER, OMM and cooperative matrices need real hardware (docs/HARDWARE_TESTING.md). Work graphs, cooperative
+  vectors and image-based VRS moved to M10 (docs/DECISIONS.md).
+- Next: Milestone 9 (scene benchmarks).
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
@@ -91,3 +98,7 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   D3D shader compilation is only verified by Windows CI.
 - M7: synthetic tests; RHI `renderTargetSampleCounts(format)` (lavapipe has 4x but not 2x MSAA for RGBA8);
   software renderers get reduced problem sizes (lavapipe tessellation is ~1000x slower than rasterization).
+- fxc: loops nested in dynamic loops and register arrays indexed in dynamic loops are spelled out with macros.
+- M8: Vulkan feature tests (see Current state). DXC rejects mesh outputs passed to functions (inlined via macro);
+  manifest defines are comma-separated; CI smoke runs every lavapipe-capable feature test with validation plus the
+  BVH fault injection; the thermal soak no longer judges frame-rate drift on CPU rasterizers.

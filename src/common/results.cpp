@@ -262,6 +262,12 @@ const Metric* TestResult::metric(const std::string& n) const {
     return nullptr;
 }
 
+const Metric* TestResult::headline() const {
+    // Tests whose primary metric needs a GPU feature (e.g. SER speed-up) fall back to their first metric.
+    if (const Metric* m = metric(primaryMetric)) return m;
+    return metrics.empty() ? nullptr : &metrics.front();
+}
+
 json toJson(const TestResult& t) {
     json j;
     j["id"] = t.id;
@@ -657,7 +663,7 @@ std::string summarize(const TestResult& t) {
     if (t.frameStats)
         s += std::format(" {:.1f} fps (1% low {:.1f}, p99 {:.2f} ms)", t.frameStats->avgFps, t.frameStats->low1Fps,
                          t.frameStats->p99Ms);
-    else if (const Metric* m = t.metric(t.primaryMetric))
+    else if (const Metric* m = t.headline())
         s += std::format(" {:.4g} {}", m->value, m->unit);
     if (t.verdict != Verdict::None) s += std::format(" [{}] {}", toString(t.verdict), t.verdictMessage);
     if (t.scored) s += std::format(" — score {:.0f}", t.score);

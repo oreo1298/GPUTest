@@ -18,11 +18,14 @@ struct BlasGeometry {
     std::vector<VkAccelerationStructureGeometryKHR> geometries;
     std::vector<VkAccelerationStructureBuildRangeInfoKHR> ranges;
     std::vector<std::uint32_t> primitives;
+    std::vector<VkAccelerationStructureTrianglesOpacityMicromapEXT> micromaps; // reserved: pNext targets
 };
 
-BlasGeometry describe(const BlasDesc& desc) {
+BlasGeometry describe(const BlasDesc& desc, const std::vector<VulkanAccel::Micromap>* micromaps = nullptr) {
     BlasGeometry g;
-    for (const AccelTriangles& t : desc.geometries) {
+    g.micromaps.reserve(desc.geometries.size());
+    for (std::size_t gi = 0; gi < desc.geometries.size(); ++gi) {
+        const AccelTriangles& t = desc.geometries[gi];
         auto* vb = static_cast<VulkanBuffer*>(t.vertices);
         auto* ib = static_cast<VulkanBuffer*>(t.indices);
         if (!vb) throw Error("BLAS geometry without a vertex buffer");
@@ -42,6 +45,19 @@ BlasGeometry describe(const BlasDesc& desc) {
             tri.indexType = VK_INDEX_TYPE_NONE_KHR;
         }
         const std::uint32_t prims = (ib ? t.indexCount : t.vertexCount) / 3;
+        if (micromaps && gi < micromaps->size() && (*micromaps)[gi].handle) {
+            const VulkanAccel::Micromap& mm = (*micromaps)[gi];
+            VkAccelerationStructureTrianglesOpacityMicromapEXT o{
+                VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_OPACITY_MICROMAP_EXT};
+            o.indexType = VK_INDEX_TYPE_UINT32;
+            o.indexBuffer.deviceAddress = static_cast<VulkanBuffer*>(mm.indices.get())->address();
+            o.indexStride = 4;
+            o.usageCountsCount = 1;
+            o.pUsageCounts = &mm.usage;
+            o.micromap = mm.handle;
+            g.micromaps.push_back(o);
+            tri.pNext = &g.micromaps.back();
+        }
         g.geometries.push_back(geo);
         g.ranges.push_back({prims, 0, 0, 0});
         g.primitives.push_back(prims);
@@ -113,11 +129,68 @@ VulkanAccel::~VulkanAccel() {
     VkDevice d = m_dev.vkDevice();
     VkAccelerationStructureKHR h = m_handle;
     m_dev.deferDestroy([d, h] { vkDestroyAccelerationStructureKHR(d, h, nullptr); });
+    for (const Micromap& m : micromaps)
+        if (m.handle) m_dev.deferDestroy([d, mm = m.handle] { vkDestroyMicromapEXT(d, mm, nullptr); });
 }
+
+namespace {
+/// Creates the level-0 opacity micromap for one geometry: one micro-triangle (2-bit state)
+/// per triangle, stored one byte per triangle; the BLAS references micromap triangle i from
+/// triangle i through a 32-bit index buffer.
+VulkanAccel::Micromap createMicromap(VulkanDevice& dev, std::span<const TriangleOpacity> opacity, const char* name) {
+    const auto n = static_cast<std::uint32_t>(opacity.size());
+    std::vector<std::uint8_t> data(std::max<std::size_t>(n, 4));
+    std::vector<VkMicromapTriangleEXT> tris(n);
+    std::vector<std::uint32_t> indices(n);
+    for (std::uint32_t i = 0; i < n; ++i) {
+        data[i] = static_cast<std::uint8_t>(opacity[i]); // 0 transparent, 1 opaque, 2 unknown-transparent
+        tris[i] = {i, 0, static_cast<std::uint16_t>(VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT)};
+        indices[i] = i;
+    }
+    VulkanAccel::Micromap m;
+    using U = BufferUsage;
+    m.data = dev.createBuffer({data.size(), U::Micromap | U::CopyDst, MemoryType::Device, 0, "omm-data"}, data.data());
+    m.triangles = dev.createBuffer({tris.size() * sizeof(VkMicromapTriangleEXT), U::Micromap | U::CopyDst, MemoryType::Device, 0,
+                                    "omm-triangles"},
+                                   tris.data());
+    m.indices = dev.createBuffer({indices.size() * 4, U::AccelInput | U::CopyDst, MemoryType::Device, 0, "omm-indices"},
+                                 indices.data());
+    m.usage = {n, 0, VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT};
+    VkMicromapBuildInfoEXT bi{VK_STRUCTURE_TYPE_MICROMAP_BUILD_INFO_EXT};
+    bi.type = VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT;
+    bi.flags = VK_BUILD_MICROMAP_PREFER_FAST_TRACE_BIT_EXT;
+    bi.mode = VK_BUILD_MICROMAP_MODE_BUILD_EXT;
+    bi.usageCountsCount = 1;
+    bi.pUsageCounts = &m.usage;
+    VkMicromapBuildSizesInfoEXT sizes{VK_STRUCTURE_TYPE_MICROMAP_BUILD_SIZES_INFO_EXT};
+    vkGetMicromapBuildSizesEXT(dev.vkDevice(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &bi, &sizes);
+    m.storage = std::make_unique<VulkanBuffer>(
+        dev, BufferDesc{std::max<VkDeviceSize>(sizes.micromapSize, 256), U::Micromap, MemoryType::Device, 0, name});
+    m.scratch = std::make_unique<VulkanBuffer>(
+        dev, BufferDesc{std::max<VkDeviceSize>(sizes.buildScratchSize, 256) + 256, U::Storage | U::AccelStorage,
+                        MemoryType::Device, 0, "omm-scratch"});
+    VkMicromapCreateInfoEXT ci{VK_STRUCTURE_TYPE_MICROMAP_CREATE_INFO_EXT};
+    ci.buffer = m.storage->handle();
+    ci.size = sizes.micromapSize;
+    ci.type = VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT;
+    check(vkCreateMicromapEXT(dev.vkDevice(), &ci, nullptr, &m.handle), "vkCreateMicromapEXT");
+    return m;
+}
+} // namespace
 
 std::unique_ptr<AccelerationStructure> VulkanDevice::createBlas(const BlasDesc& desc) {
     if (!m_features.rayQuery && !m_features.rayTracingPipeline) throw Error("ray tracing is not supported by this GPU");
-    BlasGeometry g = describe(desc);
+    std::vector<VulkanAccel::Micromap> micromaps(desc.geometries.size());
+    for (std::size_t i = 0; i < desc.geometries.size(); ++i) {
+        const AccelTriangles& t = desc.geometries[i];
+        if (t.opacity.empty()) continue;
+        if (!m_features.opacityMicromap) throw Error("opacity micromaps are not supported by this GPU");
+        if (t.opaque) throw Error("opacity micromaps need non-opaque geometry");
+        if (t.opacity.size() != (t.indices ? t.indexCount : t.vertexCount) / 3)
+            throw Error("opacity micromap: one state per triangle is required");
+        micromaps[i] = createMicromap(*this, t.opacity, desc.name);
+    }
+    BlasGeometry g = describe(desc, &micromaps);
     VkAccelerationStructureBuildGeometryInfoKHR bi{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR};
     bi.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
     bi.flags = blasFlags(desc);
@@ -127,7 +200,9 @@ std::unique_ptr<AccelerationStructure> VulkanDevice::createBlas(const BlasDesc& 
     VkAccelerationStructureBuildSizesInfoKHR sizes{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
     vkGetAccelerationStructureBuildSizesKHR(m_device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &bi,
                                             g.primitives.data(), &sizes);
-    return std::make_unique<VulkanAccel>(*this, false, sizes, 0, desc.name);
+    auto blas = std::make_unique<VulkanAccel>(*this, false, sizes, 0, desc.name);
+    blas->micromaps = std::move(micromaps);
+    return blas;
 }
 
 std::unique_ptr<AccelerationStructure> VulkanDevice::createTlas(std::uint32_t maxInstances, bool allowUpdate) {
@@ -249,7 +324,35 @@ void VulkanCommandList::buildBlas(AccelerationStructure* blas, const BlasDesc& d
                        VK_ACCESS_SHADER_READ_BIT;
     vkCmdPipelineBarrier(m_cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
                          0, 1, &mb, 0, nullptr, 0, nullptr);
-    BlasGeometry g = describe(desc);
+    bool builtMicromap = false;
+    for (VulkanAccel::Micromap& m : as->micromaps) {
+        if (!m.handle || m.built) continue;
+        VkMicromapBuildInfoEXT mi{VK_STRUCTURE_TYPE_MICROMAP_BUILD_INFO_EXT};
+        mi.type = VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT;
+        mi.flags = VK_BUILD_MICROMAP_PREFER_FAST_TRACE_BIT_EXT;
+        mi.mode = VK_BUILD_MICROMAP_MODE_BUILD_EXT;
+        mi.dstMicromap = m.handle;
+        mi.usageCountsCount = 1;
+        mi.pUsageCounts = &m.usage;
+        mi.data.deviceAddress = static_cast<VulkanBuffer*>(m.data.get())->address();
+        mi.scratchData.deviceAddress = alignUp(m.scratch->address(), 256);
+        mi.triangleArray.deviceAddress = static_cast<VulkanBuffer*>(m.triangles.get())->address();
+        mi.triangleArrayStride = sizeof(VkMicromapTriangleEXT);
+        vkCmdBuildMicromapsEXT(m_cmd, 1, &mi);
+        m.built = builtMicromap = true;
+    }
+    if (builtMicromap) {
+        VkMemoryBarrier2 b2{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+        b2.srcStageMask = VK_PIPELINE_STAGE_2_MICROMAP_BUILD_BIT_EXT;
+        b2.srcAccessMask = VK_ACCESS_2_MICROMAP_WRITE_BIT_EXT;
+        b2.dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+        b2.dstAccessMask = VK_ACCESS_2_MICROMAP_READ_BIT_EXT;
+        VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dep.memoryBarrierCount = 1;
+        dep.pMemoryBarriers = &b2;
+        (vkCmdPipelineBarrier2 ? vkCmdPipelineBarrier2 : vkCmdPipelineBarrier2KHR)(m_cmd, &dep);
+    }
+    BlasGeometry g = describe(desc, &as->micromaps);
     VkAccelerationStructureBuildGeometryInfoKHR bi{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR};
     bi.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
     bi.flags = blasFlags(desc);

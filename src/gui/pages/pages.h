@@ -177,6 +177,7 @@ private:
     QWidget* m_scoreBox;
     Card* m_verdictCard;
     QGridLayout* m_verdictGrid;
+    QLabel* m_verdictTitle;
     QToolButton* m_export;
     QPushButton* m_compare;
     TabView* m_tabs;

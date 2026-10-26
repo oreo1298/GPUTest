@@ -140,6 +140,16 @@ public:
     VulkanBuffer* instanceBuffer() const { return m_instances.get(); }
     std::uint32_t maxInstances() const { return m_maxInstances; }
 
+    /// Opacity micromap of one BLAS geometry (subdivision level 0: one state per triangle).
+    struct Micromap {
+        std::unique_ptr<Buffer> data, triangles, indices; // build inputs (indices also feed the BLAS build)
+        std::unique_ptr<VulkanBuffer> storage, scratch;
+        VkMicromapEXT handle = VK_NULL_HANDLE;
+        VkMicromapUsageEXT usage{};
+        bool built = false;
+    };
+    std::vector<Micromap> micromaps; ///< per geometry; empty entries for geometries without opacity
+
 private:
     VulkanDevice& m_dev;
     VkAccelerationStructureKHR m_handle = VK_NULL_HANDLE;

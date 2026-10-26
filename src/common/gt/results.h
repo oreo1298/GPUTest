@@ -135,6 +135,8 @@ struct TestResult {
     nlohmann::json details = nlohmann::json::object();
 
     const Metric* metric(const std::string& name) const;
+    /// The metric shown as the test's result: the primary metric, else the first one (nullptr if none).
+    const Metric* headline() const;
 };
 
 struct LoopResult {
