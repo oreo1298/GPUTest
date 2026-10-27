@@ -37,6 +37,8 @@ kiln-run --suite my-suite.json --offscreen --progress jsonl
 | `--loop, -l` | `1` (default), `N`, a duration (`20m`, `1h30m`) or `inf` |
 | `--offscreen` | No window, no present |
 | `--fullscreen`, `--vsync`, `--no-hud` | Window options (vsync is off by default) |
+| `--window-width`, `--window-height` | Window size in pixels (default: the render resolution, shrunk to fit 80 % of the screen); the render resolution stays `--resolution` |
+| `--seed N` | Workload seed; keep the default for comparable scores |
 | `--validation` | Vulkan validation layers / D3D debug layer; errors are counted in the results |
 | `--dump-frames DIR` | Write the golden frames of each scene as PNG |
 | `--golden DIR` | Compare frames with `DIR/golden.json` (tolerant signature comparison) |
@@ -46,6 +48,9 @@ kiln-run --suite my-suite.json --offscreen --progress jsonl
 Cutoffs are on by default: GPU 90 °C, hotspot 105 °C, memory 100 °C (sustained for 2 s). `--max-temp`,
 `--max-hotspot`, `--max-mem-temp`, `--max-power` change them; `--no-safety` disables them. A cutoff stops the run
 with a clear message, keeps the partial results and exits with code 4.
+
+In loop runs, `--stability-threshold` (default 0.97) is the worst-loop ÷ best-loop score ratio below which the
+run's stability check fails.
 
 ## Driver resets (device lost / TDR)
 When the GPU stops responding, the run records the loss in `device_losses` (test, time, the driver's fault report
@@ -64,6 +69,8 @@ via `VK_EXT_device_fault` where available, and the last sensor sample), keeps th
 - `--param feature.rt.bvh.inject=1` moves the BVH test's geometry without refitting; its probe rays must FAIL.
 - `--param feature.rt.ser.baseline_only=1` / `feature.rt.omm.baseline_only=1` run the plain halves of the SER and
   opacity-micromap tests on GPUs without those features (CI on lavapipe).
+- `--param feature.video.software=1` runs `feature.video` on software adapters (WARP decodes on the CPU through
+  Media Foundation and can take minutes, so it is skipped by default).
 
 ## Diagnostic parameters
 | Parameter | Meaning |
@@ -76,6 +83,8 @@ via `VK_EXT_device_fault` where available, and the last sensor sample), keeps th
   The file is rewritten atomically after every test, so a crash or driver reset never loses finished tests.
 - Progress: `--progress text` (default), `jsonl` (one JSON event per line, used by the GUI) or `quiet`.
 - `--control-stdin`: the runner reads commands from stdin (`stop`); closing stdin also stops the run.
+- Log: `--log-level trace|debug|info|warn|error` (default `info`), `--log-file FILE` writes it to a file as well.
+- `--telemetry-interval S`: sensor sampling interval in seconds (default 0.1).
 
 ### Progress events (`--progress jsonl`)
 Every line is an object with a `type`:
