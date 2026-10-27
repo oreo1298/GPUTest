@@ -72,7 +72,8 @@ via `VK_EXT_device_fault` where available, and the last sensor sample), keeps th
 - `--param feature.video.software=1` runs `feature.video` on software adapters (WARP decodes on the CPU through
   Media Foundation and can take minutes, so it is skipped by default). `--param feature.video.frames=N` decodes
   only the first N frames of the Direct3D 12 reference streams (still checked bit for bit), for decoders that
-  stall part-way.
+  stall part-way; `--param feature.video.dump=DIR` writes the Direct3D 12 encoded streams there
+  (`d3d12_h264.h264`, ...) to examine with other decoders.
 
 ## Diagnostic parameters
 | Parameter | Meaning |

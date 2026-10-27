@@ -17,7 +17,9 @@
 #include <array>
 #include <chrono>
 #include <cstring>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <stdexcept>
 
 namespace gt::bench::d3d12video {
@@ -1634,6 +1636,20 @@ void encodeAndCheck(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hooks
     for (const auto& f : enc->output()) {
         stream.insert(stream.end(), f.begin(), f.end());
         total += f.size();
+    }
+    // --param feature.video.dump=DIR keeps the encoded stream, to examine with other decoders.
+    if (const std::string dir = ctx.settings().param("feature.video.dump"); !dir.empty()) {
+        static constexpr const char* kExt[] = {"h264", "h265", "obu"};
+        const std::string ext = codec->codec() == D3D12_VIDEO_ENCODER_CODEC_H264   ? kExt[0]
+                                : codec->codec() == D3D12_VIDEO_ENCODER_CODEC_HEVC ? kExt[1]
+                                                                                   : kExt[2];
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        const std::filesystem::path path =
+            std::filesystem::path(dir) / std::format("d3d12_{}.{}", hooks.key, ext);
+        std::ofstream file(path, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(stream.data()), static_cast<std::streamsize>(stream.size()));
+        ctx.log(std::format("{}: wrote the encoded stream to {}", hooks.label, path.string()));
     }
     nlohmann::json sizes = nlohmann::json::array();
     for (const auto& f : enc->output())

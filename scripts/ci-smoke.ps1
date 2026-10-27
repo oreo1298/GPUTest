@@ -145,6 +145,7 @@ if (Test-Path "$out\plugins-d3d12.json") {
 Write-Host "== Video engines on WARP (D3D12, report only, no debug layer)"
 $videoArgs = @($stdCommon | Where-Object { $_ -notin @("--validation", "--fail-on-validation") }) +
              @("--test", "feature.video", "--param", "feature.video.software=1", "--param", "feature.video.frames=3",
+               "--param", "feature.video.dump=$out\video",
                "--out", "$out\video-d3d12.json", "--log-file", "$out\video-d3d12.log")
 $proc = Start-Process -FilePath $runner.FullName -ArgumentList $videoArgs -NoNewWindow -PassThru `
     -RedirectStandardOutput "$out\video-d3d12.out" -RedirectStandardError "$out\video-d3d12.err"
