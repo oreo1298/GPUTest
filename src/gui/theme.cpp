@@ -5,10 +5,12 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
+#include <QProxyStyle>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QStyleFactory>
+#include <QStyleOption>
 #include <QStyleHints>
 #include <QTextStream>
 #include <QTimer>
@@ -37,6 +39,26 @@ QColor mix(const QColor& a, const QColor& b, double t) {
 }
 
 QColor readableOn(const QColor& bg) { return luminance(bg) > 0.4 ? QColor(0x0b, 0x0b, 0x0b) : QColor(Qt::white); }
+
+/// Fusion outlines check boxes and radio buttons with a darker shade of the window colour: invisible on dark
+/// backgrounds and too faint on white list views. This passes the indicator a window colour chosen so that
+/// Fusion's outline comes out as a mid grey with at least 3:1 contrast against the background in both modes.
+class ContrastStyle : public QProxyStyle {
+public:
+    using QProxyStyle::QProxyStyle;
+
+    void drawPrimitive(PrimitiveElement pe, const QStyleOption* opt, QPainter* p, const QWidget* w) const override {
+        const auto* button = qstyleoption_cast<const QStyleOptionButton*>(opt);
+        if (button && (pe == PE_IndicatorCheckBox || pe == PE_IndicatorRadioButton)) {
+            QStyleOptionButton o(*button);
+            const QColor outline = mix(o.palette.color(QPalette::Text), o.palette.color(QPalette::Base), 0.55);
+            o.palette.setColor(QPalette::Window, outline.lighter(140)); // Fusion: outline = window.darker(140)
+            QProxyStyle::drawPrimitive(pe, &o, p, w);
+            return;
+        }
+        QProxyStyle::drawPrimitive(pe, opt, p, w);
+    }
+};
 
 // Reference categorical palette (light / dark steps), validated for CVD separation.
 const char* kSeriesLight[] = {"#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"};
@@ -72,10 +94,10 @@ void ThemeManager::init(QApplication& app) {
         app.setStyle(s);
         m_nativeStyle = true;
     } else {
-        app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+        app.setStyle(new ContrastStyle(QStyleFactory::create(QStringLiteral("Fusion"))));
     }
 #else
-    app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+    app.setStyle(new ContrastStyle(QStyleFactory::create(QStringLiteral("Fusion"))));
 #endif
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)

@@ -48,6 +48,13 @@ The intent is that a mid-range 2024 GPU scores roughly 1000 per test at 1080p/hi
 | Test | Metric | Reference | Status |
 |---|---|---|---|
 | scene.lattice | avg FPS | 600 | provisional |
+| scene.courtyard | avg FPS | 200 | provisional |
+| scene.courtyard.lite | avg FPS | 300 | provisional |
+| scene.atrium | avg FPS | 180 | provisional |
+| scene.atrium.lite | avg FPS | 250 | provisional |
+| scene.skyline | avg FPS | 120 | provisional |
+| scene.glasshouse | avg FPS | 90 | provisional |
+| scene.gallery | avg FPS (paths per pixel and bounces scale with quality; Mpaths/s reported) | 60 | provisional |
 | synth.alu.fp32 | TFLOPS | 30 | provisional |
 | synth.alu.fp16 | TFLOPS | 60 | provisional |
 | synth.alu.fp64 | TFLOPS | 1 | provisional |
@@ -65,6 +72,11 @@ The intent is that a mid-range 2024 GPU scores roughly 1000 per test at 1080p/hi
 | feature.subgroups | G values/s (subgroup reduction) | 2000 | provisional |
 | feature.bindless | Gtexel/s (per-thread table index) | 400 | provisional |
 | feature.coopmat | FP16 TFLOPS (FP32 accumulate) | 150 | provisional |
+
+Scene variants: `.lite` scenes are the CPU-light versions of the legacy scenes (instanced, few state changes);
+Skyline, Glasshouse and Gallery are CPU-light by construction (GPU-driven culling, compute ray tracing), so they
+have no separate variant. The heavy legacy variants stay scored because CPU-side submission cost is part of what
+older games stress; the standard, extreme and legacy suites run both (quick runs only the `.lite` ones).
 
 Unscored (reported only): `synth.mem.latency` (latency curve and cache levels), `synth.msaa` (relative cost),
 all diagnostics (PASS/WARN/FAIL verdicts), and the ratio / CPU-bound feature tests: `feature.rt.ser`,

@@ -63,6 +63,14 @@ print("ok:", sys.argv[2])
 PY
 }
 
+step "every scene: golden frames (offscreen, validation)"
+"$runner" --test scene.courtyard,scene.courtyard.lite,scene.atrium,scene.atrium.lite,scene.skyline,scene.glasshouse,scene.gallery \
+    --duration smoke --quality low --offscreen --resolution 320x180 --validation --fail-on-validation \
+    --dump-frames "$out/scene-frames" --golden "$root/tests/golden/lavapipe" --out "$out/scenes.json"
+python3 "$root/scripts/check-results.py" "$out/scenes.json" --require-completed --require-golden-pass
+check_json "$out/scenes.json" 'sum(1 for t in r["tests"] if "golden" in t["details"]) == 7'
+end
+
 step "run modes: safety cutoff (fake sensors), device loss (abort / recover), stop, timed loop"
 common=(--offscreen --resolution 320x180 --progress quiet)
 GT_FAKE_TELEMETRY=ramp:10 expect_exit 4 "$runner" --test scene.lattice --duration quick --max-temp 60 "${common[@]}" \
