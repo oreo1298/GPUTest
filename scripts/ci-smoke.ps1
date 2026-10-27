@@ -165,6 +165,16 @@ if (Test-Path "$out\video\d3d12_h264.h264") {
     $head = $bytes[0..([Math]::Min(1023, $bytes.Length - 1))]
     Write-Host "d3d12_h264.h264 ($($bytes.Length) bytes), first $($head.Length) as base64:"
     Write-Host ([Convert]::ToBase64String([byte[]]$head))
+    # And the start of the second frame (a P-frame: its frame_num shows how many bits the encoder gives it).
+    $sizes = @()
+    if ($r) { $sizes = @($r.tests[0].details.h264.encode_frame_bytes) }
+    if ($sizes.Count -ge 2) {
+        $total = 0; foreach ($n in $sizes) { $total += [long]$n }
+        $at = $bytes.Length - $total + [long]$sizes[0]
+        $p = $bytes[$at..([Math]::Min($at + 255, $bytes.Length - 1))]
+        Write-Host "frame 1 at byte $($at), first $($p.Length) as base64:"
+        Write-Host ([Convert]::ToBase64String([byte[]]$p))
+    }
 }
 
 if ($StrictStandard -and $problems -gt 0) { throw "D3D12 standard suite failed ($problems tests)" }
