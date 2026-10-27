@@ -79,6 +79,8 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   Software renderers keep small content in every scene (`--param scene.full_detail=1` overrides).
 - **The comparable key ends with a workload revision** (`r2`, `kWorkloadRevision`): bumped whenever test content
   changes what a score measures, so the GUI never compares scores of different workloads (keys without one are r1).
+- **ALU throughput dispatches run 1024 iterations** (about 1 ms of FP32 on an RTX 4090; 32 in smoke runs): with
+  256 the 4090 reached only ~65 % of its FP32 peak, partly launch gaps and the last partial wave.
 - **Micro measurements sample for a minimum time** (quick 1 s, standard 3 s, extreme 8 s, on top of the minimum
   sample count) and report the median: a 4090 finished the synthetic tests in 0.07-0.3 s, before its clocks had
   settled and too fast to look like a test at all.

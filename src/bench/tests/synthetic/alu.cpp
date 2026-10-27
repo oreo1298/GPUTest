@@ -78,7 +78,8 @@ public:
         rhi::Device& dev = ctx.device();
         const bool software = dev.adapter().isSoftware();
         const std::uint32_t threads = software ? (1u << 14) : (1u << 20);
-        const std::uint32_t iterations = ctx.settings().duration == DurationPreset::Smoke ? 32 : 256;
+        // Long dispatches (about 1 ms of FP32 on an RTX 4090) keep launch gaps and the last partial wave small.
+        const std::uint32_t iterations = ctx.settings().duration == DurationPreset::Smoke ? 32 : 1024;
         auto sink = dev.createBuffer({4096, rhi::BufferUsage::Storage, rhi::MemoryType::Device, 0, "alu-sink"});
         rhi::ComputePipelineDesc pd;
         pd.name = m_spec.entry;
