@@ -4,6 +4,7 @@ add_library(gt_bench STATIC
   micro.cpp
   presenter.cpp
   suites.cpp
+  scene.cpp
   stb_impl.cpp
 )
 set_source_files_properties(stb_impl.cpp PROPERTIES COMPILE_OPTIONS "$<IF:$<CXX_COMPILER_ID:MSVC>,/W0,-w>")
@@ -15,6 +16,7 @@ gt_set_warnings(gt_bench)
 # Tests register themselves statically; an OBJECT library keeps every object file.
 add_library(gt_bench_tests OBJECT
   tests/scenes/lattice.cpp
+  tests/scenes/courtyard.cpp
   tests/debug/device_lost.cpp
   tests/diagnostics/vram.cpp
   tests/diagnostics/stress_common.cpp

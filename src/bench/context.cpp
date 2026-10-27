@@ -8,6 +8,8 @@
 #include <cmath>
 #include <filesystem>
 #include <format>
+#include <span>
+#include <utility>
 
 #include "stb_image_write.h"
 
@@ -206,13 +208,23 @@ void TestContext::setFrameResult(const FrameLoopResult& r) {
 
 FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
     using clock = std::chrono::steady_clock;
-    constexpr std::uint32_t kInFlight = 2;
+    constexpr std::uint32_t kInFlight = kFramesInFlight;
     FrameLoopResult out;
-    std::vector<std::unique_ptr<rhi::CommandList>> lists;
-    for (std::uint32_t i = 0; i < kInFlight; ++i) lists.push_back(m_device.createCommandList(rhi::QueueType::Graphics));
+    const bool async = static_cast<bool>(d.recordAsync);
+    std::vector<std::unique_ptr<rhi::CommandList>> lists, computeLists, postLists;
+    for (std::uint32_t i = 0; i < kInFlight; ++i) {
+        lists.push_back(m_device.createCommandList(rhi::QueueType::Graphics));
+        if (async) {
+            computeLists.push_back(m_device.createCommandList(rhi::QueueType::Compute));
+            postLists.push_back(m_device.createCommandList(rhi::QueueType::Graphics));
+        }
+    }
+    // Timestamp pairs: one per frame in flight; twice as many in async mode, where a frame's end timestamp is
+    // written by its composite one iteration later (a pair is re-used only after that composite finished).
+    const std::uint32_t pairs = async ? 2 * kInFlight : kInFlight;
     std::unique_ptr<rhi::QueryPool> qp;
-    if (m_device.features().timestamps) qp = m_device.createQueryPool(rhi::QueryType::Timestamp, kInFlight * 2);
-    std::vector<std::int64_t> slotFrame(kInFlight, -1);
+    if (m_device.features().timestamps) qp = m_device.createQueryPool(rhi::QueryType::Timestamp, pairs * 2);
+    std::vector<std::int64_t> slotFrame(pairs, -1);
     auto readSlot = [&](std::uint32_t slot) {
         if (!qp || slotFrame[slot] < 0) return;
         std::uint64_t t[2] = {0, 0};
@@ -234,26 +246,18 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
     std::vector<std::string> hud;
     bool stop = false;
 
-    auto frame = [&](std::uint32_t index, std::uint32_t pass, bool isWarmup) {
-        const std::uint32_t slot = static_cast<std::uint32_t>(counter++ % kInFlight);
-        rhi::CommandList& cmd = *lists[slot];
-        cmd.begin();
-        readSlot(slot);
-        if (qp && !isWarmup) {
-            cmd.resetQueries(qp.get(), slot * 2, 2);
-            cmd.writeTimestamp(qp.get(), slot * 2);
-        }
-        FrameContext fc{cmd, index, pass, isWarmup ? 0.0 : index * dt, dt, isWarmup};
-        d.record(fc);
-        if (qp && !isWarmup) cmd.writeTimestamp(qp.get(), slot * 2 + 1);
+    // Records the end of a frame (timestamp, HUD, presentation) into `fin` and submits it.
+    auto finish = [&](rhi::CommandList& fin, std::uint32_t pair, std::uint32_t index, std::uint32_t pass, bool isWarmup,
+                      std::span<const rhi::QueueWait> waits) {
+        if (qp && !isWarmup) fin.writeTimestamp(qp.get(), pair * 2 + 1);
         bool presented = false;
         if (m_presenter) {
             if (!isWarmup && m_presenter->hudEnabled()) {
                 const auto& ft = out.frameMs;
-                const double last = ft.empty() ? 0.0 : ft.back();
+                const double lastMs = ft.empty() ? 0.0 : ft.back();
                 hud = {std::format("{}  [{}]", m_info.name, rhi::apiDisplayName(m_device.api())),
                        std::format("Pass {}  frame {}/{}", pass + 1, index + 1, d.framesPerPass),
-                       std::format("{:.1f} fps  {:.2f} ms", last > 0 ? 1000.0 / last : 0.0, last)};
+                       std::format("{:.1f} fps  {:.2f} ms", lastMs > 0 ? 1000.0 / lastMs : 0.0, lastMs)};
                 if (hudStatus) {
                     auto extra = hudStatus();
                     hud.insert(hud.end(), extra.begin(), extra.end());
@@ -261,14 +265,65 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
             } else if (isWarmup) {
                 hud = {std::format("{}  warming up...", m_info.name)};
             }
-            presented = m_presenter->record(cmd, d.output, hud);
+            presented = m_presenter->record(fin, d.output, hud);
         }
-        cmd.end();
-        rhi::CommandList* l[] = {&cmd};
-        rhi::SubmitInfo si{l};
+        fin.end();
+        rhi::CommandList* l[] = {&fin};
+        rhi::SubmitInfo si{l, waits};
         if (presented) si.present = m_presenter->swapchain();
         m_device.submit(rhi::QueueType::Graphics, si);
         if (presented) m_presenter->present();
+    };
+
+    // Async mode: frame i submits [graphics: record(i)] and [compute: recordAsync(i), waiting for it], then the
+    // composite of frame i-1 [graphics: recordPost(i-1), waiting for its compute work]. Submitting the composite
+    // after the next frame's graphics work lets the compute queue overlap it (a queue stalls at a semaphore wait).
+    std::function<void()> pendingPost;
+    auto flushPost = [&] {
+        if (pendingPost) std::exchange(pendingPost, {})();
+    };
+
+    auto frame = [&](std::uint32_t index, std::uint32_t pass, bool isWarmup) {
+        const std::uint32_t slot = static_cast<std::uint32_t>(counter % kInFlight);
+        const std::uint32_t pair = static_cast<std::uint32_t>(counter % pairs);
+        ++counter;
+        rhi::CommandList& cmd = *lists[slot];
+        cmd.begin();
+        readSlot(pair);
+        if (qp && !isWarmup) {
+            cmd.resetQueries(qp.get(), pair * 2, 2);
+            cmd.writeTimestamp(qp.get(), pair * 2);
+        }
+        const double simTime = isWarmup ? 0.0 : index * dt;
+        FrameContext fc{cmd, index, pass, simTime, dt, isWarmup, slot};
+        d.record(fc);
+        if (!async) {
+            finish(cmd, pair, index, pass, isWarmup, {});
+        } else {
+            cmd.end();
+            rhi::CommandList* gl[] = {&cmd};
+            const std::uint64_t gv = m_device.submit(rhi::QueueType::Graphics, rhi::SubmitInfo{gl});
+            rhi::CommandList& ccmd = *computeLists[slot];
+            ccmd.begin();
+            FrameContext cfc{ccmd, index, pass, simTime, dt, isWarmup, slot};
+            d.recordAsync(cfc);
+            ccmd.end();
+            rhi::CommandList* cl[] = {&ccmd};
+            const rhi::QueueWait cw[] = {{rhi::QueueType::Graphics, gv}};
+            const std::uint64_t cv = m_device.submit(rhi::QueueType::Compute, rhi::SubmitInfo{cl, cw});
+            flushPost();
+            pendingPost = [&, slot, pair, index, pass, isWarmup, simTime, cv] {
+                rhi::CommandList& post = *postLists[slot];
+                post.begin();
+                FrameContext pfc{post, index, pass, simTime, dt, isWarmup, slot};
+                if (d.recordPost) d.recordPost(pfc);
+                const rhi::QueueWait pw[] = {{rhi::QueueType::Compute, cv}};
+                finish(post, pair, index, pass, isWarmup, pw);
+            };
+            const bool golden = !isWarmup && pass == 0 && m_settings.dumpFrames &&
+                                std::find(d.goldenFrames.begin(), d.goldenFrames.end(), index) != d.goldenFrames.end();
+            if (golden) flushPost(); // the image must be complete before it is dumped
+        }
         if (m_presenter && !m_presenter->pumpEvents()) {
             if (m_stopFlag) m_stopFlag->store(true);
             if (m_stopReason && m_stopReason->empty()) *m_stopReason = "benchmark window closed";
@@ -277,7 +332,7 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
         if (!isWarmup) {
             out.frameMs.push_back(std::chrono::duration<double, std::milli>(now - lastFrameEnd).count());
             out.gpuMs.push_back(std::numeric_limits<double>::quiet_NaN());
-            slotFrame[slot] = static_cast<std::int64_t>(out.gpuMs.size() - 1);
+            slotFrame[pair] = static_cast<std::int64_t>(out.gpuMs.size() - 1);
             if (pass == 0 && m_settings.dumpFrames &&
                 std::find(d.goldenFrames.begin(), d.goldenFrames.end(), index) != d.goldenFrames.end() && d.output) {
                 m_device.waitIdle();
@@ -323,8 +378,9 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
         if (!stop) out.passes = pass + 1;
         if (std::chrono::duration<double>(clock::now() - start).count() >= minS) break;
     }
+    flushPost();
     m_device.waitIdle();
-    for (std::uint32_t s = 0; s < kInFlight; ++s) readSlot(s);
+    for (std::uint32_t s = 0; s < pairs; ++s) readSlot(s);
     out.elapsedS = std::chrono::duration<double>(clock::now() - start).count();
     if (out.timeLimited)
         gt::log::warn("[{}] time limit ({:.0f} s) reached after {} frames; result is partial", m_info.id, maxS,

@@ -62,13 +62,21 @@ struct FrameContext {
     double simTime;          ///< deterministic simulated time for this frame
     double dt;               ///< simulated time step
     bool warmup;
+    std::uint32_t slot = 0;  ///< frame-in-flight index (0..kFramesInFlight-1) for per-frame resources
 };
+inline constexpr std::uint32_t kFramesInFlight = 2;
 
 struct FrameLoopDesc {
     std::uint32_t framesPerPass = 600;
     std::uint32_t warmupFrames = 30;
     double simDuration = 20.0; ///< simulated seconds covered by one pass
     std::function<void(FrameContext&)> record;
+    /// Optional async-compute stage: recorded into a compute-queue list that waits for `record`'s
+    /// submission and overlaps the next frame's graphics work; `recordPost` (graphics) waits for it
+    /// and finishes the frame (composite, final image). Resources shared across the queues need
+    /// TextureDesc::concurrentQueues and per-frame copies (FrameContext::slot).
+    std::function<void(FrameContext&)> recordAsync;
+    std::function<void(FrameContext&)> recordPost;
     rhi::Texture* output = nullptr; ///< final image (shown in the window, dumped as golden frames)
     std::vector<std::uint32_t> goldenFrames; ///< frame indices (of pass 0) to dump/hash
     double minSeconds = -1.0; ///< overrides the duration preset's minimum run time when >= 0
