@@ -171,6 +171,9 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **Hardware-only features keep a runnable baseline**: SER and opacity micromaps are not in lavapipe, so their
   tests take `baseline_only=1` in CI to run everything except the feature itself; VRS and cooperative matrices are
   gated and skip with the exact missing extension.
+- **SER's materials cost 128-1024 shading iterations**: with 24-192 an RTX 4090 ran slower with reordering (0.74x):
+  regrouping 2 M threads costs about 0.06 ms, more than divergence wasted on such cheap shading. Real materials
+  are heavier, and the test is there to show what reordering buys when shading diverges.
 - **SER uses VK_EXT_ray_tracing_invocation_reorder only** (what Slang emits by default); GPUs with only the NV
   extension skip with "update the driver". HLSL SER needs SM 6.9 — added with the D3D12 backend if its DXC has it.
 - **Opacity micromaps at subdivision level 0** (one 4-state value per triangle, one byte per micromap triangle):

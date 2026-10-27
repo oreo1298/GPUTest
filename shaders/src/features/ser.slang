@@ -1,5 +1,6 @@
 // Shader execution reordering: incoherent rays into the sphere field, where each instance
-// has one of eight "materials" whose closest-hit shading costs 1x..8x. Neighbouring rays hit
+// has one of eight "materials" whose closest-hit shading costs 1x..8x (128 to 1024 iterations: heavy
+// enough that regrouping pays for itself, as it does with real materials). Neighbouring rays hit
 // different materials, so without reordering the GPU runs every material's loop on mostly
 // idle lanes. rgShadeSer traces into a HitObject, regroups threads by material with
 // ReorderThread, then invokes the shading; rgShade is the same work without reordering.
@@ -41,6 +42,6 @@ void chShade(inout ShadePayload p, BuiltInTriangleIntersectionAttributes attr) {
     uint material = InstanceID() % kMaterials;
     float v = float(PrimitiveIndex() & 1023u) * 0.001 + attr.barycentrics.x;
     [loop]
-    for (uint i = 0u; i < 24u * (material + 1u); ++i) v = frac(sin(v * 12.9898 + float(i)) * 43758.5453);
+    for (uint i = 0u; i < 128u * (material + 1u); ++i) v = frac(sin(v * 12.9898 + float(i)) * 43758.5453);
     p.value = v + float(material);
 }
