@@ -1639,6 +1639,20 @@ void encodeAndCheck(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hooks
     for (const auto& f : enc->output())
         sizes.push_back(f.size());
     res.details["encode_frame_bytes"] = sizes;
+    if (codec->codec() != D3D12_VIDEO_ENCODER_CODEC_AV1 && !enc->output().empty()) {
+        // What the encoder itself wrote for the key frame (Annex B NAL unit types), to tell its own parameter
+        // sets or SEI from the slices when a round trip goes wrong.
+        const std::vector<std::uint8_t>& f = enc->output().front();
+        nlohmann::json types = nlohmann::json::array();
+        for (std::size_t i = 0; i + 3 < f.size() && types.size() < 16; ++i)
+            if (f[i] == 0 && f[i + 1] == 0 && f[i + 2] == 1) {
+                const std::uint8_t h = f[i + 3];
+                types.push_back(codec->codec() == D3D12_VIDEO_ENCODER_CODEC_H264 ? h & 0x1F
+                                                                                 : (h >> 1) & 0x3F);
+                i += 3;
+            }
+        res.details["encode_key_frame_nal_types"] = types;
+    }
     ctx.log(std::format("{}: encoded the GOP once ({} bytes)", hooks.label, total));
     res.details["encode_profile"] = codec->name();
     res.details["encode_rate_control"] =
