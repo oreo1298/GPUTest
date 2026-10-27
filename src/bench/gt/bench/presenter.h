@@ -23,6 +23,9 @@ public:
     /// Presents the backbuffer recorded by the last successful record() (after submit).
     void present();
     rhi::Swapchain* swapchain() { return m_swapchain.get(); }
+    /// Switches to an HDR10 swapchain (PQ-encoded images are then shown as they are) or back. Returns
+    /// whether the swapchain is HDR afterwards: the display, compositor or driver may not offer it.
+    bool setHdr(bool hdr);
     /// Processes window events. Returns false once the user closed the window.
     bool pumpEvents();
     bool hudEnabled() const { return m_hud; }
@@ -31,10 +34,13 @@ public:
 private:
     void drawHud(rhi::CommandList& cmd, std::uint32_t width, std::uint32_t height, const std::vector<std::string>& lines);
     void createSamplerAndFont();
+    void createSwapchain(bool hdr);
+    void createPipelines();
     void createHud(const rhi::GraphicsPipelineDesc& blit);
     rhi::Device& m_device;
     SDL_Window* m_window;
-    bool m_hud;
+    bool m_vsync;
+    bool m_hud, m_hudWanted;
     bool m_closed = false;
     bool m_resized = false;
     std::unique_ptr<rhi::Swapchain> m_swapchain;

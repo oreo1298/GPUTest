@@ -41,6 +41,13 @@ and the iGPU, and that `kiln-hw-report` finds the runner by itself. Tell me if m
    `details.plugins` should show XeSS "measured" with `psnr_last_frame` above `psnr_first_frame` (it accumulates
    detail over the jittered sequence); if it is lower, the jitter or motion-vector sign convention needs flipping.
 
+4. **HDR output** (`feature.hdr`, windowed): with HDR on (Windows: Settings > Display > Use HDR; KDE Plasma 6
+   Wayland: Display Configuration > High Dynamic Range), run `kiln-run --test feature.hdr --duration quick` on
+   Vulkan and D3D12. For 5 s the window shows 16 grey bars (0 to 10000 nits) and six colour patches. Tell me:
+   the verdict and `display_*` details, up to which bar the bars still get brighter (about the display's peak),
+   and whether the first three colour patches look more saturated than the last three (wide gamut). With HDR
+   off the verdict should be a warning, and the run should continue normally.
+
 ### M11 — OpenGL and Direct3D 11
 1. **OpenGL on the 4090 and the iGPU (Linux)**: `kiln-run --api opengl --suite legacy --duration quick` and the
    same windowed (drop `--offscreen`). The scenes should look like their Vulkan frames; the HUD should read

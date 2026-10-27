@@ -261,6 +261,12 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   user's `libxess.dll`; CI downloads that DLL only to test the plugin. A DLSS plugin can only be built by a user
   from NVIDIA's SDK under NVIDIA's terms, so none is in this repository.
 
+- **HDR check without colour-managed rendering**: `feature.hdr` writes PQ-encoded BT.2020 values directly into an
+  RGB10A2 image and the presenter, switched to an HDR10 swapchain (`Presenter::setHdr`), shows them as they are.
+  The encoding is verified against a CPU encoder on every run (offscreen too); the display part needs a person to
+  look, plus what DXGI reports (colour space, luminance range). Vulkan HDR10 uses A2B10G10R10 only (the RHI's
+  RGB10A2); the HUD is off on HDR swapchains (its white would be 10000 nits).
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.

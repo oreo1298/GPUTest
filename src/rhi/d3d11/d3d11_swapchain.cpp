@@ -108,4 +108,23 @@ void D3D11Swapchain::present() {
     m_dev.check(hr, "IDXGISwapChain::Present");
 }
 
+DisplayInfo D3D11Swapchain::displayInfo() const {
+    DisplayInfo info = Swapchain::displayInfo();
+    Com<IDXGIOutput> output;
+    if (FAILED(m_swapchain->GetContainingOutput(output.put()))) return info;
+    auto o6 = output.as<IDXGIOutput6>();
+    DXGI_OUTPUT_DESC1 d{};
+    if (!o6 || FAILED(o6->GetDesc1(&d))) return info;
+    info.known = true;
+    info.bitsPerColor = d.BitsPerColor;
+    info.minNits = d.MinLuminance;
+    info.maxNits = d.MaxLuminance;
+    info.maxFullFrameNits = d.MaxFullFrameLuminance;
+    // The output's colour space says whether HDR is on in the Windows display settings.
+    info.colorSpace = d.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020 ? "HDR10 (ST 2084, BT.2020)"
+                      : d.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709  ? "scRGB (linear, BT.709)"
+                                                                                  : "SDR (sRGB)";
+    return info;
+}
+
 } // namespace gt::rhi::d3d11

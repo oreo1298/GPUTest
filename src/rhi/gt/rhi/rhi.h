@@ -588,6 +588,15 @@ struct SwapchainDesc {
     std::uint32_t imageCount = 3;
 };
 
+/// What the display a swapchain presents to reports (DXGI on Windows). `known` is false where the API
+/// cannot say; colorSpace is filled whenever the swapchain knows its own.
+struct DisplayInfo {
+    bool known = false;
+    std::string colorSpace; ///< e.g. "HDR10 (ST 2084, BT.2020)", "SDR (sRGB)"
+    std::uint32_t bitsPerColor = 0;
+    float minNits = 0.0f, maxNits = 0.0f, maxFullFrameNits = 0.0f;
+};
+
 class Swapchain {
 public:
     virtual ~Swapchain() = default;
@@ -598,6 +607,7 @@ public:
     virtual Format format() const = 0;
     virtual bool isHdr() const { return false; }
     virtual std::string presentModeName() const = 0;
+    virtual DisplayInfo displayInfo() const { return {false, isHdr() ? "HDR10 (ST 2084, BT.2020)" : "SDR (sRGB)"}; }
 };
 
 // --- submission ----------------------------------------------------------------------------------

@@ -11,15 +11,39 @@
 namespace gt::bench {
 
 Presenter::Presenter(rhi::Device& device, SDL_Window* window, bool vsync, bool hud)
-    : m_device(device), m_window(window), m_hud(hud) {
+    : m_device(device), m_window(window), m_vsync(vsync), m_hud(hud), m_hudWanted(hud) {
+    createSwapchain(false);
+    createSamplerAndFont();
+    createPipelines();
+}
+
+void Presenter::createSwapchain(bool hdr) {
     int w = 0, h = 0;
-    SDL_GetWindowSizeInPixels(window, &w, &h);
+    SDL_GetWindowSizeInPixels(m_window, &w, &h);
     rhi::SwapchainDesc sd;
-    sd.window = window;
+    sd.window = m_window;
     sd.width = static_cast<std::uint32_t>(std::max(w, 1));
     sd.height = static_cast<std::uint32_t>(std::max(h, 1));
-    sd.vsync = vsync;
-    m_swapchain = device.createSwapchain(sd);
+    sd.vsync = m_vsync;
+    sd.hdr = hdr;
+    m_swapchain = m_device.createSwapchain(sd);
+}
+
+bool Presenter::setHdr(bool hdr) {
+    if (m_swapchain && m_swapchain->isHdr() == hdr) return hdr;
+    m_device.waitIdle();
+    m_blit.reset();
+    m_text.reset();
+    m_rect.reset();
+    m_swapchain.reset(); // one swapchain per window
+    m_device.waitIdle();
+    createSwapchain(hdr);
+    createPipelines();
+    return m_swapchain->isHdr();
+}
+
+void Presenter::createPipelines() {
+    rhi::Device& device = m_device;
     const rhi::Format fmt = m_swapchain->format();
 
     rhi::GraphicsPipelineDesc blit;
@@ -33,16 +57,18 @@ Presenter::Presenter(rhi::Device& device, SDL_Window* window, bool vsync, bool h
                             {rhi::BindingType::Sampler, 0, rhi::ShaderStage::Fragment}};
     blit.layout.pushConstantBytes = 32;
     m_blit = device.createGraphicsPipeline(blit);
-    createSamplerAndFont();
 
-    // The HUD reads glyphs from a storage buffer; without one (OpenGL 3.3) frames show without it.
+    // The HUD reads glyphs from a storage buffer; without one (OpenGL 3.3) frames show without it. HDR
+    // swapchains take PQ-encoded values, in which the HUD's white would be 10000 nits: no HUD there.
+    m_hud = m_hudWanted && !m_swapchain->isHdr();
+    if (!m_hud) return;
     try {
         createHud(blit);
     } catch (const std::exception& e) {
         log::info("HUD unavailable on this API/GPU: {}", e.what());
         m_text.reset();
         m_rect.reset();
-        m_hud = false;
+        m_hud = m_hudWanted = false;
     }
 }
 
@@ -106,7 +132,7 @@ bool Presenter::pumpEvents() {
         case SDL_EVENT_WINDOW_CLOSE_REQUESTED: m_closed = true; break;
         case SDL_EVENT_KEY_DOWN:
             if (e.key.key == SDLK_ESCAPE) m_closed = true;
-            if ((e.key.key == SDLK_F1 || e.key.key == SDLK_H) && m_text) m_hud = !m_hud;
+            if ((e.key.key == SDLK_F1 || e.key.key == SDLK_H) && m_text) m_hudWanted = m_hud = !m_hud;
             break;
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: m_resized = true; break;
         default: break;

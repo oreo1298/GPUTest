@@ -80,7 +80,7 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 - [x] FSR 1 (open-source) built in: `--upscale`, GUI setting, `feature.upscale`
 - [ ] DLSS/XeSS optional runtime plugins (license permitting)
 - [ ] Vulkan Video / D3D12 Video decode/encode throughput (H.264, H.265, AV1)
-- [ ] HDR output check
+- [x] HDR output check (`feature.hdr`: PQ encoding verified everywhere; HDR10 swapchain + pattern in a window)
 
 ## 13. Packaging
 - [x] Arch PKGBUILD (`packaging/arch`, built and installed by CI) — done early on request

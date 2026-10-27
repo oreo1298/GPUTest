@@ -146,3 +146,4 @@ upscale/fsr1.slang             csRcas         compute         vk,d3d12,d3d11,gl 
 upscale/fsr1.slang             csBilinear     compute         vk,d3d12,d3d11,gl glsl=430
 features/upscale.slang         csPattern      compute         vk,d3d12,d3d11,gl glsl=430
 features/upscale.slang         csMotion       compute         vk,d3d12,d3d11,gl glsl=430
+features/hdr.slang             csPattern      compute         vk,d3d12,d3d11,gl glsl=430

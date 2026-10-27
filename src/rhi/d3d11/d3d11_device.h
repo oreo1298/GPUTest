@@ -377,6 +377,7 @@ public:
     Format format() const override { return m_format; }
     bool isHdr() const override { return m_hdr; }
     std::string presentModeName() const override;
+    DisplayInfo displayInfo() const override;
     void present();
 
 private:

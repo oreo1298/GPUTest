@@ -66,8 +66,8 @@ void VulkanSwapchain::create(std::uint32_t width, std::uint32_t height) {
     bool found = false;
     if (m_desc.hdr) {
         for (const auto& f : formats) {
-            if (f.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT &&
-                (f.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 || f.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32)) {
+            // Format::RGB10A2_UNORM is A2B10G10R10; A2R10G10B10 would swap red and blue.
+            if (f.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT && f.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
                 chosen = f;
                 m_hdr = found = true;
                 break;
@@ -87,7 +87,6 @@ void VulkanSwapchain::create(std::uint32_t width, std::uint32_t height) {
         }
     }
     m_format = fromVk(chosen.format);
-    if (chosen.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) m_format = Format::RGB10A2_UNORM;
 
     auto hasMode = [&](VkPresentModeKHR m) { return std::find(modes.begin(), modes.end(), m) != modes.end(); };
     m_presentMode = VK_PRESENT_MODE_FIFO_KHR;
