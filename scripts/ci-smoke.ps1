@@ -98,6 +98,7 @@ foreach ($id in $standard) {
     $secs = [int]((Get-Date) - $started).TotalSeconds
     $line = "{0,-26} exit {1,-4} {2,4}s" -f $id, $exit, $secs
     $bad = $exit -ne 0
+    $warn = $false
     if (Test-Path $json) {
         $r = Get-Content $json -Raw | ConvertFrom-Json
         $t = $r.tests | Select-Object -First 1
@@ -105,6 +106,7 @@ foreach ($id in $standard) {
             $msg = if ($t.verdict) { "$($t.verdict): $($t.verdict_message)" } else { $t.status_message }
             $line += " {0,-10} {1}" -f $t.status, $msg
             if ($t.status -ne "completed" -and $t.status -ne "skipped" -or $t.verdict -eq "fail") { $bad = $true }
+            if ($t.verdict -eq "warn") { $warn = $true }
         }
         if ($r.validation.errors -gt 0) { $line += " [debug-layer errors: $($r.validation.errors)]"; $bad = $true }
     }
@@ -116,6 +118,7 @@ foreach ($id in $standard) {
         if (Test-Path $log) { Get-Content $log -Tail 30 | Out-Host }
     } else {
         Write-Host $line
+        if ($warn -and (Test-Path $log)) { Get-Content $log -Tail 12 | Out-Host } # a warning verdict explains itself in the log
     }
 }
 Write-Host "D3D12 standard suite: $($standard.Count) tests, $problems with problems"
@@ -133,25 +136,41 @@ Write-Host "== D3D11 capabilities (WARP)"
 & $runner.FullName --api d3d11 --check-support | Out-Host
 $common11 = @("--api", "d3d11", "--offscreen", "--resolution", "320x180", "--validation", "--fail-on-validation",
               "--log-level", "info")
-Run "D3D11 smoke suite" ($common11 + @("--suite", "smoke", "--out", "$out\smoke-d3d11.json",
-                                        "--log-file", "$out\smoke-d3d11.log")) | Out-Null
-python "$root/scripts/check-results.py" "$out\smoke-d3d11.json" --require-completed
-if ($LASTEXITCODE -ne 0) { throw "D3D11 smoke results check failed" }
-python "$root/scripts/update-golden.py" "$out\scenes-d3d12.json" "$out\golden-d3d12" --tolerance 8
-if ($LASTEXITCODE -ne 0) { throw "could not write the D3D12 reference frames" }
-$legacyScenes = "scene.lattice,scene.courtyard,scene.courtyard.lite,scene.atrium,scene.atrium.lite"
-Run "D3D11 scenes (against the D3D12 frames)" ($common11 + @("--test", $legacyScenes, "--duration", "smoke",
-        "--quality", "low", "--dump-frames", "$out\scene-frames-d3d11", "--golden", "$out\golden-d3d12",
-        "--out", "$out\scenes-d3d11.json", "--log-file", "$out\scenes-d3d11.log")) @(0, 7) | Out-Null
-python "$root/scripts/check-results.py" "$out\scenes-d3d11.json" --require-completed --require-golden-pass
-if ($LASTEXITCODE -ne 0) { throw "D3D11 scene results check failed" }
-Run "D3D11 legacy suite" ($common11 + @("--suite", "legacy", "--duration", "smoke", "--quality", "low",
-                                         "--out", "$out\legacy-d3d11.json", "--log-file", "$out\legacy-d3d11.log")) @(0, 7) | Out-Null
-python "$root/scripts/check-results.py" "$out\legacy-d3d11.json" --require-completed
-if ($LASTEXITCODE -ne 0) { throw "D3D11 legacy suite results check failed" }
-$legacy = Get-Content "$out\legacy-d3d11.json" -Raw | ConvertFrom-Json
-foreach ($t in $legacy.tests) {
-    "{0,-26} {1,-10} {2}" -f $t.id, $t.status, $(if ($t.verdict) { "$($t.verdict): $($t.verdict_message)" } else { $t.status_message }) | Out-Host
-    if ($t.verdict -eq "fail") { throw "D3D11 $($t.id) failed: $($t.verdict_message)" }
+# Each step reports its failure and the next one still runs; the job fails at the end.
+$failures = @()
+function Step([string]$what, [scriptblock]$body) {
+    try { & $body } catch {
+        Write-Host "::error title=$($what)::$($_.Exception.Message)"
+        $script:failures += "$($what): $($_.Exception.Message)"
+    }
 }
+Step "D3D11 smoke suite" {
+    Run "D3D11 smoke suite" ($common11 + @("--suite", "smoke", "--out", "$out\smoke-d3d11.json",
+                                            "--log-file", "$out\smoke-d3d11.log")) | Out-Null
+    python "$root/scripts/check-results.py" "$out\smoke-d3d11.json" --require-completed
+    if ($LASTEXITCODE -ne 0) { throw "D3D11 smoke results check failed" }
+}
+Step "D3D11 scenes" {
+    python "$root/scripts/update-golden.py" "$out\scenes-d3d12.json" "$out\golden-d3d12" --tolerance 8
+    if ($LASTEXITCODE -ne 0) { throw "could not write the D3D12 reference frames" }
+    $legacyScenes = "scene.lattice,scene.courtyard,scene.courtyard.lite,scene.atrium,scene.atrium.lite"
+    Run "D3D11 scenes (against the D3D12 frames)" ($common11 + @("--test", $legacyScenes, "--duration", "smoke",
+            "--quality", "low", "--dump-frames", "$out\scene-frames-d3d11", "--golden", "$out\golden-d3d12",
+            "--out", "$out\scenes-d3d11.json", "--log-file", "$out\scenes-d3d11.log")) @(0, 2, 7) | Out-Null
+    python "$root/scripts/check-results.py" "$out\scenes-d3d11.json" --require-completed --require-golden-pass
+    if ($LASTEXITCODE -ne 0) { throw "D3D11 scene results check failed" }
+}
+Step "D3D11 legacy suite" {
+    Run "D3D11 legacy suite" ($common11 + @("--suite", "legacy", "--duration", "smoke", "--quality", "low",
+            "--out", "$out\legacy-d3d11.json", "--log-file", "$out\legacy-d3d11.log")) @(0, 2, 7) | Out-Null
+    $legacy = Get-Content "$out\legacy-d3d11.json" -Raw | ConvertFrom-Json
+    foreach ($t in $legacy.tests) {
+        "{0,-26} {1,-10} {2}" -f $t.id, $t.status, $(if ($t.verdict) { "$($t.verdict): $($t.verdict_message)" } else { $t.status_message }) | Out-Host
+    }
+    python "$root/scripts/check-results.py" "$out\legacy-d3d11.json" --require-completed
+    if ($LASTEXITCODE -ne 0) { throw "D3D11 legacy suite results check failed" }
+    $failed = @($legacy.tests | Where-Object { $_.verdict -eq "fail" } | ForEach-Object { $_.id })
+    if ($failed.Count) { throw "failed verdicts: $($failed -join ', ')" }
+}
+if ($failures.Count) { throw "Direct3D 11: $($failures -join '; ')" }
 Write-Host "windows smoke OK ($($tests.Count) tests; D3D12 standard suite: $problems with problems)"

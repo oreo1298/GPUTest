@@ -8,6 +8,7 @@
 #include "gt/bench/context.h"
 #include "gt/bench/micro.h"
 #include "gt/bench/test.h"
+#include "gt/log.h"
 
 #include <cmath>
 #include <cstring>
@@ -160,6 +161,7 @@ public:
         // shading-rate tile the block lies in (index 0: 1x1 tiles, 1: coarser tiles).
         struct BlockStats {
             std::uint64_t blocks[2]{}, uniform[2]{};
+            std::vector<std::uint32_t> tileBlocks, tileUniform; ///< per shading-rate tile (image runs)
             double pct(int i) const {
                 return blocks[i] ? 100.0 * double(uniform[i]) / double(blocks[i]) : 0.0;
             }
@@ -168,6 +170,10 @@ public:
             ctx.timeGpu([&](rhi::CommandList& cmd) { record(cmd, probe.get(), rate, useImage); });
             const std::vector<std::uint8_t> px = dev.readbackTexture(color.get());
             BlockStats st;
+            if (useImage) {
+                st.tileBlocks.assign(tileRates.size(), 0);
+                st.tileUniform.assign(tileRates.size(), 0);
+            }
             for (std::uint32_t y = 0; y + 1 < height; y += 2)
                 for (std::uint32_t x = 0; x + 1 < width; x += 2) {
                     auto at = [&](std::uint32_t xx, std::uint32_t yy) {
@@ -178,8 +184,14 @@ public:
                     const int coarseTile =
                         useImage && tileRates[std::size_t(y / tile) * tilesX + x / tile] > 1 ? 1 : 0;
                     const std::uint32_t a = at(x, y);
-                    st.uniform[coarseTile] += a == at(x + 1, y) && a == at(x, y + 1) && a == at(x + 1, y + 1);
+                    const bool same = a == at(x + 1, y) && a == at(x, y + 1) && a == at(x + 1, y + 1);
+                    st.uniform[coarseTile] += same;
                     ++st.blocks[coarseTile];
+                    if (useImage) {
+                        const std::size_t t = std::size_t(y / tile) * tilesX + x / tile;
+                        ++st.tileBlocks[t];
+                        st.tileUniform[t] += same;
+                    }
                 }
             return st;
         };
@@ -193,6 +205,24 @@ public:
             d["image_uniform_blocks_pct_fine_tiles"] = st.pct(0);
             d["image_uniform_blocks_pct_coarse_tiles"] = st.pct(1);
             imageOk = st.pct(1) >= 95.0 && st.pct(0) <= 5.0;
+            if (!imageOk) {
+                // Expected and observed tile maps ('.' full rate, '#' coarse), so a report shows whether the
+                // image is ignored, shifted or scaled.
+                std::string expected, observed;
+                for (std::uint32_t ty = 0; ty < tilesY; ++ty) {
+                    for (std::uint32_t tx = 0; tx < tilesX; ++tx) {
+                        const std::size_t t = std::size_t(ty) * tilesX + tx;
+                        expected += tileRates[t] > 1 ? '#' : '.';
+                        observed += st.tileBlocks[t] && st.tileUniform[t] * 10 >= st.tileBlocks[t] * 9 ? '#' : '.';
+                    }
+                    expected += ty + 1 < tilesY ? "/" : "";
+                    observed += ty + 1 < tilesY ? "/" : "";
+                }
+                d["image_tiles_expected"] = expected;
+                d["image_tiles_observed"] = observed;
+                log::info("[feature.vrs] {}x{} px tiles, expected  {}", tile, tile, expected);
+                log::info("[feature.vrs] {}x{} px tiles, observed  {}", tile, tile, observed);
+            }
             imageNote = std::format(
                 " Rate image: {:.1f} % of blocks in coarse tiles and {:.1f} % in 1x1 tiles shaded once.",
                 st.pct(1), st.pct(0));

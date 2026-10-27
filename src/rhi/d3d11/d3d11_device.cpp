@@ -434,6 +434,7 @@ void D3D11Device::setDebugName(Texture* t, const char* name) {
 
 void D3D11Device::check(HRESULT hr, const char* what) const {
     if (SUCCEEDED(hr)) return;
+    drainMessages(); // the debug layer says why
     if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET || hr == DXGI_ERROR_DEVICE_HUNG) {
         const HRESULT reason = m_device->GetDeviceRemovedReason();
         throw DeviceLostError(std::format("{}: device removed ({})", what, hresultName(reason)));
@@ -516,7 +517,7 @@ bool D3D11Device::isComplete(QueueType /*queue*/, std::uint64_t value) {
 
 void D3D11Device::waitIdle() { wait(QueueType::Graphics, m_submitted); }
 
-void D3D11Device::drainMessages() {
+void D3D11Device::drainMessages() const {
     if (!m_infoQueue) return;
     const UINT64 n = m_infoQueue->GetNumStoredMessages();
     for (UINT64 i = 0; i < n; ++i) {

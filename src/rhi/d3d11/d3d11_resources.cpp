@@ -34,26 +34,22 @@ D3D11Buffer::D3D11Buffer(D3D11Device& dev, const BufferDesc& desc, const void* d
         return;
     }
     // Structured views need a structured buffer, which cannot also feed the input assembler or
-    // indirect draws; storage buffers without such uses take the layout of their first view.
+    // indirect draws; storage buffers without such uses take the layout of their first view (a
+    // declared structStride only picks the layout for uses that do not ask for one).
     m_structurable = any(u & BufferUsage::Storage) &&
-                     !any(u & (BufferUsage::Vertex | BufferUsage::Index | BufferUsage::Indirect)) &&
-                     desc.structStride == 0;
-    if (m_structurable) {
-        if (desc.memory == MemoryType::Device && data) {
-            m_initial.resize(desc.size);
-            std::memcpy(m_initial.data(), data, desc.size);
-        }
-        return;
-    }
+                     !any(u & (BufferUsage::Vertex | BufferUsage::Index | BufferUsage::Indirect));
     if (desc.memory == MemoryType::Device && data) {
         m_initial.resize(desc.size);
         std::memcpy(m_initial.data(), data, desc.size);
     }
-    create(desc.structStride);
+    if (!m_structurable) create(0);
 }
 
 void D3D11Buffer::create(std::uint32_t stride) {
     const auto u = m_desc.usage;
+    // A structured buffer cannot also be a vertex, index or indirect buffer: those stay raw (a
+    // declared structStride is then only a hint for D3D12).
+    if (any(u & (BufferUsage::Vertex | BufferUsage::Index | BufferUsage::Indirect))) stride = 0;
     D3D11_BUFFER_DESC bd{};
     bd.ByteWidth = paddedWidth(m_desc.size, stride);
     bd.Usage = D3D11_USAGE_DEFAULT;
@@ -105,13 +101,14 @@ ID3D11Buffer* D3D11Buffer::gpu(std::uint32_t stride) {
     if (isReadback()) return nullptr;
     if (stride == kAnyLayout) {
         if (!m_buffer) create(m_desc.structStride);
-    } else if (!m_buffer || (m_structurable && stride != m_stride)) {
-        if (!m_structurable && m_buffer && stride != m_stride)
-            throw Error(std::format("buffer '{}' is a vertex, index or indirect buffer: Direct3D 11 cannot view it "
-                                    "as a structured buffer of stride {} (declare it ByteAddressBuffer)",
-                                    m_desc.name, stride));
-        create(stride);
+        return m_buffer.get();
     }
+    if (m_buffer && stride == m_stride) return m_buffer.get();
+    if (!m_structurable && stride)
+        throw Error(std::format("buffer '{}' is a vertex, index or indirect buffer: Direct3D 11 cannot view it as a "
+                                "structured buffer of stride {} (read it as a ByteAddressBuffer)",
+                                m_desc.name, stride));
+    if (m_structurable) create(stride); // first use, or another layout: re-created with its contents
     return m_buffer.get();
 }
 

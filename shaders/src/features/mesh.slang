@@ -69,7 +69,7 @@ VSOut shadeVertex(float3 p, Instance inst) {
 
 // --- classic vertex pipeline ------------------------------------------------------------
 [shader("vertex")]
-VSOut vsSpheres(float3 pos: POSITION, uint inst: SV_InstanceID) { return shadeVertex(pos, instanceData(inst)); }
+VSOut vsSpheres([[vk::location(0)]] float3 pos : ATTRIB0, uint inst : SV_InstanceID) { return shadeVertex(pos, instanceData(inst)); }
 
 // --- mesh shaders -----------------------------------------------------------------------
 // Written as a macro rather than a function: DXC loses track of mesh outputs passed to functions.

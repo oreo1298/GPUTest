@@ -438,7 +438,7 @@ public:
     /// During replay: runs `fn` once the submission being replayed has completed (readback copies
     /// into CPU memory).
     void afterReplay(std::function<void()> fn);
-    void drainMessages();
+    void drainMessages() const;
     std::uint64_t replaying() const { return m_submitted + 1; } ///< submission value during replay
     /// Bumped when a buffer's GPU resource is re-created: bound views are stale.
     std::uint64_t bufferEpoch() const { return m_bufferEpoch; }
@@ -457,7 +457,7 @@ private:
     D3D_FEATURE_LEVEL m_featureLevel = D3D_FEATURE_LEVEL_11_0;
     bool m_tearing = false, m_cbOffsets = false;
     double m_timestampFrequency = 1e9;
-    ValidationCounts m_validationCounts;
+    mutable ValidationCounts m_validationCounts;
     std::unique_ptr<Executor> m_exec;
     struct Pending {
         std::uint64_t value;
