@@ -108,3 +108,14 @@ scenes/atrium.slang            vsLight          vertex          vk,d3d12,d3d11,g
 scenes/atrium.slang            vsLightInstanced vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
 scenes/atrium.slang            psLight          fragment        vk,d3d12,d3d11,gl   d3d11=sm_4_0
 scenes/atrium.slang            psTonemap        fragment        vk,d3d12,d3d11,gl   d3d11=sm_4_0
+scenes/skyline.slang           csResetArgs    compute         vk,d3d12
+scenes/skyline.slang           csCull         compute         vk,d3d12
+scenes/skyline.slang           vsScene        vertex          vk,d3d12
+scenes/skyline.slang           vsShadow       vertex          vk,d3d12
+scenes/skyline.slang           psScene        fragment        vk,d3d12
+scenes/skyline.slang           vsFullscreen   vertex          vk,d3d12
+scenes/skyline.slang           psSky          fragment        vk,d3d12
+scenes/skyline.slang           psComposite    fragment        vk,d3d12
+scenes/skyline_post.slang      csAmbientOcclusion compute     vk,d3d12
+scenes/skyline_post.slang      csBloomDown    compute         vk,d3d12
+scenes/skyline_post.slang      csBloomUp      compute         vk,d3d12
