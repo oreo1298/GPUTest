@@ -24,6 +24,20 @@ and screenshots into one archive — commit it under `hardware-reports/` or atta
 
 ## Pending checks
 
+### Heavier scenes, real-time playback (workload r2) — requested first
+Your RTX 4090 ran the first scenes at 0.2-2.3 ms of GPU time per frame, and the camera raced through its path. Scenes
+now play their camera path in real time (quick: 15 s at double speed, standard: 30 s) and carry far more work, sized
+from your results files. On the 4090 (1080p, as before): `kiln-run --suite raytracing --quality high`,
+`kiln-run --suite quick --quality ultra` (the two runs you sent), then `--suite standard` at high, and once
+`--suite raytracing --quality ultra`. Send the results files.
+1. **Load**: each scene's `gpu_times_ms` / `gpu_ms`. The aim at 1080p/high is roughly 2-8 ms per frame on the 4090
+   (Gallery, the path tracer, the most); much less or more and I retune the quality tables.
+2. **Playback**: the camera should move at the same, calm speed on the 4090 and on the iGPU.
+3. **Looks**: Glasshouse (trees, shrubs, glass), Gallery (sculptures, chandelier, tiled floor), Atrium (fluted
+   columns, balusters, statues), Courtyard, Skyline (ledges), Lattice (rounded blocks): anything black, garbled,
+   flickering or unexpectedly noisy is a bug (`--dump-frames DIR` writes two frames per scene).
+4. **iGPU at low**: the same suites at `--quality low` on the Radeon iGPU should stay usable.
+
 ### Arch package (requested)
 On the CachyOS rig: install from a clone (`cd GPUTest/packaging/arch && makepkg -si`). Check that **Kiln** appears
 in the KDE application menu with its icon, that it starts on Wayland, that `kiln-run --list-devices` lists the 4090
@@ -130,7 +144,8 @@ the frames folders (or just run `kiln-hw-report --standard`).
    (and mesh shaders on RADV). Do the grass blades look the same as in CI's vertex/mesh frames?
 3. **Gallery**: at high (4 paths, 4 bounces) and ultra (8 paths) the image should be much smoother than CI's
    1-path frames; note the Mpaths/s metric and whether any fireflies (isolated bright dots) remain.
-4. **Calibration**: all scene references are guesses (docs/SCORING.md); your FPS at 1080p/high sets them.
+4. **Calibration**: all scene references are estimates (docs/SCORING.md); your FPS at 1080p/high sets them (see
+   "Heavier scenes" above for the current workload).
 5. **CPU-heavy vs lite**: Courtyard/Atrium heavy variants measure draw submission; note the gap to `.lite`.
 6. **Windowed**: watch Skyline (async compute) and Glasshouse in the window (no `--offscreen`): any stutter,
    flicker or tearing artefacts?

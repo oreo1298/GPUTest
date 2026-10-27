@@ -1,8 +1,10 @@
 # Scoring
 
 Scores exist to compare runs **of the same suite, API, resolution, quality and duration preset**. The results file
-stores this as `scores.comparable_key` (`suite|api|WxH|quality|duration`); the GUI only compares scores whose keys
-match and shows raw metrics otherwise.
+stores this as `scores.comparable_key` (`suite|api|WxH|quality|duration|upscaler|rN`, upscaler `off` for native
+rendering); the GUI only compares scores whose keys match and shows raw metrics otherwise. `rN` is the workload
+revision (`kWorkloadRevision` in `gt/scoring.h`), bumped whenever test content changes what a score measures: r2
+made every scene several times heavier and plays it in real time, so r1 scores are not comparable with r2 ones.
 
 ## Per test
 Each scored test has a primary metric (usually average FPS) and a fixed **reference value**:
@@ -44,18 +46,20 @@ telemetry provider reports power).
 
 ## Reference values (calibration status)
 References are **provisional** until calibrated on real hardware reports (never on the CPU rasterizers used in CI).
-The intent is that a mid-range 2024 GPU scores roughly 1000 per test at 1080p/high.
+The intent is that a mid-range 2024 GPU scores roughly 1000 per test at 1080p/high. The scene references of workload
+r2 are estimates from an RTX 4090's r1 frame times scaled by the added work, assuming a mid-range GPU is about a
+quarter as fast; they are replaced by measured values as r2 results come in.
 
 | Test | Metric | Reference | Status |
 |---|---|---|---|
-| scene.lattice | avg FPS | 600 | provisional |
-| scene.courtyard | avg FPS | 200 | provisional |
-| scene.courtyard.lite | avg FPS | 300 | provisional |
-| scene.atrium | avg FPS | 180 | provisional |
-| scene.atrium.lite | avg FPS | 250 | provisional |
-| scene.skyline | avg FPS | 120 | provisional |
-| scene.glasshouse | avg FPS | 90 | provisional |
-| scene.gallery | avg FPS (paths per pixel and bounces scale with quality; Mpaths/s reported) | 60 | provisional |
+| scene.lattice | avg FPS | 400 | provisional (r2 estimate) |
+| scene.courtyard | avg FPS | 70 | provisional (r2 estimate) |
+| scene.courtyard.lite | avg FPS | 140 | provisional (r2 estimate) |
+| scene.atrium | avg FPS | 100 | provisional (r2 estimate) |
+| scene.atrium.lite | avg FPS | 110 | provisional (r2 estimate) |
+| scene.skyline | avg FPS | 140 | provisional (r2 estimate) |
+| scene.glasshouse | avg FPS | 130 | provisional (r2 estimate) |
+| scene.gallery | avg FPS (paths per pixel and bounces scale with quality; Mpaths/s reported) | 35 | provisional (r2 estimate) |
 | synth.alu.fp32 | TFLOPS | 30 | provisional |
 | synth.alu.fp16 | TFLOPS | 60 | provisional |
 | synth.alu.fp64 | TFLOPS | 1 | provisional |

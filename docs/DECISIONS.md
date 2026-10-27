@@ -77,6 +77,8 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
     medium up; extra instances for the GPU culling and the cascades), shadow tiles up to 4096, 4-32 AO samples.
   - Lattice: up to 96 x 8 x 96 blocks with rounded, subdivided faces (12-192 triangles each).
   Software renderers keep small content in every scene (`--param scene.full_detail=1` overrides).
+- **The comparable key ends with a workload revision** (`r2`, `kWorkloadRevision`): bumped whenever test content
+  changes what a score measures, so the GUI never compares scores of different workloads (keys without one are r1).
 - **Micro measurements sample for a minimum time** (quick 1 s, standard 3 s, extreme 8 s, on top of the minimum
   sample count) and report the median: a 4090 finished the synthetic tests in 0.07-0.3 s, before its clocks had
   settled and too fast to look like a test at all.
@@ -283,7 +285,7 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **Upscaling is a run setting for scenes**: with `--upscale fsr1|bilinear`, scene tests see a `RunSettings` whose
   width/height are the render size (output / 1.3, 1.5, 1.7 or 2.0) and the frame loop upscales their output before
   presenting, hashing or dumping it; the upscale pass is inside the frame's GPU time. No scene code changes. The
-  upscaler and mode join the comparable key (only when not off, so native keys are unchanged).
+  upscaler and mode join the comparable key ("off" for native rendering; the first keys had no such part).
 - **feature.upscale judges FSR against bilinear on supersampled content**: comparing with a native render that is
   itself aliased rewards blur (FSR's sharpening loses PSNR there), so the test renders an analytic image with 4x4
   supersampling at every size and requires EASU's PSNR to be at least bilinear's minus 0.5 dB.

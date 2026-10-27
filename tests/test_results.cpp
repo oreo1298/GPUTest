@@ -135,7 +135,7 @@ TEST_CASE("scoring", "[scoring]") {
     CHECK(r.stability.valid);
     CHECK(r.stability.ratio == Approx(0.9));
     CHECK_FALSE(r.stability.passed);
-    CHECK(r.scores.comparableKey == "standard|vulkan|1920x1080|high|standard");
+    CHECK(r.scores.comparableKey == "standard|vulkan|1920x1080|high|standard|off|r2");
     CHECK(r.scores.perWatt == Approx(950.0 / 300.0));
 }
 

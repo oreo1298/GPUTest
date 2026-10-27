@@ -161,7 +161,7 @@ public:
         m_info.category = Category::Scene;
         m_info.group = "Legacy";
         m_info.apis = {rhi::Api::Vulkan, rhi::Api::D3D12, rhi::Api::D3D11, rhi::Api::OpenGL};
-        m_info.reference = lite ? 300.0 : 200.0; // provisional, see docs/SCORING.md
+        m_info.reference = lite ? 140.0 : 70.0; // provisional, see docs/SCORING.md
         m_info.tags = {"legacy", lite ? "cpu-light" : "cpu-heavy"};
         m_info.suites = lite ? std::vector<std::string>{"quick", "standard", "extreme", "legacy"}
                              : std::vector<std::string>{"standard", "extreme", "legacy"};

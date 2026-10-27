@@ -205,7 +205,7 @@ public:
         m_info.category = Category::Scene;
         m_info.group = "Ultimate";
         m_info.apis = {rhi::Api::Vulkan, rhi::Api::D3D12};
-        m_info.reference = 90.0; // provisional, see docs/SCORING.md
+        m_info.reference = 130.0; // provisional, see docs/SCORING.md
         m_info.tags = {"ultimate", "rt", "cpu-light"};
         m_info.suites = {"standard", "extreme", "raytracing"};
         m_info.order = 50;

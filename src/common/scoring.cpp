@@ -14,9 +14,8 @@ double testScore(double value, double reference, bool higherIsBetter) {
 }
 
 std::string comparableKey(const results::RunConfig& c) {
-    std::string key = std::format("{}|{}|{}x{}|{}|{}", c.suite, c.api, c.width, c.height, c.quality, c.duration);
-    if (!c.upscale.empty() && c.upscale != "off") key += "|" + c.upscale; // keys of native runs are unchanged
-    return key;
+    return std::format("{}|{}|{}x{}|{}|{}|{}|r{}", c.suite, c.api, c.width, c.height, c.quality, c.duration,
+                       c.upscale.empty() ? "off" : c.upscale, kWorkloadRevision);
 }
 
 void computeScores(results::RunResult& run, double stabilityThreshold) {

@@ -13,7 +13,12 @@ namespace gt::scoring {
 
 double testScore(double value, double reference, bool higherIsBetter);
 
-/// Key that must match for two runs' scores to be comparable.
+/// Revision of the test workloads: bumped whenever test content changes what a score measures, so that runs
+/// of different workloads are never compared (it is the last part of the comparable key).
+inline constexpr int kWorkloadRevision = 2;
+
+/// Key that must match for two runs' scores to be comparable:
+/// `suite|api|WxH|quality|duration|upscaler|rN` (upscaler "off" for native rendering, N = kWorkloadRevision).
 std::string comparableKey(const results::RunConfig& config);
 
 /// Fills scores, loop scores, stability and efficiency from the test results.

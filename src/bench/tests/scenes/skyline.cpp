@@ -168,7 +168,7 @@ public:
         m_info.category = Category::Scene;
         m_info.group = "Modern";
         m_info.apis = {rhi::Api::Vulkan, rhi::Api::D3D12};
-        m_info.reference = 120.0; // provisional, see docs/SCORING.md
+        m_info.reference = 140.0; // provisional, see docs/SCORING.md
         m_info.tags = {"modern", "cpu-light", "async-compute"};
         m_info.suites = {"quick", "standard", "extreme"};
         m_info.order = 40;

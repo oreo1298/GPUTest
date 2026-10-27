@@ -40,6 +40,8 @@ them as a GitHub release. About 40 000 lines of C++, 52 unit-test cases, and smo
   portable zip and the Flatpak on users' machines with real GPU drivers.
 
 **Suggested next steps**
+0. Re-run the raytracing and quick suites on the RTX 4090 with workload r2 (docs/HARDWARE_TESTING.md, "Heavier
+   scenes") and retune the quality tables and references from the GPU times.
 1. Run the hardware report (`kiln-hw-report` / `hw-report.ps1`) on the RTX 4090 and the iGPU, and on any AMD or
    Intel GPU at hand; fix what it finds, then set the score references from real results.
 2. Push the `v0.1.0` tag once a hardware pass is clean (the release job is ready; CHANGELOG.md has the notes).
@@ -220,6 +222,14 @@ them as a GitHub release. About 40 000 lines of C++, 52 unit-test cases, and smo
   history note; top-aligned suite cards; Settings shows where system colours come from; accessible names for
   the path fields; `kiln-run --help` layout and plain `--no-hud`; docs/CLI.md lists every option; the git
   revision shown in the app no longer goes stale in incremental builds.
+- First RTX 4090 results (raytracing and quick suites): every scene ran in 0.2-2.3 ms of GPU time and the camera
+  raced through its path. Workload r2: scenes play their timeline in real time (quick 2x, standard 1x, extreme
+  3x) with golden frames rendered before the warm-up; every scene is several times heavier at high/ultra
+  (Glasshouse: alpha-tested trees in the BVH, glass, GI; Gallery: dense sculptures, 1440 floor tiles, 8-16
+  paths; Atrium: up to 2048 lights, SSAO; Courtyard, Skyline, Lattice: more and denser geometry, larger
+  shadow maps); micro tests sample for 1/3/8 s; the comparable key carries the workload revision (r2);
+  scene references re-estimated; WARP's H.264 encoder frame_num length matched; the D3D12 decoder reports
+  unwritten frames.
 
 ### 2026-10-26
 - Saved brief to docs/SPEC.md; research pass recorded in docs/RESEARCH.md (two research subagents).
