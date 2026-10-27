@@ -56,7 +56,7 @@ public:
         d["failed_checks"] = c.failedChecks;
         d["mismatched_pixels"] = c.mismatchedPixels;
         d["check_interval_frames"] = interval;
-        ctx.addMetric("failed_checks", "Reference frames with errors", c.failedChecks, "frames", false);
+        ctx.addMetric("failed_checks", "Reference frames with errors", c.failedChecks, "bad frames", false);
         ctx.addMetric("checks", "Reference frames checked", c.checks, "frames");
         if (c.checks == 0) {
             ctx.setVerdict(results::Verdict::Warn, "The run was too short to check any reference frame.");

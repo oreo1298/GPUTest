@@ -156,7 +156,7 @@ public:
         d["bad_rounds"] = badRounds;
         d["cpu_checked"] = sample;
         const std::uint64_t total = intMismatch + floatMismatch + cpuMismatch;
-        ctx.addMetric("mismatches", "Wrong results", static_cast<double>(total), "values", false);
+        ctx.addMetric("mismatches", "Wrong results", static_cast<double>(total), "errors", false);
         ctx.addMetric("rounds", "Rounds", rounds, "rounds");
         if (gpuMs > 0) ctx.addMetric("throughput", "Approximate throughput", ops / (gpuMs / 1000.0) / 1e9, "Gop/s");
         if (total == 0) {
