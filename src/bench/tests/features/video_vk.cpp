@@ -1027,13 +1027,14 @@ void decodeReference(TestContext& ctx, const rhi::NativeDevice& n, const CodecHo
         res.failure = failure;
         return;
     }
+    // The pictures are checked before the throughput is measured, so a decoder that fails under load still
+    // gets its correctness verdict.
+    if (dec.readable())
+        checkReference(*ref, dec.readback(), codec->frameCount(), res);
+    else
+        res.decodeNote = "decoded pictures cannot be copied out on this driver, so they were not compared";
     progress(0.1, std::format("{}: measuring decode throughput", hooks.label));
     res.decodeFps = dec.time(ctx, seconds);
-    if (!dec.readable()) {
-        res.decodeNote = "decoded pictures cannot be copied out on this driver, so they were not compared";
-        return;
-    }
-    checkReference(*ref, dec.readback(), codec->frameCount(), res);
 }
 
 void encodeAndCheck(TestContext& ctx, const rhi::NativeDevice& n, const CodecHooks& hooks,

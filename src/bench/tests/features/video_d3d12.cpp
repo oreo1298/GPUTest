@@ -542,11 +542,13 @@ void decodeReference(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hook
         return;
     }
     ctx.log(std::format("{}: decoded the reference stream once", hooks.label));
-    progress(0.3, std::format("{}: measuring decode throughput", hooks.label));
+    // The pictures are checked before the throughput is measured, so a decoder that fails under load still
+    // gets its correctness verdict.
+    progress(0.3, std::format("{}: checking the decoded frames", hooks.label));
+    video::checkReference(*ref, dec->readback(), static_cast<std::uint32_t>(stream->frames.size()), res);
+    progress(0.35, std::format("{}: measuring decode throughput", hooks.label));
     res.decodeFps = dec->time(ctx, seconds);
     ctx.log(std::format("{}: {:.1f} fps decode", hooks.label, *res.decodeFps));
-    progress(0.4, std::format("{}: checking the decoded frames", hooks.label));
-    video::checkReference(*ref, dec->readback(), static_cast<std::uint32_t>(stream->frames.size()), res);
 }
 
 } // namespace
@@ -561,7 +563,8 @@ video::CodecResult runCodec(TestContext& ctx, ID3D12Device* dev, const CodecHook
     try {
         decodeReference(ctx, dev, hooks, seconds, progress, res);
     } catch (const std::exception& e) { // a stop request is not a std::exception and passes
-        res.failure = std::format("{} decode: {}", hooks.label, e.what());
+        const std::string why = std::format("{} decode: {}", hooks.label, e.what());
+        res.failure = res.failure.empty() ? why : res.failure + "; " + why; // keep a CRC failure found first
     }
     ctx.checkStop();
     // Decoding and encoding run on separate engines: a decode failure does not hide the encode measurement.
@@ -572,7 +575,8 @@ video::CodecResult runCodec(TestContext& ctx, ID3D12Device* dev, const CodecHook
         try {
             encodeAndCheck(ctx, dev, hooks, source, seconds, progress, res);
         } catch (const std::exception& e) {
-            res.failure = std::format("{} encode: {}", hooks.label, e.what());
+            const std::string why = std::format("{} encode: {}", hooks.label, e.what());
+            res.failure = res.failure.empty() ? why : res.failure + "; " + why;
         }
     }
     if (!decodeFailure.empty())
