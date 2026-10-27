@@ -49,6 +49,9 @@ On a Windows PC (the 4090 if it dual-boots, otherwise any GPU), unzip the `windo
 7. **Sampler feedback**: `kiln-run --api d3d12 --test feature.sampler_feedback`: Pass ("All 256 feedback regions
    decode to the mip level that was sampled"); a Warn about conservative feedback is acceptable — tell me which.
    Note `feedback_overhead_pct` (writing feedback on top of the same samples).
+8. **Work graphs** (RTX 4090 with a 2024+ driver; Radeon 7000-series iGPU/dGPU with Adrenalin 24.x+):
+   `kiln-run --api d3d12 --test feature.work_graphs`: Pass ("All 1048576 records ... ran exactly once"); send
+   `graph_mrecords_s` and `graph_vs_dispatch`. A skip should name the missing tier or shader model.
 
 **Decision needed (licensing):** shipping Microsoft's Agility SDK runtime (`D3D12Core.dll`,
 `d3d12SDKLayers.dll`) is allowed, but its license makes the distributor require end-user terms that protect

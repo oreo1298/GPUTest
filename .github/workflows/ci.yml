@@ -293,6 +293,8 @@ jobs:
           Expand-Archive -Path "$dxc.zip" -DestinationPath $dxc
           Copy-Item "$dxc/build/native/bin/x64/dxcompiler.dll", "$dxc/build/native/bin/x64/dxil.dll" (Join-Path $dst "bin") -Force
           & "$dxc/build/native/bin/x64/dxc.exe" --version
+          # The same DXC compiles the HLSL-only shaders (work graphs).
+          Add-Content -Path $env:GITHUB_ENV -Value "DXC_DIR=$dxc/build/native/bin/x64"
           Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $dst "bin")
 
       - name: Configure

@@ -180,6 +180,11 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   commands directly between `D3D12CommandList::beginNative()` / `endNative()` (barriers flushed first, root state
   re-bound after), with their own root signatures and descriptors borrowed from the device heaps, so they still use
   the harness's timing (`measureMicro`) and state tracking for RHI resources.
+- **Work-graph shaders are HLSL compiled by DXC**: Slang has no node shaders, so `shaders/manifest.txt` accepts
+  `.hlsl` entries (D3D12 only) compiled with DXC ≥ 1.8 on Windows (`DXC_DIR`, CI uses the NuGet DXC that also
+  backs slangc). Without a suitable DXC the build still succeeds and the test reports the shaders as missing. The
+  test graph is deliberately simple (broadcasting entry → thread-launch leaf) so every record can be checked;
+  its throughput is shown next to the same work as one dispatch (ratio, not scored).
 - **Sampler feedback is verified exactly**: one point sample per mip region at a chosen mip, with mips no larger
   than a region and sample positions off every texel edge, so the decoded MinMip map is fully predictable; finer
   than expected counts as conservative (warn), coarser as wrong (fail).

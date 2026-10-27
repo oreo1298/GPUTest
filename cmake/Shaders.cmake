@@ -9,9 +9,42 @@
 # keys: vk=<slang spirv profile, default spirv_1_3>  d3d12=<sm_6_0>  d3d11=<sm_5_0>
 #       glsl=<330|430>  defines=<A=1,B>  name=<variant suffix>
 # Blob keys at runtime: "<file-without-.slang>:<entry>[@<name>]:<format>".
+#
+# HLSL sources (<file.hlsl>, apis d3d12 only) hold what Slang cannot express (work-graph node
+# shaders). They are compiled with DXC on Windows when one new enough is found ($DXC_DIR first);
+# d3d12=<DXC target profile, e.g. lib_6_8 or cs_6_8>; a lib_* target exports every entry point.
 
 find_program(GT_SLANGC slangc HINTS "$ENV{SLANG_DIR}/bin" /opt/slang/current/bin REQUIRED)
 message(STATUS "Slang compiler: ${GT_SLANGC}")
+
+set(GT_DXC "")
+if(WIN32 AND GT_ENABLE_D3D12)
+  find_program(GT_DXC_EXE dxc HINTS "$ENV{DXC_DIR}" "$ENV{DXC_DIR}/bin/x64" NO_DEFAULT_PATH)
+  if(NOT GT_DXC_EXE)
+    find_program(GT_DXC_EXE dxc)
+  endif()
+  if(GT_DXC_EXE)
+    execute_process(COMMAND "${GT_DXC_EXE}" --version OUTPUT_VARIABLE _dxc_ver ERROR_VARIABLE _dxc_ver)
+    # "dxcompiler.dll: 1.9 - 1.9.2609.5 ..."; shader model 6.8 (work graphs) needs 1.8 or later.
+    set(_dxc_ok OFF)
+    if(_dxc_ver MATCHES "dxcompiler\\.dll: ([0-9]+)\\.([0-9]+)")
+      set(_dxc_major ${CMAKE_MATCH_1})
+      set(_dxc_minor ${CMAKE_MATCH_2})
+      if(_dxc_major GREATER 1 OR _dxc_minor GREATER_EQUAL 8)
+        set(_dxc_ok ON)
+      endif()
+    endif()
+    if(_dxc_ok)
+      set(GT_DXC "${GT_DXC_EXE}")
+      message(STATUS "DXC (HLSL shaders): ${GT_DXC} (${_dxc_major}.${_dxc_minor})")
+    else()
+      string(STRIP "${_dxc_ver}" _dxc_ver)
+      message(STATUS "DXC at ${GT_DXC_EXE} ('${_dxc_ver}') is older than 1.8: HLSL shaders (work graphs) are not built")
+    endif()
+  else()
+    message(STATUS "DXC not found (set DXC_DIR): HLSL shaders (work graphs) are not built")
+  endif()
+endif()
 
 set(GT_VK_SHIFTS -fvk-b-shift 0 0 -fvk-t-shift 16 0 -fvk-u-shift 32 0 -fvk-s-shift 48 0)
 
@@ -70,6 +103,25 @@ function(gt_compile_shaders)
       endif()
     endforeach()
 
+    if(_file MATCHES "\\.hlsl$")
+      string(REGEX REPLACE "\\.hlsl$" "" _module "${_file}")
+      string(REPLACE "/" "_" _flat "${_module}")
+      set(_base "${ARG_OUTPUT_DIR}/${_flat}.${_entry}")
+      if(GT_DXC AND "d3d12" IN_LIST _apis)
+        set(_dxc_entry -E ${_entry})
+        if(_d3d12 MATCHES "^lib_")
+          set(_dxc_entry)
+        endif()
+        add_custom_command(OUTPUT "${_base}.dxil"
+          COMMAND "${GT_DXC}" "${ARG_SOURCE_DIR}/${_file}" -T ${_d3d12} ${_dxc_entry} -HV 2021 -O3
+                  -I "${ARG_SOURCE_DIR}" -Fo "${_base}.dxil"
+          DEPENDS "${ARG_SOURCE_DIR}/${_file}"
+          COMMENT "dxc ${_module}:${_entry} -> DXIL" VERBATIM)
+        list(APPEND _embed_args "${_module}:${_entry}:dxil=${_base}.dxil")
+        list(APPEND _outputs "${_base}.dxil")
+      endif()
+      continue()
+    endif()
     string(REGEX REPLACE "\\.slang$" "" _module "${_file}")
     set(_key "${_module}:${_entry}${_variant}")
     string(REPLACE "/" "_" _flat "${_module}")
