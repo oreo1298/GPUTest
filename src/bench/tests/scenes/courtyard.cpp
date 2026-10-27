@@ -139,7 +139,7 @@ public:
                    "available, drawn the way a classic renderer does — one draw call per object.";
         m_info.category = Category::Scene;
         m_info.group = "Legacy";
-        m_info.apis = {rhi::Api::Vulkan, rhi::Api::D3D12};
+        m_info.apis = {rhi::Api::Vulkan, rhi::Api::D3D12, rhi::Api::OpenGL};
         m_info.reference = lite ? 300.0 : 200.0; // provisional, see docs/SCORING.md
         m_info.tags = {"legacy", lite ? "cpu-light" : "cpu-heavy"};
         m_info.suites = lite ? std::vector<std::string>{"quick", "standard", "extreme", "legacy"}

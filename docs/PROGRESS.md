@@ -70,8 +70,12 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   suite and the scenes run (Skyline's compute hand-over fixed after the first run). D3D12-only features: VRS tier 2
   shading-rate images (`feature.vrs`), `feature.sampler_feedback`, `feature.work_graphs` (HLSL via DXC), SER on
   DXR 1.2 (shared Slang shader, lib_6_9).
-- Next: confirm the new features on WARP, opacity micromaps on D3D12 (DXR 1.2; Slang lacks the ray-query OMM flag,
-  so an HLSL variant), make the standard suite strict on D3D12, then M11.
+- Next for M10: confirm the new features on WARP (standard suite report in the Windows job), then make the
+  standard suite strict on D3D12.
+- **Milestone 11 (legacy backends): in progress.** OpenGL backend (`src/rhi/gl`, GL 3.3 core + buffer storage,
+  newer features when present) renders Lattice, Courtyard and Atrium (+ lite) on llvmpipe identically to Vulkan
+  (golden frames, CI step); windowed presentation and the HUD work (HUD needs GLSL 4.30). Next: compute and
+  synthetic tests on GL, the D3D11 backend, the legacy suite.
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,

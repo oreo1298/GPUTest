@@ -24,7 +24,7 @@ if [ "$(id -u)" != "0" ]; then SUDO="sudo"; fi
 APT_PACKAGES=(
   build-essential cmake ninja-build ccache pkg-config git curl ca-certificates xz-utils unzip
   clang clang-format clang-tidy lld python3-pip
-  mesa-vulkan-drivers libgl1-mesa-dri libvulkan-dev vulkan-tools vulkan-validationlayers
+  mesa-vulkan-drivers libgl1-mesa-dri libegl-mesa0 libglx-mesa0 libvulkan-dev vulkan-tools vulkan-validationlayers
   spirv-tools glslang-tools mesa-utils
   libgl-dev libegl-dev libgles-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev
   libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev

@@ -13,7 +13,7 @@
 // glShaderStorageBlockBinding, glUniform1i), which works on GLSL 330 as well as 430+.
 // Vertex inputs are renamed gta_<location>, stage varyings gtv_<location> (so stages compiled
 // separately still match by name on GLSL 330), fragment outputs gto_<location>. Clip-space
-// depth is rewritten from [0, w] to [-w, w].
+// depth is rewritten from [0, w] to [-w, w] and y is flipped (see below).
 
 #include <spirv_glsl.hpp>
 
@@ -71,9 +71,13 @@ int main(int argc, char** argv) {
         bool writesPosition = false;
         for (const auto& b : c.get_shader_resources().builtin_outputs)
             writesPosition |= b.builtin == spv::BuiltInPosition;
-        opts.vertex.fixup_clipspace = writesPosition && (model == spv::ExecutionModelVertex ||
-                                                         model == spv::ExecutionModelTessellationEvaluation ||
-                                                         model == spv::ExecutionModelGeometry);
+        const bool rasterPosition = writesPosition && (model == spv::ExecutionModelVertex ||
+                                                       model == spv::ExecutionModelTessellationEvaluation ||
+                                                       model == spv::ExecutionModelGeometry);
+        opts.vertex.fixup_clipspace = rasterPosition;
+        // Clip space is D3D's (+y up). Flipping y makes memory row 0 the top of the image, as on
+        // D3D and Vulkan (negative viewport height): readbacks, gl_FragCoord and viewports all match.
+        opts.vertex.flip_vert_y = rasterPosition;
         c.set_common_options(opts);
 
         std::ostringstream header;

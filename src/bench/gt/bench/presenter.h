@@ -30,6 +30,8 @@ public:
 
 private:
     void drawHud(rhi::CommandList& cmd, std::uint32_t width, std::uint32_t height, const std::vector<std::string>& lines);
+    void createSamplerAndFont();
+    void createHud(const rhi::GraphicsPipelineDesc& blit);
     rhi::Device& m_device;
     SDL_Window* m_window;
     bool m_hud;

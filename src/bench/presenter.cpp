@@ -33,7 +33,21 @@ Presenter::Presenter(rhi::Device& device, SDL_Window* window, bool vsync, bool h
                             {rhi::BindingType::Sampler, 0, rhi::ShaderStage::Fragment}};
     blit.layout.pushConstantBytes = 32;
     m_blit = device.createGraphicsPipeline(blit);
+    createSamplerAndFont();
 
+    // The HUD reads glyphs from a storage buffer; without one (OpenGL 3.3) frames show without it.
+    try {
+        createHud(blit);
+    } catch (const std::exception& e) {
+        log::info("HUD unavailable on this API/GPU: {}", e.what());
+        m_text.reset();
+        m_rect.reset();
+        m_hud = false;
+    }
+}
+
+void Presenter::createHud(const rhi::GraphicsPipelineDesc& blit) {
+    rhi::Device& device = m_device;
     rhi::GraphicsPipelineDesc text = blit;
     text.name = "hud-text";
     text.vertex = {"common/hud", "vsText"};
@@ -51,7 +65,10 @@ Presenter::Presenter(rhi::Device& device, SDL_Window* window, bool vsync, bool h
     rect.fragment = {"common/hud", "psRect"};
     rect.layout.bindings = {{rhi::BindingType::StorageBufferRO, 2, rhi::ShaderStage::Vertex}};
     m_rect = device.createGraphicsPipeline(rect);
+}
 
+void Presenter::createSamplerAndFont() {
+    rhi::Device& device = m_device;
     rhi::SamplerDesc s;
     s.addressU = s.addressV = s.addressW = rhi::AddressMode::Clamp;
     m_sampler = device.createSampler(s);
@@ -89,7 +106,7 @@ bool Presenter::pumpEvents() {
         case SDL_EVENT_WINDOW_CLOSE_REQUESTED: m_closed = true; break;
         case SDL_EVENT_KEY_DOWN:
             if (e.key.key == SDLK_ESCAPE) m_closed = true;
-            if (e.key.key == SDLK_F1 || e.key.key == SDLK_H) m_hud = !m_hud;
+            if ((e.key.key == SDLK_F1 || e.key.key == SDLK_H) && m_text) m_hud = !m_hud;
             break;
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: m_resized = true; break;
         default: break;

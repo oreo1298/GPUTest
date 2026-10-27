@@ -200,6 +200,22 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   than a region and sample positions off every texel edge, so the decoded MinMip map is fully predictable; finer
   than expected counts as conservative (warn), coarser as wrong (fail).
 
+- **OpenGL shaders: SPIR-V -> GLSL with SPIRV-Cross at build time** (`gt_glslgen`, Apache-2.0, not shipped).
+  GL has no descriptor sets, so resources get names derived from their RHI slot and a binding table in comment
+  lines; the backend assigns binding points per program at link time (works on GLSL 330 and 4xx alike).
+  Varyings are named by location so separately compiled stages link on GLSL 330. Clip space is D3D's: the
+  generator flips y and rewrites depth to [-w, w], so memory row 0 is the image top as on D3D/Vulkan — GL frames
+  match the Vulkan golden frames (max channel difference 1 on llvmpipe) and front faces map to the mirrored GL
+  winding. Ray tracing, mesh shaders and VRS have no GL path.
+- **OpenGL backend model**: command lists record closures into an arena and the device replays them at submit
+  on the context thread; one ordered stream for every queue type (no async compute/copy), fences via
+  glFenceSync; an executor holds the RHI's b/t/u/s slot tables and binds what the current program uses. GL 3.3
+  core is the floor, plus ARB_buffer_storage (persistently mapped upload/readback memory) — every GL 3.3-class
+  driver still in use has it. Compute, storage buffers/images, texture views, multi-draw indirect are used from
+  4.2/4.3 when present. The context lives on a hidden window of its own and is made current on a swapchain's
+  window only to present (blit + swap); headless Linux uses SDL's offscreen (EGL) driver. Entry points load
+  through SDL_GL_GetProcAddress — nothing links against libGL/opengl32.
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.

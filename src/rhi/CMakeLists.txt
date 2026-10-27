@@ -33,6 +33,18 @@ if(GT_ENABLE_D3D12)
   list(APPEND _rhi_libs Microsoft::DirectX-Headers Microsoft::DirectX-Guids)
 endif()
 
+if(GT_ENABLE_OPENGL)
+  list(APPEND _rhi_sources
+    gl/gl_util.cpp
+    gl/gl_device.cpp
+    gl/gl_resources.cpp
+    gl/gl_pipeline.cpp
+    gl/gl_commandlist.cpp
+    gl/gl_swapchain.cpp)
+  # Entry points are loaded at run time through SDL; nothing links against libGL / opengl32.
+  list(APPEND _rhi_defs GT_HAS_OPENGL=1)
+endif()
+
 add_library(gt_rhi STATIC ${_rhi_sources})
 target_include_directories(gt_rhi PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(gt_rhi PUBLIC ${_rhi_defs})
