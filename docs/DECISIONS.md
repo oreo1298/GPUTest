@@ -41,6 +41,8 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **When the installed validation layer is older than our headers, the device is limited to what the layer knows** (API 1.3, newer extensions off) and capability queries are muted: otherwise the layer reports false errors. CI uses the current LunarG layer, so real errors are still caught.
 - **Swapchain present mode: IMMEDIATE, then MAILBOX, then FIFO** when vsync is off.
 - **Frames in flight = 2; frame time = interval between successive submissions** (the CPU blocks on the frame two back), GPU time from timestamps around the test's own work (excludes blit/HUD).
+  Golden-frame dumps drain the GPU, so the two frames after a dump (which then wait for nothing) are rendered
+  but not timed; their timestamps are still read because on some drivers (lavapipe) that read paces the loop.
 - **Repeat whole passes of a fixed frame sequence until the preset's minimum time** (quick 8 s, standard 25 s, extreme 90 s) with a hard time limit (90/240/900 s) that marks results `time_limited`: identical work per frame on every GPU plus enough run time for boost/thermals.
 - **Golden-image checks use a 16×9 mean-colour signature with a tolerance (default 8/255) plus an exact hash**: exact hashes break across drivers/LLVM versions, signatures still catch broken rendering.
 - **Tests are linked as an OBJECT library with static self-registration** (`GT_REGISTER_TEST`): adding a test is one file, and the linker cannot drop it.
