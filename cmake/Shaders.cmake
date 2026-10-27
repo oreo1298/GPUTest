@@ -183,10 +183,13 @@ function(gt_compile_shaders)
   endforeach()
 
   set(_gen "${ARG_OUTPUT_DIR}/embedded_shaders.cpp")
-  # Arguments go through a response-file-free command line; keep keys short.
+  # The blob list goes through a file: Windows command lines stop at 32 767 characters.
+  set(_list "${ARG_OUTPUT_DIR}/embedded_shaders.txt")
+  string(REPLACE ";" "\n" _list_content "${_embed_args}")
+  file(GENERATE OUTPUT "${_list}" CONTENT "${_list_content}\n")
   add_custom_command(OUTPUT "${_gen}"
-    COMMAND gt_embed "${_gen}" gt::shaders::detail kBlobs ${_embed_args}
-    DEPENDS gt_embed ${_outputs} "${ARG_MANIFEST}"
+    COMMAND gt_embed "${_gen}" gt::shaders::detail kBlobs "@${_list}"
+    DEPENDS gt_embed ${_outputs} "${ARG_MANIFEST}" "${_list}"
     COMMENT "Embedding shader blobs" VERBATIM)
   target_sources(${ARG_TARGET} PRIVATE "${_gen}")
 endfunction()

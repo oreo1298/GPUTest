@@ -1,6 +1,7 @@
 // gt_embed: turns binary files into a C++ source with a lookup table.
 //
 //   gt_embed <out.cpp> <namespace> <symbol> <key>=<file> [<key>=<file> ...]
+//   gt_embed <out.cpp> <namespace> <symbol> @<list>   (one key=file per line; no command-line limit)
 //
 // The generated file defines
 //   namespace <ns> { struct EmbeddedFile { const char* key; const unsigned char* data; unsigned long long size; };
@@ -27,8 +28,23 @@ int main(int argc, char** argv) {
     out << "struct EmbeddedFile { const char* key; const unsigned char* data; unsigned long long size; };\n";
     out << "namespace {\n";
     std::vector<std::pair<std::string, std::size_t>> entries;
+    std::vector<std::string> args;
     for (int i = 4; i < argc; ++i) {
-        std::string arg = argv[i];
+        if (argv[i][0] != '@') {
+            args.emplace_back(argv[i]);
+            continue;
+        }
+        std::ifstream list(argv[i] + 1);
+        if (!list) {
+            std::fprintf(stderr, "gt_embed: cannot open list '%s'\n", argv[i] + 1);
+            return 1;
+        }
+        for (std::string line; std::getline(list, line);) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (!line.empty()) args.push_back(line);
+        }
+    }
+    for (const std::string& arg : args) {
         auto eq = arg.find('=');
         if (eq == std::string::npos) {
             std::fprintf(stderr, "gt_embed: bad argument '%s'\n", arg.c_str());
