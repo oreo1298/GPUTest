@@ -68,6 +68,7 @@ namespace {
 
 constexpr std::uint32_t kRepeats = 8;   ///< GOPs per timed submission
 constexpr UINT64 kBitstreamAlign = 256; ///< frame offsets in the bitstream buffer (DXVA wants 128)
+constexpr UINT64 kStatsStride = 32;     ///< resolved D3D12_QUERY_DATA_VIDEO_DECODE_STATISTICS per frame
 constexpr std::uint32_t kPlanes = 2;    ///< NV12: luma, interleaved chroma
 
 D3D12_VIDEO_DECODE_CONFIGURATION configuration(const GUID& profile) {
@@ -207,6 +208,14 @@ public:
 
         if (HRESULT hr = makeQueue(m_dev, D3D12_COMMAND_LIST_TYPE_VIDEO_DECODE, m_decode); FAILED(hr))
             return "no video decode queue: " + hresultName(hr);
+        // Per-frame decode status where the driver offers it (optional: nothing depends on it).
+        D3D12_QUERY_HEAP_DESC qd{};
+        qd.Type = D3D12_QUERY_HEAP_TYPE_VIDEO_DECODE_STATISTICS;
+        qd.Count = video::kGop;
+        if (SUCCEEDED(m_dev->CreateQueryHeap(&qd, __uuidof(ID3D12QueryHeap), m_statsHeap.putVoid())) &&
+            FAILED(committed(m_dev, D3D12_HEAP_TYPE_DEFAULT, bufferDesc(kStatsStride * video::kGop),
+                             D3D12_RESOURCE_STATE_COMMON, m_stats)))
+            m_statsHeap.reset();
         check(makeQueue(m_dev, D3D12_COMMAND_LIST_TYPE_COPY, m_copy), "copy queue");
         uploadBitstream();
 
@@ -274,10 +283,11 @@ public:
                                              nullptr, nullptr, &size);
                 total = alignUp(total + size, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
             }
+        const UINT64 statsAt = total, statsBytes = m_statsHeap ? kStatsStride * count : 0;
         Com<ID3D12Resource> rb;
-        check(
-            committed(m_dev, D3D12_HEAP_TYPE_READBACK, bufferDesc(total), D3D12_RESOURCE_STATE_COPY_DEST, rb),
-            "readback buffer");
+        check(committed(m_dev, D3D12_HEAP_TYPE_READBACK, bufferDesc(total + statsBytes),
+                        D3D12_RESOURCE_STATE_COPY_DEST, rb),
+              "readback buffer");
         Com<ID3D12GraphicsCommandList> cl;
         check(m_copy.allocator->Reset(), "ID3D12CommandAllocator::Reset");
         check(m_dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, m_copy.allocator.get(), nullptr,
@@ -295,6 +305,7 @@ public:
                 dst.PlacedFootprint = fp[f * kPlanes + p];
                 cl->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
             }
+        if (statsBytes) cl->CopyBufferRegion(rb.get(), statsAt, m_stats.get(), 0, statsBytes);
         check(cl->Close(), "Close (copy)");
         m_sync.gpuWait(m_copy.queue.get());
         execute(m_copy.queue.get(), cl.get());
@@ -303,7 +314,7 @@ public:
 
         std::vector<std::uint8_t> out(video::kFrameBytes * count);
         void* mapped = nullptr;
-        D3D12_RANGE range{0, static_cast<SIZE_T>(total)};
+        D3D12_RANGE range{0, static_cast<SIZE_T>(total + statsBytes)};
         check(rb->Map(0, &range, &mapped), "Map (readback)");
         const auto* base = static_cast<const std::uint8_t*>(mapped);
         for (std::uint32_t f = 0; f < count; ++f) {
@@ -318,10 +329,24 @@ public:
                 std::memcpy(dst + std::size_t(r) * video::kWidth,
                             base + uv.Offset + std::size_t(r) * uv.Footprint.RowPitch, video::kWidth);
         }
+        m_status = DecodeStatus::array();
+        for (std::uint32_t f = 0; f < count && statsBytes; ++f) {
+            static constexpr const char* kNames[] = {"ok", "continue", "continue, skip display", "restart",
+                                                     "rate exceeded"};
+            D3D12_QUERY_DATA_VIDEO_DECODE_STATISTICS st;
+            std::memcpy(&st, base + statsAt + f * kStatsStride, sizeof(st));
+            const std::string name =
+                st.Status < std::size(kNames) ? kNames[st.Status] : std::format("status {}", st.Status);
+            m_status.push_back(st.NumMacroblocksAffected ? std::format("{} ({} macroblocks affected)", name,
+                                                                       st.NumMacroblocksAffected)
+                                                         : name);
+        }
         D3D12_RANGE none{0, 0};
         rb->Unmap(0, &none);
         return out;
     }
+    /// The decoder's status for each frame of the last readback (empty without decode statistics).
+    const DecodeStatus& status() const { return m_status; }
 
     std::string outputMode() const {
         return std::format("NV12 texture array, decode tier {}{}", static_cast<int>(m_tier),
@@ -419,6 +444,19 @@ private:
         in.CompressedBitstream.Size = m_sizes[f];
         in.pHeap = m_heap.get();
         cl->DecodeFrame(m_decoder.get(), &out, &in);
+        if (m_statsHeap) {
+            cl->EndQuery(m_statsHeap.get(), D3D12_QUERY_TYPE_VIDEO_DECODE_STATISTICS, f);
+            const D3D12_RESOURCE_BARRIER toWrite =
+                transition(m_stats.get(), D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                           D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_VIDEO_DECODE_WRITE);
+            cl->ResourceBarrier(1, &toWrite);
+            cl->ResolveQueryData(m_statsHeap.get(), D3D12_QUERY_TYPE_VIDEO_DECODE_STATISTICS, f, 1,
+                                 m_stats.get(), f * kStatsStride);
+            const D3D12_RESOURCE_BARRIER back =
+                transition(m_stats.get(), D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                           D3D12_RESOURCE_STATE_VIDEO_DECODE_WRITE, D3D12_RESOURCE_STATE_COMMON);
+            cl->ResourceBarrier(1, &back);
+        }
 
         after = before;
         for (D3D12_RESOURCE_BARRIER& b : after)
@@ -441,7 +479,9 @@ private:
     D3D12_VIDEO_DECODE_TIER m_tier = D3D12_VIDEO_DECODE_TIER_NOT_SUPPORTED;
     bool m_referenceOnly = false;
     D3D12_RESOURCE_DESC m_texDesc{};
-    Com<ID3D12Resource> m_dpb, m_output, m_bitstream;
+    Com<ID3D12Resource> m_dpb, m_output, m_bitstream, m_stats;
+    Com<ID3D12QueryHeap> m_statsHeap;
+    DecodeStatus m_status = DecodeStatus::array();
     std::vector<UINT64> m_offsets, m_sizes;
     Queue m_decode, m_copy;
     std::vector<Com<ID3D12VideoDecodeCommandList>> m_lists; ///< kRepeats GOPs, one list per frame
@@ -460,11 +500,13 @@ std::vector<CodecHooks> codecs() {
     };
 }
 
-std::string decodeFrames(ID3D12Device* dev, const DxvaStream& s, std::vector<std::uint8_t>& frames) {
+std::string decodeFrames(ID3D12Device* dev, const DxvaStream& s, std::vector<std::uint8_t>& frames,
+                         DecodeStatus* status) {
     const std::unique_ptr<Decoder, KeepIfHung> dec(new Decoder(dev, s));
     if (std::string why = dec->prepare(); !why.empty()) return why;
     if (std::string failure = dec->decodeOnce(); !failure.empty()) return failure;
     frames = dec->readback();
+    if (status) *status = dec->status();
     return {};
 }
 
@@ -546,6 +588,7 @@ void decodeReference(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hook
     // gets its correctness verdict.
     progress(0.3, std::format("{}: checking the decoded frames", hooks.label));
     video::checkReference(*ref, dec->readback(), static_cast<std::uint32_t>(stream->frames.size()), res);
+    if (!dec->status().empty()) res.details["decode_status"] = dec->status();
     progress(0.35, std::format("{}: measuring decode throughput", hooks.label));
     res.decodeFps = dec->time(ctx, seconds);
     ctx.log(std::format("{}: {:.1f} fps decode", hooks.label, *res.decodeFps));

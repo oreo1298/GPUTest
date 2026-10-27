@@ -1693,8 +1693,9 @@ void encodeAndCheck(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hooks
     progress(0.8, std::format("{}: decoding the encoded stream", hooks.label));
     std::vector<std::uint8_t> frames;
     std::string why;
+    DecodeStatus status;
     try {
-        why = decodeFrames(dev, *rt, frames);
+        why = decodeFrames(dev, *rt, frames, &status);
     } catch (const std::exception& e) { // the decoder's failure is not the encoder's
         why = e.what();
     }
@@ -1702,6 +1703,7 @@ void encodeAndCheck(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hooks
         res.encodeNote = "the encoded stream was not decoded: " + why;
         return;
     }
+    if (!status.empty()) res.details["round_trip_decode_status"] = status;
     video::checkRoundTrip(frames, static_cast<std::uint32_t>(rt->frames.size()), source, res);
 }
 

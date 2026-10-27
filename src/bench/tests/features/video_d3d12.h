@@ -139,8 +139,13 @@ std::optional<DxvaStream> dxvaH264(std::span<const std::uint8_t> annexB, std::st
 std::optional<DxvaStream> dxvaH265(std::span<const std::uint8_t> annexB, std::string* error);
 std::optional<DxvaStream> dxvaAv1(std::span<const std::uint8_t> obus, std::string* error);
 
+/// What the decoder reported for each frame (D3D12_QUERY_TYPE_VIDEO_DECODE_STATISTICS): "ok", or the status
+/// and the macroblocks affected. Empty when the driver has no decode statistics.
+using DecodeStatus = nlohmann::json;
+
 /// Decodes `s` once and reads the frames back (NV12, 1920x1080 each); returns why it could not (empty: done).
-std::string decodeFrames(ID3D12Device* dev, const DxvaStream& s, std::vector<std::uint8_t>& frames);
+std::string decodeFrames(ID3D12Device* dev, const DxvaStream& s, std::vector<std::uint8_t>& frames,
+                         DecodeStatus* status = nullptr);
 
 // --- encoding ----------------------------------------------------------------------------------------
 
