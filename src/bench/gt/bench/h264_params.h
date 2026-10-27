@@ -46,6 +46,10 @@ struct ParameterSets {
 
 /// Reads the first SPS and PPS in Annex B data. On failure returns nothing and fills `error`.
 std::optional<ParameterSets> parse(std::span<const std::uint8_t> annexB, std::string* error);
+/// The SPS and PPS as Annex B NAL units (4-byte start codes), for encoders that leave them to the
+/// application. No VUI and no scaling matrices are written; the PPS extension (transform_8x8_mode_flag and
+/// on) only for High profiles.
+std::vector<std::uint8_t> write(const ParameterSets& ps);
 
 /// One NAL unit in Annex B data: `offset` is where its start code (00 00 01) begins, `payload` the byte
 /// after.

@@ -1,6 +1,7 @@
 #include "gt/bench/h264_params.h"
 
 #include "bit_reader.h"
+#include "bit_writer.h"
 
 #include <algorithm>
 #include <deque>
@@ -224,6 +225,76 @@ std::optional<Stream> split(std::span<const std::uint8_t> data, const ParameterS
         if (error) *error = "no slices";
         return std::nullopt;
     }
+    return out;
+}
+
+std::vector<std::uint8_t> write(const ParameterSets& ps) {
+    const Sps& s = *ps.sps;
+    const Pps& p = *ps.pps;
+    const bool high = s.profileIdc == 100 || s.profileIdc == 110 || s.profileIdc == 122 ||
+                      s.profileIdc == 244 || s.profileIdc == 44 || s.profileIdc == 83 || s.profileIdc == 86 ||
+                      s.profileIdc == 118 || s.profileIdc == 128 || s.profileIdc == 138 ||
+                      s.profileIdc == 139 || s.profileIdc == 134 || s.profileIdc == 135;
+    bits::Writer w; // 7.3.2.1.1
+    w.u(8, s.profileIdc);
+    for (int i = 0; i < 6; ++i)
+        w.flag((s.constraintFlags >> i) & 1u); // constraint_set0_flag first
+    w.u(2, 0);
+    w.u(8, s.levelIdc);
+    w.ue(s.spsId);
+    if (high) {
+        w.ue(s.chromaFormatIdc);
+        if (s.chromaFormatIdc == 3) w.flag(false); // separate_colour_plane_flag
+        w.ue(s.bitDepthLumaMinus8);
+        w.ue(s.bitDepthChromaMinus8);
+        w.flag(s.qpprimeYZeroTransformBypass);
+        w.flag(false); // seq_scaling_matrix_present_flag
+    }
+    w.ue(s.log2MaxFrameNumMinus4);
+    w.ue(s.pocType);
+    if (s.pocType == 0) w.ue(s.log2MaxPocLsbMinus4);
+    w.ue(s.maxNumRefFrames);
+    w.flag(s.gapsInFrameNumAllowed);
+    w.ue(s.widthInMbsMinus1);
+    w.ue(s.heightInMapUnitsMinus1);
+    w.flag(s.frameMbsOnly);
+    if (!s.frameMbsOnly) w.flag(s.mbAdaptiveFrameField);
+    w.flag(s.direct8x8Inference);
+    w.flag(s.frameCropping);
+    if (s.frameCropping) {
+        w.ue(s.cropLeft);
+        w.ue(s.cropRight);
+        w.ue(s.cropTop);
+        w.ue(s.cropBottom);
+    }
+    w.flag(false); // vui_parameters_present_flag
+    w.trailing();
+    std::vector<std::uint8_t> out;
+    bits::appendNal(out, {0x67}, w.bytes()); // nal_ref_idc 3, SPS
+
+    bits::Writer q; // 7.3.2.2
+    q.ue(p.ppsId);
+    q.ue(p.spsId);
+    q.flag(p.entropyCodingMode);
+    q.flag(p.bottomFieldPicOrderInFramePresent);
+    q.ue(0); // num_slice_groups_minus1
+    q.ue(p.numRefIdxL0DefaultMinus1);
+    q.ue(p.numRefIdxL1DefaultMinus1);
+    q.flag(p.weightedPred);
+    q.u(2, p.weightedBipredIdc);
+    q.se(p.picInitQpMinus26);
+    q.se(p.picInitQsMinus26);
+    q.se(p.chromaQpIndexOffset);
+    q.flag(p.deblockingFilterControlPresent);
+    q.flag(p.constrainedIntraPred);
+    q.flag(p.redundantPicCntPresent);
+    if (high) {
+        q.flag(p.transform8x8Mode);
+        q.flag(false); // pic_scaling_matrix_present_flag
+        q.se(p.secondChromaQpIndexOffset);
+    }
+    q.trailing();
+    bits::appendNal(out, {0x68}, q.bytes()); // nal_ref_idc 3, PPS
     return out;
 }
 

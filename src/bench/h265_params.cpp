@@ -1,6 +1,7 @@
 #include "gt/bench/h265_params.h"
 
 #include "bit_reader.h"
+#include "bit_writer.h"
 
 #include <algorithm>
 #include <format>
@@ -271,6 +272,63 @@ Pps readPps(Bits& b) {
     return p;
 }
 
+void writePtl(bits::Writer& w, const ProfileTierLevel& p, std::uint32_t maxSubLayersMinus1) {
+    w.u(2, p.profileSpace);
+    w.flag(p.tier);
+    w.u(5, p.profileIdc);
+    for (std::uint32_t j = 0; j < 32; ++j) // a Main stream also conforms to Main 10
+        w.flag(j == p.profileIdc || (p.profileIdc == 1 && j == 2));
+    w.flag(p.progressiveSource);
+    w.flag(p.interlacedSource);
+    w.flag(p.nonPackedConstraint);
+    w.flag(p.frameOnlyConstraint);
+    w.u(22, 0); // 43 reserved bits and general_inbld_flag
+    w.u(22, 0);
+    w.u(8, p.levelIdc);
+    for (std::uint32_t i = 0; i < maxSubLayersMinus1; ++i)
+        w.u(2, 0); // sub_layer_profile_present_flag, sub_layer_level_present_flag
+    if (maxSubLayersMinus1 > 0)
+        for (std::uint32_t i = maxSubLayersMinus1; i < 8; ++i)
+            w.u(2, 0);
+}
+
+void writeOrdering(bits::Writer& w, bool present, std::uint32_t maxSubLayersMinus1, const DecPicBufMgr& d) {
+    for (std::uint32_t i = present ? 0 : maxSubLayersMinus1; i <= maxSubLayersMinus1; ++i) {
+        w.ue(d.maxDecPicBufferingMinus1[i]);
+        w.ue(d.maxNumReorderPics[i]);
+        w.ue(d.maxLatencyIncreasePlus1[i]);
+    }
+}
+
+/// st_ref_pic_set(idx) in an SPS: the syntax the set carries (predicted sets keep their prediction syntax).
+void writeRps(bits::Writer& w, const ShortTermRps& r, std::uint32_t idx) {
+    if (idx != 0) w.flag(r.interPrediction);
+    if (r.interPrediction) {
+        w.flag(r.deltaRpsSign);
+        w.ue(r.absDeltaRpsMinus1);
+        for (std::uint32_t j = 0; j <= r.refRpsNumDeltaPocs; ++j) {
+            const bool used = (r.usedByCurrPicFlag >> j) & 1u;
+            w.flag(used);
+            if (!used) w.flag((r.useDeltaFlag >> j) & 1u);
+        }
+        return;
+    }
+    w.ue(static_cast<std::uint32_t>(r.deltaPocS0.size()));
+    w.ue(static_cast<std::uint32_t>(r.deltaPocS1.size()));
+    std::int32_t prev = 0;
+    for (std::size_t i = 0; i < r.deltaPocS0.size(); ++i) {
+        w.ue(static_cast<std::uint32_t>(prev - r.deltaPocS0[i] - 1));
+        w.flag(r.usedS0[i]);
+        prev = r.deltaPocS0[i];
+    }
+    prev = 0;
+    for (std::size_t i = 0; i < r.deltaPocS1.size(); ++i) {
+        w.ue(static_cast<std::uint32_t>(r.deltaPocS1[i] - prev - 1));
+        w.flag(r.usedS1[i]);
+        prev = r.deltaPocS1[i];
+    }
+}
+
 std::uint32_t ceilLog2(std::uint32_t v) {
     std::uint32_t n = 0;
     while ((1u << n) < v)
@@ -313,6 +371,143 @@ std::optional<ParameterSets> parse(std::span<const std::uint8_t> data, std::stri
         if (error) *error = "no VPS/SPS/PPS in the parameter data";
         return std::nullopt;
     }
+    return out;
+}
+
+std::vector<std::uint8_t> write(const ParameterSets& ps) {
+    const Vps& v = *ps.vps;
+    const Sps& s = *ps.sps;
+    const Pps& p = *ps.pps;
+    std::vector<std::uint8_t> out;
+
+    bits::Writer w; // 7.3.2.1
+    w.u(4, v.id);
+    w.flag(true); // vps_base_layer_internal_flag
+    w.flag(true); // vps_base_layer_available_flag
+    w.u(6, 0);    // vps_max_layers_minus1
+    w.u(3, v.maxSubLayersMinus1);
+    w.flag(v.temporalIdNesting);
+    w.u(16, 0xFFFF);
+    writePtl(w, v.ptl, v.maxSubLayersMinus1);
+    w.flag(v.subLayerOrderingInfoPresent);
+    writeOrdering(w, v.subLayerOrderingInfoPresent, v.maxSubLayersMinus1, v.dpb);
+    w.u(6, 0); // vps_max_layer_id
+    w.ue(0);   // vps_num_layer_sets_minus1
+    w.flag(v.timingInfoPresent);
+    if (v.timingInfoPresent) {
+        w.u(32, v.numUnitsInTick);
+        w.u(32, v.timeScale);
+        w.flag(v.pocProportionalToTiming);
+        if (v.pocProportionalToTiming) w.ue(v.numTicksPocDiffOneMinus1);
+        w.ue(0); // vps_num_hrd_parameters
+    }
+    w.flag(false); // vps_extension_flag
+    w.trailing();
+    bits::appendNal(out, {32 << 1, 1}, w.bytes());
+
+    bits::Writer q; // 7.3.2.2
+    q.u(4, s.vpsId);
+    q.u(3, s.maxSubLayersMinus1);
+    q.flag(s.temporalIdNesting);
+    writePtl(q, s.ptl, s.maxSubLayersMinus1);
+    q.ue(s.id);
+    q.ue(s.chromaFormatIdc);
+    if (s.chromaFormatIdc == 3) q.flag(s.separateColourPlane);
+    q.ue(s.width);
+    q.ue(s.height);
+    q.flag(s.conformanceWindow);
+    if (s.conformanceWindow) {
+        q.ue(s.confLeft);
+        q.ue(s.confRight);
+        q.ue(s.confTop);
+        q.ue(s.confBottom);
+    }
+    q.ue(s.bitDepthLumaMinus8);
+    q.ue(s.bitDepthChromaMinus8);
+    q.ue(s.log2MaxPocLsbMinus4);
+    q.flag(s.subLayerOrderingInfoPresent);
+    writeOrdering(q, s.subLayerOrderingInfoPresent, s.maxSubLayersMinus1, s.dpb);
+    q.ue(s.log2MinCbMinus3);
+    q.ue(s.log2DiffMaxMinCb);
+    q.ue(s.log2MinTbMinus2);
+    q.ue(s.log2DiffMaxMinTb);
+    q.ue(s.maxTransformHierarchyDepthInter);
+    q.ue(s.maxTransformHierarchyDepthIntra);
+    q.flag(s.scalingListEnabled);
+    if (s.scalingListEnabled) q.flag(false); // sps_scaling_list_data_present_flag: default lists
+    q.flag(s.ampEnabled);
+    q.flag(s.saoEnabled);
+    q.flag(s.pcmEnabled);
+    if (s.pcmEnabled) {
+        q.u(4, s.pcmBitDepthLumaMinus1);
+        q.u(4, s.pcmBitDepthChromaMinus1);
+        q.ue(s.log2MinPcmCbMinus3);
+        q.ue(s.log2DiffMaxMinPcmCb);
+        q.flag(s.pcmLoopFilterDisabled);
+    }
+    q.ue(static_cast<std::uint32_t>(s.rps.size()));
+    for (std::uint32_t i = 0; i < s.rps.size(); ++i)
+        writeRps(q, s.rps[i], i);
+    q.flag(false); // long_term_ref_pics_present_flag
+    q.flag(s.temporalMvpEnabled);
+    q.flag(s.strongIntraSmoothing);
+    q.flag(false); // vui_parameters_present_flag
+    q.flag(false); // sps_extension_present_flag
+    q.trailing();
+    bits::appendNal(out, {33 << 1, 1}, q.bytes());
+
+    bits::Writer r; // 7.3.2.3
+    r.ue(p.id);
+    r.ue(p.spsId);
+    r.flag(p.dependentSliceSegmentsEnabled);
+    r.flag(p.outputFlagPresent);
+    r.u(3, p.numExtraSliceHeaderBits);
+    r.flag(p.signDataHiding);
+    r.flag(p.cabacInitPresent);
+    r.ue(p.numRefIdxL0DefaultMinus1);
+    r.ue(p.numRefIdxL1DefaultMinus1);
+    r.se(p.initQpMinus26);
+    r.flag(p.constrainedIntraPred);
+    r.flag(p.transformSkipEnabled);
+    r.flag(p.cuQpDeltaEnabled);
+    if (p.cuQpDeltaEnabled) r.ue(p.diffCuQpDeltaDepth);
+    r.se(p.cbQpOffset);
+    r.se(p.crQpOffset);
+    r.flag(p.sliceChromaQpOffsetsPresent);
+    r.flag(p.weightedPred);
+    r.flag(p.weightedBipred);
+    r.flag(p.transquantBypassEnabled);
+    r.flag(p.tilesEnabled);
+    r.flag(p.entropyCodingSync);
+    if (p.tilesEnabled) {
+        r.ue(p.numTileColumnsMinus1);
+        r.ue(p.numTileRowsMinus1);
+        r.flag(p.uniformSpacing);
+        if (!p.uniformSpacing) {
+            for (const std::uint32_t c : p.columnWidthMinus1)
+                r.ue(c);
+            for (const std::uint32_t h : p.rowHeightMinus1)
+                r.ue(h);
+        }
+        r.flag(p.loopFilterAcrossTiles);
+    }
+    r.flag(p.loopFilterAcrossSlices);
+    r.flag(p.deblockingControlPresent);
+    if (p.deblockingControlPresent) {
+        r.flag(p.deblockingOverrideEnabled);
+        r.flag(p.deblockingDisabled);
+        if (!p.deblockingDisabled) {
+            r.se(p.betaOffsetDiv2);
+            r.se(p.tcOffsetDiv2);
+        }
+    }
+    r.flag(false); // pps_scaling_list_data_present_flag
+    r.flag(p.listsModificationPresent);
+    r.ue(p.log2ParallelMergeLevelMinus2);
+    r.flag(p.sliceSegmentHeaderExtensionPresent);
+    r.flag(false); // pps_extension_present_flag
+    r.trailing();
+    bits::appendNal(out, {34 << 1, 1}, r.bytes());
     return out;
 }
 

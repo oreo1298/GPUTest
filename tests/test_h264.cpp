@@ -1,6 +1,9 @@
 #include "gt/bench/h264_params.h"
 #include "gt/bench/video_streams.h"
 
+#include "bit_reader.h"
+#include "bit_writer.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
@@ -181,4 +184,87 @@ TEST_CASE("H.264 sliding-window references follow max_num_ref_frames", "[h264][v
     CHECK(three[4] == std::vector<std::uint32_t>{1, 2, 3});
     CHECK(three[5] == std::vector<std::uint32_t>{1, 2, 3});
     CHECK(three[6] == std::vector<std::uint32_t>{2, 3, 5});
+}
+
+TEST_CASE("H.264 parameter sets written by the writer read back the same", "[h264][video]") {
+    const video::ReferenceStream* s = video::referenceStream("h264");
+    REQUIRE(s);
+    std::string error;
+    const auto ps = h264::parse(s->data, &error);
+    REQUIRE(ps);
+    for (const std::uint32_t profile : {100u, 77u}) {
+        INFO("profile_idc " << profile);
+        h264::ParameterSets in = *ps;
+        in.sps->profileIdc = profile;
+        in.sps->vuiPresent = false;
+        in.sps->constraintFlags = profile == 77 ? 0x2u : 0u;
+        in.pps->secondChromaQpIndexOffset = -2;
+        if (profile == 77) {
+            in.pps->transform8x8Mode = false;
+            in.pps->secondChromaQpIndexOffset = in.pps->chromaQpIndexOffset;
+        }
+        in.pps->picInitQpMinus26 = -3;
+        const std::vector<std::uint8_t> bytes = h264::write(in);
+        const auto out = h264::parse(bytes, &error);
+        INFO(error);
+        REQUIRE(out);
+        const h264::Sps& a = *in.sps;
+        const h264::Sps& b = *out->sps;
+        CHECK(b.profileIdc == a.profileIdc);
+        CHECK(b.constraintFlags == a.constraintFlags);
+        CHECK(b.levelIdc == a.levelIdc);
+        CHECK(b.spsId == a.spsId);
+        CHECK(b.chromaFormatIdc == a.chromaFormatIdc);
+        CHECK(b.log2MaxFrameNumMinus4 == a.log2MaxFrameNumMinus4);
+        CHECK(b.pocType == a.pocType);
+        CHECK(b.log2MaxPocLsbMinus4 == a.log2MaxPocLsbMinus4);
+        CHECK(b.maxNumRefFrames == a.maxNumRefFrames);
+        CHECK(b.widthInMbsMinus1 == a.widthInMbsMinus1);
+        CHECK(b.heightInMapUnitsMinus1 == a.heightInMapUnitsMinus1);
+        CHECK(b.frameMbsOnly == a.frameMbsOnly);
+        CHECK(b.direct8x8Inference == a.direct8x8Inference);
+        CHECK(b.frameCropping == a.frameCropping);
+        CHECK(b.cropBottom == a.cropBottom);
+        CHECK_FALSE(b.vuiPresent);
+        const h264::Pps& p = *in.pps;
+        const h264::Pps& q = *out->pps;
+        CHECK(q.ppsId == p.ppsId);
+        CHECK(q.entropyCodingMode == p.entropyCodingMode);
+        CHECK(q.numRefIdxL0DefaultMinus1 == p.numRefIdxL0DefaultMinus1);
+        CHECK(q.weightedPred == p.weightedPred);
+        CHECK(q.weightedBipredIdc == p.weightedBipredIdc);
+        CHECK(q.picInitQpMinus26 == p.picInitQpMinus26);
+        CHECK(q.chromaQpIndexOffset == p.chromaQpIndexOffset);
+        CHECK(q.deblockingFilterControlPresent == p.deblockingFilterControlPresent);
+        CHECK(q.transform8x8Mode == p.transform8x8Mode);
+        CHECK(q.secondChromaQpIndexOffset == p.secondChromaQpIndexOffset);
+        // Every slice of the stream still parses with the written parameter sets.
+        const auto st = h264::split(s->data, &*out, &error);
+        CHECK(st);
+    }
+}
+
+TEST_CASE("NAL units get emulation-prevention bytes; Exp-Golomb codes round trip", "[h264][video]") {
+    std::vector<std::uint8_t> out;
+    bits::appendNal(out, {0x67}, {0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x04});
+    const std::vector<std::uint8_t> want = {0, 0, 0, 1, 0x67, 0x00, 0x00, 0x03, 0x01, 0x00, 0x00, 0x03,
+                                            0x00, 0x00, 0x03, 0x03, 0x00, 0x00, 0x04};
+    CHECK(out == want);
+
+    bits::Writer w;
+    const std::vector<std::uint32_t> ues = {0, 1, 2, 3, 7, 8, 254, 255, 65535, 1u << 20};
+    const std::vector<std::int32_t> ses = {0, 1, -1, 2, -2, 1000, -1000};
+    for (const std::uint32_t v : ues)
+        w.ue(v);
+    for (const std::int32_t v : ses)
+        w.se(v);
+    w.u(5, 21);
+    w.trailing();
+    bits::Reader r(w.bytes());
+    for (const std::uint32_t v : ues)
+        CHECK(r.ue() == v);
+    for (const std::int32_t v : ses)
+        CHECK(r.se() == v);
+    CHECK(r.u(5) == 21);
+    CHECK_FALSE(r.moreRbspData());
 }

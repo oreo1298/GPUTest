@@ -101,6 +101,10 @@ struct ParameterSets {
 
 /// Reads the first VPS, SPS and PPS in Annex B data. On failure returns nothing and fills `error`.
 std::optional<ParameterSets> parse(std::span<const std::uint8_t> annexB, std::string* error);
+/// The VPS, SPS and PPS as Annex B NAL units (4-byte start codes), for encoders that leave them to the
+/// application. No VUI, HRD, scaling lists or extensions are written; sub-layers carry no own profile /
+/// level.
+std::vector<std::uint8_t> write(const ParameterSets& ps);
 
 struct NalUnit {
     std::size_t offset = 0, payload = 0, end = 0; ///< start code, NAL header, end

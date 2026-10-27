@@ -123,3 +123,104 @@ TEST_CASE("H.265 reference picture sets resolve to earlier pictures", "[h265][vi
     CHECK_FALSE(h265::references(*st, &error));
     CHECK(error.find("before the stream starts") != std::string::npos);
 }
+
+TEST_CASE("H.265 parameter sets written by the writer read back the same", "[h265][video]") {
+    const video::ReferenceStream* s = video::referenceStream("h265");
+    REQUIRE(s);
+    std::string error;
+    const auto ps = h265::parse(s->data, &error);
+    REQUIRE(ps);
+    h265::ParameterSets in = *ps;
+    in.sps->vuiPresent = false;
+    in.pps->deblockingControlPresent = true;
+    in.pps->deblockingOverrideEnabled = true;
+    in.pps->betaOffsetDiv2 = -1;
+    in.pps->tcOffsetDiv2 = 2;
+    const std::vector<std::uint8_t> bytes = h265::write(in);
+    const auto out = h265::parse(bytes, &error);
+    INFO(error);
+    REQUIRE(out);
+    const h265::Vps& v = *out->vps;
+    CHECK(v.id == in.vps->id);
+    CHECK(v.maxSubLayersMinus1 == in.vps->maxSubLayersMinus1);
+    CHECK(v.ptl.profileIdc == in.vps->ptl.profileIdc);
+    CHECK(v.ptl.levelIdc == in.vps->ptl.levelIdc);
+    CHECK(v.dpb.maxDecPicBufferingMinus1 == in.vps->dpb.maxDecPicBufferingMinus1);
+    const h265::Sps& a = *in.sps;
+    const h265::Sps& b = *out->sps;
+    CHECK(b.ptl.profileIdc == a.ptl.profileIdc);
+    CHECK(b.ptl.levelIdc == a.ptl.levelIdc);
+    CHECK(b.ptl.progressiveSource == a.ptl.progressiveSource);
+    CHECK(b.width == a.width);
+    CHECK(b.height == a.height);
+    CHECK(b.conformanceWindow == a.conformanceWindow);
+    CHECK(b.log2MaxPocLsbMinus4 == a.log2MaxPocLsbMinus4);
+    CHECK(b.dpb.maxDecPicBufferingMinus1 == a.dpb.maxDecPicBufferingMinus1);
+    CHECK(b.log2MinCbMinus3 == a.log2MinCbMinus3);
+    CHECK(b.log2DiffMaxMinCb == a.log2DiffMaxMinCb);
+    CHECK(b.log2MinTbMinus2 == a.log2MinTbMinus2);
+    CHECK(b.log2DiffMaxMinTb == a.log2DiffMaxMinTb);
+    CHECK(b.maxTransformHierarchyDepthInter == a.maxTransformHierarchyDepthInter);
+    CHECK(b.ampEnabled == a.ampEnabled);
+    CHECK(b.saoEnabled == a.saoEnabled);
+    REQUIRE(b.rps.size() == a.rps.size());
+    for (std::size_t i = 0; i < a.rps.size(); ++i) {
+        INFO("rps " << i);
+        CHECK(b.rps[i].interPrediction == a.rps[i].interPrediction);
+        CHECK(b.rps[i].deltaPocS0 == a.rps[i].deltaPocS0);
+        CHECK(b.rps[i].deltaPocS1 == a.rps[i].deltaPocS1);
+        CHECK(b.rps[i].usedS0 == a.rps[i].usedS0);
+        CHECK(b.rps[i].usedS1 == a.rps[i].usedS1);
+    }
+    CHECK(b.temporalMvpEnabled == a.temporalMvpEnabled);
+    CHECK(b.strongIntraSmoothing == a.strongIntraSmoothing);
+    CHECK_FALSE(b.vuiPresent);
+    const h265::Pps& p = *in.pps;
+    const h265::Pps& q = *out->pps;
+    CHECK(q.signDataHiding == p.signDataHiding);
+    CHECK(q.initQpMinus26 == p.initQpMinus26);
+    CHECK(q.cuQpDeltaEnabled == p.cuQpDeltaEnabled);
+    CHECK(q.cbQpOffset == p.cbQpOffset);
+    CHECK(q.entropyCodingSync == p.entropyCodingSync);
+    CHECK(q.loopFilterAcrossSlices == p.loopFilterAcrossSlices);
+    CHECK(q.deblockingControlPresent);
+    CHECK(q.deblockingOverrideEnabled);
+    CHECK(q.betaOffsetDiv2 == -1);
+    CHECK(q.tcOffsetDiv2 == 2);
+    CHECK(q.log2ParallelMergeLevelMinus2 == p.log2ParallelMergeLevelMinus2);
+    // The stream's slice headers (with their own reference picture sets) still parse.
+    const auto st = h265::split(s->data, &*out, &error);
+    INFO(error);
+    REQUIRE(st);
+    CHECK(st->pictures.size() == 8);
+    CHECK(st->pictures[5].header.rps.deltaPocS0 == std::vector<std::int32_t>{-1, -2});
+}
+
+TEST_CASE("H.265 SPS reference picture sets with prediction are written as coded", "[h265][video]") {
+    const video::ReferenceStream* s = video::referenceStream("h265");
+    REQUIRE(s);
+    std::string error;
+    auto ps = h265::parse(s->data, &error);
+    REQUIRE(ps);
+    // Set 0: {-1, -3}; set 1 predicted from set 0 with deltaRps -1, keeping all entries: {-1, -2, -4}.
+    h265::ShortTermRps r0;
+    r0.deltaPocS0 = {-1, -3};
+    r0.usedS0 = {true, false};
+    h265::ShortTermRps r1;
+    r1.interPrediction = true;
+    r1.deltaRpsSign = true;
+    r1.absDeltaRpsMinus1 = 0;
+    r1.refRpsNumDeltaPocs = 2;
+    r1.usedByCurrPicFlag = 0b111;
+    r1.useDeltaFlag = 0b111;
+    ps->sps->rps = {r0, r1};
+    const auto out = h265::parse(h265::write(*ps), &error);
+    INFO(error);
+    REQUIRE(out);
+    REQUIRE(out->sps->rps.size() == 2);
+    CHECK(out->sps->rps[0].deltaPocS0 == std::vector<std::int32_t>{-1, -3});
+    CHECK(out->sps->rps[0].usedS0 == std::vector<bool>{true, false});
+    CHECK(out->sps->rps[1].interPrediction);
+    CHECK(out->sps->rps[1].deltaPocS0 == std::vector<std::int32_t>{-1, -2, -4});
+    CHECK(out->sps->rps[1].usedS0 == std::vector<bool>{true, true, true});
+}
