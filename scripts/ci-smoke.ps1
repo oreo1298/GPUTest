@@ -140,11 +140,11 @@ if (Test-Path "$out\plugins-d3d12.json") {
     Get-Content "$out\plugins-d3d12.log" -Tail 20 | Out-Host
 }
 # Video engines on WARP (report only): WARP decodes and encodes H.264 / H.265 through Media Foundation, which
-# exercises the DXVA and encoder code paths that no GPU runs here. Bounded; never fails the job. Without the
-# debug layer: with it, WARP never finished the first decode (docs/PROGRESS.md).
+# exercises the DXVA and encoder code paths that no GPU runs here. Bounded; never fails the job. WARP stalls on
+# the reference stream's fourth frame (docs/PROGRESS.md), so only the first three are decoded and checked.
 Write-Host "== Video engines on WARP (D3D12, report only, no debug layer)"
 $videoArgs = @($stdCommon | Where-Object { $_ -notin @("--validation", "--fail-on-validation") }) +
-             @("--test", "feature.video", "--param", "feature.video.software=1",
+             @("--test", "feature.video", "--param", "feature.video.software=1", "--param", "feature.video.frames=3",
                "--out", "$out\video-d3d12.json", "--log-file", "$out\video-d3d12.log")
 $proc = Start-Process -FilePath $runner.FullName -ArgumentList $videoArgs -NoNewWindow -PassThru `
     -RedirectStandardOutput "$out\video-d3d12.out" -RedirectStandardError "$out\video-d3d12.err"

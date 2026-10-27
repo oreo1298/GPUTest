@@ -5,6 +5,7 @@
 #include <directx/d3d12video.h>
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cstring>
 #include <format>
@@ -514,11 +515,18 @@ void decodeReference(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hook
         return;
     }
     std::string error;
-    const std::optional<DxvaStream> stream = hooks.reference(ref->data, &error);
+    std::optional<DxvaStream> stream = hooks.reference(ref->data, &error);
     if (!stream) {
         res.failure = std::format("the {} reference stream could not be read: {}", hooks.label, error);
         return;
     }
+    // --param feature.video.frames=N decodes only the first N frames: a diagnostic for decoders that stall
+    // part-way through (the frames up to there are still checked bit for bit).
+    const std::string limit = ctx.settings().param("feature.video.frames");
+    std::uint32_t n = 0;
+    if (std::from_chars(limit.data(), limit.data() + limit.size(), n).ec == std::errc{} && n >= 1 &&
+        n < stream->frames.size())
+        stream->frames.resize(n);
     const std::unique_ptr<Decoder, KeepIfHung> dec(new Decoder(dev, *stream));
     if (std::string why = dec->prepare(); !why.empty()) {
         res.decodeNote = why;

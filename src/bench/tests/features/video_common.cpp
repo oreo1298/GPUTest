@@ -104,6 +104,19 @@ void checkRoundTrip(const std::vector<std::uint8_t>& frames, std::uint32_t count
         res.psnr = sum / count;
         res.psnrMin = worst;
     }
+    if (count && worst < 20.0) {
+        // A picture that far off is usually all one level (nothing written, or the wrong plane): record the
+        // first frame's mean luma next to the source's.
+        double decoded = 0.0, original = 0.0;
+        for (std::uint32_t y = 0; y < kHeight; ++y)
+            for (std::uint32_t x = 0; x < kWidth; ++x) {
+                decoded += frames[std::size_t(y) * kWidth + x];
+                original += source[std::size_t(y) * kImageWidth + x];
+            }
+        const double n = double(kWidth) * kHeight;
+        res.details["round_trip_mean_luma"] = {{"decoded", std::round(decoded / n * 10.0) / 10.0},
+                                               {"source", std::round(original / n * 10.0) / 10.0}};
+    }
 }
 
 } // namespace gt::bench::video
