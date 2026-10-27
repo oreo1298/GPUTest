@@ -103,9 +103,11 @@ std::vector<Instance> buildCity(int side, std::uint64_t seed) {
                     add(kBox, {p.x, tall + t2 / 2, p.z}, 0, {w * 0.65f, t2, dpt * 0.65f}, c, m);
                     top += t2;
                 }
-                for (int u = 0; u < 3; ++u) // rooftop units
-                    add(kBox, {p.x + (uni(rng) - 0.5f) * w * 0.4f, top + 1.2f, p.z + (uni(rng) - 0.5f) * dpt * 0.4f}, 0,
-                        {2.5f + uni(rng) * 2, 2.4f, 2 + uni(rng) * 2}, {0.5f, 0.5f, 0.52f}, kMetal);
+                for (int u = 0; u < 3; ++u) { // rooftop units (separate statements fix the draw order)
+                    const Vec3 at{p.x + (uni(rng) - 0.5f) * w * 0.4f, top + 1.2f, p.z + (uni(rng) - 0.5f) * dpt * 0.4f};
+                    const Vec3 size{2.5f + uni(rng) * 2, 2.4f, 2 + uni(rng) * 2};
+                    add(kBox, at, 0, size, {0.5f, 0.5f, 0.52f}, kMetal);
+                }
                 if (m != kGlassTower && uni(rng) < 0.4f) {
                     const Vec3 t{p.x + w * 0.25f, top, p.z - dpt * 0.25f};
                     add(kCylinder, t, 0, {1.8f, 3.5f, 1.8f}, {0.42f, 0.30f, 0.22f}, kConcrete);

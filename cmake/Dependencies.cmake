@@ -64,6 +64,10 @@ if(GT_BUILD_RUNNER)
     set(SDL_${_sub} OFF CACHE INTERNAL "")
   endforeach()
   set(SDL_VIDEO ON CACHE INTERNAL "")
+  # Not used (input injection / console KMS output); skipping them drops build dependencies
+  # that desktop distributions do not always install (Arch has no libxtst by default).
+  set(SDL_X11_XTEST OFF CACHE INTERNAL "")
+  set(SDL_KMSDRM OFF CACHE INTERNAL "")
   set(SDL_VULKAN ON CACHE INTERNAL "")
   set(SDL_OPENGL ON CACHE INTERNAL "")
   set(SDL_WERROR OFF CACHE INTERNAL "")

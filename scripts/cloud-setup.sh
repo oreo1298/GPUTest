@@ -33,6 +33,7 @@ APT_PACKAGES=(
   libsqlite3-dev libfontconfig1-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4
   libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1
   fonts-noto-core fonts-dejavu-core
+  g++-mingw-w64-x86-64-posix
 )
 QT_APT_PACKAGES=(qt6-base-dev qt6-base-dev-tools qt6-svg-dev libqt6sql6-sqlite qt6-wayland
   qt6-base-private-dev libqt6opengl6-dev qt6-tools-dev-tools)

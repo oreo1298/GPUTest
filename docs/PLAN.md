@@ -60,10 +60,10 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 - Moved to M10 (see DECISIONS): work graphs (no ratified Vulkan version), cooperative vectors, image-based VRS
 
 ## 9. Scene benchmarks
-- [ ] Legacy tier (forward/deferred, shadows, tessellation)
-- [ ] Modern tier (heavy raster + async-compute post)
-- [ ] Ultimate tier (hybrid RT, path tracing, mesh shaders, VRS)
-- [ ] CPU-light variants; scoring
+- [x] Legacy tier (forward/deferred, shadows, tessellation): Courtyard, Atrium (Vulkan now; GL/D3D11 in M11)
+- [x] Modern tier (heavy raster + async-compute post): Skyline (D3D12 in M10)
+- [x] Ultimate tier (hybrid RT, path tracing, mesh shaders, VRS): Glasshouse, Gallery
+- [x] CPU-light variants; scoring (provisional references), golden frames for every scene in CI
 
 ## 10. D3D12
 - [ ] Backend, scenes, synthetic tests on D3D12

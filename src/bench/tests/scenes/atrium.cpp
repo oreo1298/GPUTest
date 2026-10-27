@@ -115,8 +115,12 @@ std::vector<LightData> buildLights(std::uint32_t count, std::uint64_t seed) {
                              {0.9f, 0.3f, 0.6f},  {0.4f, 1.0f, 0.6f},  {1.0f, 1.0f, 1.0f}};
     std::vector<LightData> lights(count);
     for (auto& l : lights) {
-        const Vec3 c = palette[std::min(5, int(uni(rng) * 6.0f))] * (3.0f + uni(rng) * 5.0f);
-        const float speed = (0.3f + uni(rng) * 0.9f) * (uni(rng) < 0.5f ? -1.0f : 1.0f);
+        // One draw per statement: operands of a single expression are evaluated in an unspecified
+        // order, and different compilers would then build different lights.
+        const Vec3 base = palette[std::min(5, int(uni(rng) * 6.0f))];
+        const Vec3 c = base * (3.0f + uni(rng) * 5.0f);
+        const float speedMag = 0.3f + uni(rng) * 0.9f;
+        const float speed = uni(rng) < 0.5f ? -speedMag : speedMag;
         l = {{-11.0f + uni(rng) * 22.0f, 1.0f + uni(rng) * 16.0f, -28.0f + uni(rng) * 56.0f, 0.5f + uni(rng) * 2.5f},
              {speed, uni(rng) * 6.2831853f, uni(rng), 4.0f + uni(rng) * 4.0f},
              {c.x, c.y, c.z, 1.0f}};
