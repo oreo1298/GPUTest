@@ -267,6 +267,24 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   look, plus what DXGI reports (colour space, luminance range). Vulkan HDR10 uses A2B10G10R10 only (the RHI's
   RGB10A2); the HUD is off on HDR swapchains (its white would be 10000 nits).
 
+- **Video engines through native Vulkan Video, H.264 first** (`feature.video`). The RHI gets no video
+  abstraction: video sessions, DPB slots and bitstream buffers do not fit its resource model and only one test
+  uses them, so the RHI only creates the video decode/encode queues and exposes them, with the enabled
+  extensions, through `NativeDevice`; the test drives volk directly. Its streams are made by the GPU's own
+  encoder (an IDR + 7 P-frame GOP of synthetic 1080p NV12 frames, one slice each): no bitstream files in the
+  repository, nothing to license, and the decoder is checked against known source frames (luma PSNR: warn below
+  30 dB, fail below 25 dB). Encoders may override parameters, so the decoder uses the SPS/PPS the encoder wrote
+  (`vkGetEncodedVideoSessionParametersKHR`, parsed by `gt/bench/h264_params.h`) and each frame's slice header
+  (frame_num, idr_pic_id, POC derivation for types 0 and 2). Constant QP 26 when the encoder offers rate control
+  "disabled", else the driver's default. Throughput = wall time of submissions of 8 back-to-back GOPs after one
+  warm-up, encode and decode measured separately. All native submissions are ordered by one timeline semaphore;
+  images and buffers that cross queues use concurrent sharing. Limitations: a GPU with a decoder but no encoder
+  for a codec is not measured for that codec (decode-only AV1 is common); slice offsets point at start codes
+  (as FFmpeg's Vulkan decoder does — the spec text says "slice headers"). No driver here or in CI has video
+  queues (lavapipe, WARP), and building the Khronos mock ICD to run the validation layers over this code was not
+  allowed in this environment, so the code was checked against the spec text and is verified on hardware
+  (docs/HARDWARE_TESTING.md). H.265, AV1 and D3D12 Video follow.
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.

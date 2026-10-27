@@ -11,7 +11,8 @@ function(gt_upscaler_plugin target id)
       LIBRARY_OUTPUT_DIRECTORY_${_cfg_upper} "${CMAKE_BINARY_DIR}/bin/plugins"
       RUNTIME_OUTPUT_DIRECTORY_${_cfg_upper} "${CMAKE_BINARY_DIR}/bin/plugins")
   endforeach()
-  target_include_directories(${target} PRIVATE "${CMAKE_SOURCE_DIR}/src/bench/gt/bench")
+  # Not src/bench/gt/bench itself: its math.h would shadow the C library header.
+  target_include_directories(${target} PRIVATE "${CMAKE_SOURCE_DIR}/src/bench")
   gt_set_warnings(${target})
 endfunction()
 

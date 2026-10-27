@@ -499,6 +499,8 @@ private:
     std::vector<std::string> m_enabledExtensions;
     std::vector<std::unique_ptr<QueueState>> m_queues;
     std::array<QueueState*, 3> m_queueFor{};
+    QueueState* m_videoDecode = nullptr; ///< null without a video decode queue
+    QueueState* m_videoEncode = nullptr;
     bool m_pushDescriptors = false;
     VkDescriptorSetLayout m_tableLayout = VK_NULL_HANDLE;
     bool m_tableUpdateAfterBind = false;

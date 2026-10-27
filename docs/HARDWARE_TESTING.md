@@ -48,6 +48,14 @@ and the iGPU, and that `kiln-hw-report` finds the runner by itself. Tell me if m
    and whether the first three colour patches look more saturated than the last three (wide gamut). With HDR
    off the verdict should be a warning, and the run should continue normally.
 
+5. **Video engines** (`feature.video`, Vulkan, every GPU that has video queues — the 4090 and the iGPU on
+   Linux, and once on Windows): `kiln-run --test feature.video --duration quick --validation`. This code has
+   never run on a real video engine. Send the result JSON (verdict, `h264_*` metrics and details: profile,
+   level, CABAC/CAVLC, encoder overrides, per-frame PSNR) and the log, especially any validation errors. Expect
+   pass with a PSNR around 35–45 dB; a fail with a low PSNR means the decoder's reference setup or the slice
+   offsets are wrong (say which frames are low: only P-frames points at references). Also send the
+   "Video codecs" section of `kiln-run --caps`.
+
 ### M11 — OpenGL and Direct3D 11
 1. **OpenGL on the 4090 and the iGPU (Linux)**: `kiln-run --api opengl --suite legacy --duration quick` and the
    same windowed (drop `--offscreen`). The scenes should look like their Vulkan frames; the HUD should read

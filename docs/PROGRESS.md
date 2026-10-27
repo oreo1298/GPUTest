@@ -79,8 +79,11 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   Atrium (+ lite), fill/texel/geometry/MSAA, fp32 ALU, memory bandwidth, draw calls.
 - **Milestone 12 (upscalers & video): in progress.** FSR 1 (EASU + RCAS ported to Slang): `--upscale fsr1|bilinear`
   and `--upscale-mode` for scenes (GUI: Tests page), `feature.upscale` (cost per mode, PSNR against a supersampled
-  reference; EASU beats bilinear on Vulkan and GL). Next: DLSS/XeSS plugin interface, video decode/encode
-  throughput (Vulkan Video, D3D12 Video), HDR output check.
+  reference; EASU beats bilinear on Vulkan and GL). Upscaler plugins (MIT C interface, off by default): example
+  Vulkan plugin (tested in CI) and Intel XeSS (D3D12, user supplies `libxess.dll`); no DLSS (license).
+  `feature.hdr` (PQ encoding check; HDR10 swapchain in a window). `feature.video`: Vulkan Video H.264 encode →
+  decode round trip at 1080p with PSNR check and fps (skips without video queues; hardware-only, unverified).
+  Next: H.265 and AV1 in `feature.video`, D3D12 Video.
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
@@ -118,7 +121,11 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   transitions of one resource chained. `feature.mesh` vertex semantic fixed.
 - M11 closed: Direct3D 11 backend (record/replay, DXBC reflection for views); CI runs D3D11 smoke, legacy scenes
   against the D3D12 frames and the legacy suite on WARP. Draw-call CPU cost now includes submit (GL/D3D11 replay).
-- M12: FSR 1 port, `--upscale`, GUI setting, `feature.upscale`.
+- M12: FSR 1 port, `--upscale`, GUI setting, `feature.upscale`. Upscaler plugin interface + example and XeSS
+  plugins (licenses checked: XeSS headers MIT since de0fb9c, DLSS not possible). `feature.hdr`.
+- M12: `feature.video` (Vulkan Video H.264 round trip), H.264 SPS/PPS/slice-header reader with unit tests,
+  video codecs in `--caps`. Windows CI: the plugins no longer put `gt/bench` on the include path (its `math.h`
+  shadowed the C library's under MSVC).
 
 ### 2026-10-26
 - Saved brief to docs/SPEC.md; research pass recorded in docs/RESEARCH.md (two research subagents).

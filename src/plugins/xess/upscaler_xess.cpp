@@ -3,7 +3,7 @@
 // search path (Intel Simplified Software License; not distributed with this project).
 
 #define GT_UPSCALER_PLUGIN
-#include "upscaler_plugin.h"
+#include "gt/bench/upscaler_plugin.h"
 
 #ifndef NOMINMAX
 #define NOMINMAX

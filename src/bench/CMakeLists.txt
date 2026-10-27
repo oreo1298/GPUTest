@@ -5,6 +5,7 @@ add_library(gt_bench STATIC
   presenter.cpp
   plugins.cpp
   upscale.cpp
+  h264_params.cpp
   suites.cpp
   scene.cpp
   stb_impl.cpp
@@ -44,6 +45,7 @@ add_library(gt_bench_tests OBJECT
   tests/features/vrs.cpp
   tests/features/upscale.cpp
   tests/features/hdr.cpp
+  tests/features/video.cpp
   tests/features/sampler_feedback.cpp
   tests/features/work_graphs.cpp
   tests/features/async_queues.cpp

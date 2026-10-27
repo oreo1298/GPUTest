@@ -3,7 +3,7 @@
 // it is not packaged.
 
 #define GT_UPSCALER_PLUGIN
-#include "upscaler_plugin.h"
+#include "gt/bench/upscaler_plugin.h"
 
 #include <vulkan/vulkan.h>
 

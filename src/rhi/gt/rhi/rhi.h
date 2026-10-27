@@ -641,6 +641,12 @@ struct NativeDevice {
     void* queue = nullptr;
     std::uint32_t queueFamily = 0;       ///< Vulkan: graphics queue family index
     void* getInstanceProcAddr = nullptr; ///< Vulkan: PFN_vkGetInstanceProcAddr
+    /// Vulkan video queues (null without one); their families are UINT32_MAX then.
+    void* videoDecodeQueue = nullptr;
+    std::uint32_t videoDecodeFamily = ~0u;
+    void* videoEncodeQueue = nullptr;
+    std::uint32_t videoEncodeFamily = ~0u;
+    std::span<const std::string> extensions; ///< Vulkan: enabled device extensions
 };
 
 /// A texture's native objects, and the layout (VkImageLayout) or state (D3D12_RESOURCE_STATES) that a

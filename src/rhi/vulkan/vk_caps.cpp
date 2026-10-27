@@ -50,6 +50,21 @@ std::string queueFlags(VkQueueFlags f) {
     return s.empty() ? "none" : s;
 }
 
+std::string codecOps(VkVideoCodecOperationFlagsKHR f) {
+    std::string s;
+    auto add = [&](VkVideoCodecOperationFlagsKHR bit, const char* name) {
+        if (f & bit) s += s.empty() ? name : std::string(", ") + name;
+    };
+    add(VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR, "H.264 decode");
+    add(VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR, "H.265 decode");
+    add(VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR, "AV1 decode");
+    add(VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR, "VP9 decode");
+    add(VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, "H.264 encode");
+    add(VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, "H.265 encode");
+    add(VK_VIDEO_CODEC_OPERATION_ENCODE_AV1_BIT_KHR, "AV1 encode");
+    return s.empty() ? "none" : s;
+}
+
 } // namespace
 
 std::vector<Capability> VulkanDevice::capabilities() const {
@@ -95,6 +110,17 @@ std::vector<Capability> VulkanDevice::capabilities() const {
         add("Queue families", std::format("Family {}", i),
             std::format("{} x{}, timestamp bits {}", queueFlags(fams[i].queueFlags), fams[i].queueCount,
                         fams[i].timestampValidBits));
+    }
+    // Codecs of the video queue families (VK_KHR_video_queue).
+    if (extensionSupported(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME)) {
+        std::vector<VkQueueFamilyVideoPropertiesKHR> video(
+            qcount, {VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR});
+        std::vector<VkQueueFamilyProperties2> fams2(qcount, {VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2});
+        for (std::uint32_t i = 0; i < qcount; ++i) fams2[i].pNext = &video[i];
+        vkGetPhysicalDeviceQueueFamilyProperties2(m_physical, &qcount, fams2.data());
+        for (std::uint32_t i = 0; i < qcount; ++i)
+            if (fams[i].queueFlags & (VK_QUEUE_VIDEO_DECODE_BIT_KHR | VK_QUEUE_VIDEO_ENCODE_BIT_KHR))
+                add("Video codecs", std::format("Family {}", i), codecOps(video[i].videoCodecOperations));
     }
 
 #ifdef GT_HAVE_VK_CAPS_GEN

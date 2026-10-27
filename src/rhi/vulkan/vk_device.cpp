@@ -78,6 +78,14 @@ const std::vector<WantedExtension>& wantedExtensions() {
         {VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME, VK_API_VERSION_1_3, {}},
         {VK_KHR_MAINTENANCE_5_EXTENSION_NAME, VK_API_VERSION_1_4, {VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME}},
         {VK_KHR_MAINTENANCE_6_EXTENSION_NAME, VK_API_VERSION_1_4, {}},
+        // Video engines (feature.video drives them natively).
+        {VK_KHR_VIDEO_QUEUE_EXTENSION_NAME, kNotPromoted, {VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME}},
+        {VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_QUEUE_EXTENSION_NAME}},
+        {VK_KHR_VIDEO_DECODE_H264_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME}},
+        {VK_KHR_VIDEO_DECODE_H265_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME}},
+        {VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_QUEUE_EXTENSION_NAME}},
+        {VK_KHR_VIDEO_ENCODE_H264_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME}},
+        {VK_KHR_VIDEO_ENCODE_H265_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME}},
         {VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, kNotPromoted, {}},
         {VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
          kNotPromoted,
@@ -348,6 +356,19 @@ void VulkanDevice::pickQueues() {
         m_queueFor[static_cast<int>(QueueType::Copy)] = c;
     }
     m_features.timestampsOnComputeQueue = c->timestampValidBits > 0;
+
+    // Video decode / encode queues (used natively by feature.video).
+    if (extensionSupported(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME)) {
+        int decode = -1, encode = -1;
+        for (std::uint32_t i = 0; i < count; ++i) {
+            const auto f = fams[i].queueFlags;
+            if (decode < 0 && (f & VK_QUEUE_VIDEO_DECODE_BIT_KHR)) decode = static_cast<int>(i);
+            if (encode < 0 && (f & VK_QUEUE_VIDEO_ENCODE_BIT_KHR)) encode = static_cast<int>(i);
+        }
+        if (decode >= 0 && extensionSupported(VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME)) m_videoDecode = make(decode, 0);
+        if (encode >= 0 && extensionSupported(VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME))
+            m_videoEncode = encode == decode && m_videoDecode ? m_videoDecode : make(encode, 0);
+    }
 }
 
 void VulkanDevice::createLogicalDevice() {
@@ -790,7 +811,16 @@ NativeDevice VulkanDevice::nativeDevice() {
     QueueState& q = queue(QueueType::Graphics);
     n.queue = q.queue;
     n.queueFamily = q.family;
+    if (m_videoDecode) {
+        n.videoDecodeQueue = m_videoDecode->queue;
+        n.videoDecodeFamily = m_videoDecode->family;
+    }
+    if (m_videoEncode) {
+        n.videoEncodeQueue = m_videoEncode->queue;
+        n.videoEncodeFamily = m_videoEncode->family;
+    }
     n.getInstanceProcAddr = reinterpret_cast<void*>(vkGetInstanceProcAddr);
+    n.extensions = m_enabledExtensions;
     return n;
 }
 
