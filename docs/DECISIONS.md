@@ -311,10 +311,11 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **Direct3D 12 Video in `feature.video`: decode through DXVA buffers.** `video_dxva.cpp` turns the same parsed
   streams into DXVA picture parameters, inverse quantization matrices and short-format slice / AV1 tile entries
   (Microsoft's DXVA H.264, HEVC and AV1 specifications; Mesa's MIT-licensed d3d12 video driver was read as a
-  reference for the field semantics, no code taken). The decoder (`video_d3d12.cpp`) uses one NV12 texture
-  array with a slice per GOP frame, so the DXVA picture index of frame f is f and works on decode tiers 1 and
-  2; decoders that require reference-only allocations get a second array written through the output
-  conversion. Each frame's slice is in VIDEO_DECODE_WRITE and every other slice in VIDEO_DECODE_READ while it
+  reference for the field semantics, no code taken). The decoder (`video_d3d12.cpp`) gives each GOP frame its
+  own NV12 picture, so the DXVA picture index of frame f is f: separate textures on decode tier 2 and up (how
+  such decoders are usually driven, and what Mesa does), the slices of one texture array on tier 1 (which only
+  takes that). Decoders that require reference-only allocations get a second set written through the output
+  conversion. Each frame's picture is in VIDEO_DECODE_WRITE and every other in VIDEO_DECODE_READ while it
   decodes, everything else in COMMON; the bitstream is copied once into a default-heap buffer (frames at
   256-byte offsets, zero-padded to 128 bytes), so throughput does not include uploads. Reference resolution
   (H.264 sliding window, H.265 RPS, AV1 slot map) moved into the parsers so both APIs use the same code.

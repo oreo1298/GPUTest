@@ -157,6 +157,9 @@ public:
             return std::format("the video decoder does not take {} at {}x{}", m_s.name, m_s.width,
                                m_s.height);
         m_tier = ds->DecodeTier;
+        // Tier 1 decoders take one texture array; tier 2 and up also an array of separate textures, which is
+        // how they are usually driven (as Mesa's d3d12 video driver does).
+        m_separate = m_tier >= D3D12_VIDEO_DECODE_TIER_2;
         m_referenceOnly = (ds->ConfigurationFlags &
                            D3D12_VIDEO_DECODE_CONFIGURATION_FLAG_REFERENCE_ONLY_ALLOCATIONS_REQUIRED) != 0;
         std::uint32_t texHeight = std::max(m_s.height, video::kImageHeight);
@@ -181,12 +184,13 @@ public:
             FAILED(hr))
             return "CreateVideoDecoderHeap failed: " + hresultName(hr);
 
-        // Pictures: one slice per frame; a reference-only DPB is written through the output conversion.
+        // Pictures: one per frame (a texture or an array slice); a reference-only DPB is written through the
+        // output conversion.
         m_texDesc = {};
         m_texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
         m_texDesc.Width = std::max(m_s.width, video::kImageWidth);
         m_texDesc.Height = texHeight;
-        m_texDesc.DepthOrArraySize = static_cast<UINT16>(video::kGop);
+        m_texDesc.DepthOrArraySize = static_cast<UINT16>(m_separate ? 1 : video::kGop);
         m_texDesc.MipLevels = 1;
         m_texDesc.Format = DXGI_FORMAT_NV12;
         m_texDesc.SampleDesc.Count = 1;
@@ -195,15 +199,19 @@ public:
         if (m_referenceOnly)
             dpbDesc.Flags =
                 D3D12_RESOURCE_FLAG_VIDEO_DECODE_REFERENCE_ONLY | D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
-        if (HRESULT hr =
-                committed(m_dev, D3D12_HEAP_TYPE_DEFAULT, dpbDesc, D3D12_RESOURCE_STATE_COMMON, m_dpb);
-            FAILED(hr))
-            return "the picture texture array could not be created: " + hresultName(hr);
-        if (m_referenceOnly) {
-            if (HRESULT hr = committed(m_dev, D3D12_HEAP_TYPE_DEFAULT, m_texDesc, D3D12_RESOURCE_STATE_COMMON,
-                                       m_output);
+        const std::uint32_t textures = m_separate ? video::kGop : 1;
+        m_dpb.resize(textures);
+        m_output.resize(m_referenceOnly ? textures : 0);
+        for (std::uint32_t i = 0; i < textures; ++i) {
+            if (HRESULT hr =
+                    committed(m_dev, D3D12_HEAP_TYPE_DEFAULT, dpbDesc, D3D12_RESOURCE_STATE_COMMON, m_dpb[i]);
                 FAILED(hr))
-                return "the output texture array could not be created: " + hresultName(hr);
+                return "the picture textures could not be created: " + hresultName(hr);
+            if (m_referenceOnly)
+                if (HRESULT hr = committed(m_dev, D3D12_HEAP_TYPE_DEFAULT, m_texDesc,
+                                           D3D12_RESOURCE_STATE_COMMON, m_output[i]);
+                    FAILED(hr))
+                    return "the output textures could not be created: " + hresultName(hr);
         }
 
         if (HRESULT hr = makeQueue(m_dev, D3D12_COMMAND_LIST_TYPE_VIDEO_DECODE, m_decode); FAILED(hr))
@@ -219,10 +227,10 @@ public:
         check(makeQueue(m_dev, D3D12_COMMAND_LIST_TYPE_COPY, m_copy), "copy queue");
         uploadBitstream();
 
-        // The DXVA reference list: every slice of the DPB, picture index = slice.
+        // The DXVA reference list: every picture of the DPB, picture index = frame.
         for (std::uint32_t i = 0; i < video::kGop; ++i) {
-            m_refTextures.push_back(m_dpb.get());
-            m_refSubresources.push_back(i);
+            m_refTextures.push_back(picture(i));
+            m_refSubresources.push_back(subresource(i, 0));
             m_refHeaps.push_back(m_heap.get());
         }
         // One command list per frame, as D3D12 video decoders are usually driven; the timed submissions pass
@@ -272,14 +280,13 @@ public:
 
     /// The decoded frames, NV12 at 1920x1080 each (call after decodeOnce or time).
     std::vector<std::uint8_t> readback() {
-        ID3D12Resource* pictures = m_referenceOnly ? m_output.get() : m_dpb.get();
         const std::uint32_t count = static_cast<std::uint32_t>(m_s.frames.size());
         std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> fp(count * kPlanes);
         UINT64 total = 0;
         for (std::uint32_t f = 0; f < count; ++f)
             for (std::uint32_t p = 0; p < kPlanes; ++p) {
                 UINT64 size = 0;
-                m_dev->GetCopyableFootprints(&m_texDesc, f + p * video::kGop, 1, total, &fp[f * kPlanes + p],
+                m_dev->GetCopyableFootprints(&m_texDesc, subresource(f, p), 1, total, &fp[f * kPlanes + p],
                                              nullptr, nullptr, &size);
                 total = alignUp(total + size, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
             }
@@ -297,9 +304,9 @@ public:
             for (std::uint32_t p = 0; p < kPlanes; ++p) {
                 // The pictures are in COMMON after decoding; copies promote them to COPY_SOURCE.
                 D3D12_TEXTURE_COPY_LOCATION src{}, dst{};
-                src.pResource = pictures;
+                src.pResource = shown(f);
                 src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-                src.SubresourceIndex = f + p * video::kGop;
+                src.SubresourceIndex = subresource(f, p);
                 dst.pResource = rb.get();
                 dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
                 dst.PlacedFootprint = fp[f * kPlanes + p];
@@ -349,11 +356,21 @@ public:
     const DecodeStatus& status() const { return m_status; }
 
     std::string outputMode() const {
-        return std::format("NV12 texture array, decode tier {}{}", static_cast<int>(m_tier),
+        return std::format("NV12 {}, decode tier {}{}", m_separate ? "textures" : "texture array",
+                           static_cast<int>(m_tier),
                            m_referenceOnly ? ", reference-only pictures + output conversion" : "");
     }
 
 private:
+    /// Frame f's picture in the DPB, and the picture that is read back (the output conversion's target when
+    /// the DPB is reference-only).
+    ID3D12Resource* picture(std::uint32_t f) const { return m_dpb[m_separate ? f : 0].get(); }
+    ID3D12Resource* shown(std::uint32_t f) const {
+        return m_referenceOnly ? m_output[m_separate ? f : 0].get() : picture(f);
+    }
+    /// The subresource of frame f's plane p (luma 0, chroma 1) in picture(f) / shown(f).
+    UINT subresource(std::uint32_t f, std::uint32_t p) const { return m_separate ? p : f + p * video::kGop; }
+
     /// Copies every frame's bitstream into one default-heap buffer, each frame at an aligned offset.
     void uploadBitstream() {
         UINT64 total = 0;
@@ -404,27 +421,27 @@ private:
         const DxvaFrame& fr = m_s.frames[f];
         for (std::uint32_t slot = 0; slot < video::kGop; ++slot)
             for (std::uint32_t p = 0; p < kPlanes; ++p)
-                before.push_back(transition(m_dpb.get(), slot + p * video::kGop, D3D12_RESOURCE_STATE_COMMON,
+                before.push_back(transition(picture(slot), subresource(slot, p), D3D12_RESOURCE_STATE_COMMON,
                                             slot == f ? D3D12_RESOURCE_STATE_VIDEO_DECODE_WRITE
                                                       : D3D12_RESOURCE_STATE_VIDEO_DECODE_READ));
         if (m_referenceOnly)
             for (std::uint32_t p = 0; p < kPlanes; ++p)
-                before.push_back(transition(m_output.get(), f + p * video::kGop, D3D12_RESOURCE_STATE_COMMON,
+                before.push_back(transition(shown(f), subresource(f, p), D3D12_RESOURCE_STATE_COMMON,
                                             D3D12_RESOURCE_STATE_VIDEO_DECODE_WRITE));
         cl->ResourceBarrier(static_cast<UINT>(before.size()), before.data());
 
         D3D12_VIDEO_DECODE_OUTPUT_STREAM_ARGUMENTS out{};
         if (m_referenceOnly) {
-            out.pOutputTexture2D = m_output.get();
-            out.OutputSubresource = f;
+            out.pOutputTexture2D = shown(f);
+            out.OutputSubresource = subresource(f, 0);
             out.ConversionArguments.Enable = TRUE;
-            out.ConversionArguments.pReferenceTexture2D = m_dpb.get();
-            out.ConversionArguments.ReferenceSubresource = f;
+            out.ConversionArguments.pReferenceTexture2D = picture(f);
+            out.ConversionArguments.ReferenceSubresource = subresource(f, 0);
             out.ConversionArguments.OutputColorSpace = DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709;
             out.ConversionArguments.DecodeColorSpace = DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709;
         } else {
-            out.pOutputTexture2D = m_dpb.get();
-            out.OutputSubresource = f;
+            out.pOutputTexture2D = picture(f);
+            out.OutputSubresource = subresource(f, 0);
         }
         D3D12_VIDEO_DECODE_INPUT_STREAM_ARGUMENTS in{};
         auto arg = [&](D3D12_VIDEO_DECODE_ARGUMENT_TYPE type, const std::vector<std::uint8_t>& data) {
@@ -479,7 +496,9 @@ private:
     D3D12_VIDEO_DECODE_TIER m_tier = D3D12_VIDEO_DECODE_TIER_NOT_SUPPORTED;
     bool m_referenceOnly = false;
     D3D12_RESOURCE_DESC m_texDesc{};
-    Com<ID3D12Resource> m_dpb, m_output, m_bitstream, m_stats;
+    bool m_separate = false;                          ///< one texture per picture instead of a texture array
+    std::vector<Com<ID3D12Resource>> m_dpb, m_output; ///< the DPB pictures; the outputs if reference-only
+    Com<ID3D12Resource> m_bitstream, m_stats;
     Com<ID3D12QueryHeap> m_statsHeap;
     DecodeStatus m_status = DecodeStatus::array();
     std::vector<UINT64> m_offsets, m_sizes;

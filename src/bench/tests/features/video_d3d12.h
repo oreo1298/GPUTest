@@ -2,9 +2,10 @@
 // Native Direct3D 12 Video plumbing for feature.video: a decoder that is independent of the codec and runs on
 // the GPU's video decode queue, fed with DXVA buffers that video_dxva.cpp builds from the parsed streams.
 //
-// Picture layout: one NV12 texture array with a slice per frame of the 8-frame GOP; frame f decodes into
-// slice f, which is also its DXVA picture index, so any frame can reference any earlier one. Decoders that
-// require reference-only allocations get a second array, written through the output conversion.
+// Picture layout: one NV12 picture per frame of the 8-frame GOP (separate textures on decode tier 2 and up, the
+// slices of one texture array on tier 1); frame f decodes into picture f, which is also its DXVA picture index,
+// so any frame can reference any earlier one. Decoders that require reference-only allocations get a second
+// set of pictures, written through the output conversion.
 
 #if GT_HAS_D3D12
 
