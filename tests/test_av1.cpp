@@ -12,6 +12,7 @@
 #include <map>
 #include <optional>
 #include <regex>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -302,6 +303,205 @@ TEST_CASE("AV1 frames record which frame each reference slot holds", "[av1][vide
                     CHECK(fr.refFrames[i] == map[fr.header.refFrameIdx[i]]);
             for (std::uint32_t v = 0; v < 8; ++v)
                 if ((fr.header.refreshFrameFlags >> v) & 1u) map[v] = static_cast<std::int32_t>(f);
+        }
+    }
+}
+
+namespace {
+
+struct ObuSpan {
+    std::uint32_t type = 0;
+    std::size_t offset = 0, size = 0; ///< the whole OBU
+};
+
+/// The OBUs of data with size fields.
+std::vector<ObuSpan> obuSpans(std::span<const std::uint8_t> data) {
+    std::vector<ObuSpan> out;
+    std::size_t i = 0;
+    while (i < data.size()) {
+        ObuSpan o;
+        o.offset = i;
+        o.type = (data[i] >> 3) & 0xFu;
+        i += (data[i] & 4u) ? 2 : 1;
+        std::uint64_t size = 0;
+        for (int k = 0; k < 8; ++k) {
+            const std::uint8_t b = data[i++];
+            size |= std::uint64_t(b & 0x7F) << (7 * k);
+            if (!(b & 0x80)) break;
+        }
+        i += static_cast<std::size_t>(size);
+        o.size = i - o.offset;
+        out.push_back(o);
+    }
+    return out;
+}
+
+/// The bit at position `bit` of `data` (MSB first).
+bool bitAt(std::span<const std::uint8_t> data, std::size_t bit) {
+    return (data[bit / 8] >> (7 - bit % 8)) & 1u;
+}
+
+} // namespace
+
+TEST_CASE("AV1 headers are written back bit for bit", "[av1][video]") {
+    std::vector<std::pair<std::string, std::vector<std::uint8_t>>> streams;
+    const video::ReferenceStream* ref = video::referenceStream("av1");
+    REQUIRE(ref);
+    streams.emplace_back("reference", std::vector<std::uint8_t>(ref->data.begin(), ref->data.end()));
+    for (const char* name : {"av1_tiles_segmentation", "av1_global_motion"})
+        streams.emplace_back(name, readFile(std::string(GT_TEST_DATA_DIR) + "/video/" + name + ".obu"));
+    std::size_t frames = 0, multiTile = 0, segmented = 0, globalMotion = 0;
+    for (const auto& [name, data] : streams) {
+        INFO(name);
+        std::string error;
+        const auto st = av1::parse(data, nullptr, &error);
+        INFO(error);
+        REQUIRE(st);
+        bool sequenceHeader = false;
+        for (const ObuSpan& o : obuSpans(data))
+            if (o.type == 1) {
+                const std::vector<std::uint8_t> original(data.begin() + static_cast<std::ptrdiff_t>(o.offset),
+                                                         data.begin() +
+                                                             static_cast<std::ptrdiff_t>(o.offset + o.size));
+                CHECK(av1::writeSequenceHeader(st->seq) == original);
+                sequenceHeader = true;
+                break;
+            }
+        CHECK(sequenceHeader);
+        for (std::size_t f = 0; f < st->frames.size(); ++f) {
+            INFO("frame " << f);
+            const av1::Frame& fr = st->frames[f];
+            const std::vector<ObuSpan> spans = obuSpans(fr.data);
+            REQUIRE(spans.size() == 1);
+            REQUIRE(spans[0].type == 6); // a frame OBU with every tile
+            std::vector<std::span<const std::uint8_t>> tiles;
+            for (std::size_t t = 0; t < fr.tileOffsets.size(); ++t)
+                tiles.emplace_back(fr.data.data() + fr.tileOffsets[t], fr.tileSizes[t]);
+            CHECK(av1::writeFrame(st->seq, fr.header, tiles) == fr.data);
+
+            // The frame header OBU carries the same header bits, then the trailing bits.
+            const std::vector<std::uint8_t> header = av1::writeFrameHeader(st->seq, fr.header);
+            const std::vector<ObuSpan> hs = obuSpans(header);
+            REQUIRE(hs.size() == 1);
+            CHECK(hs[0].type == 3);
+            // Payload of the header OBU: after the 1-byte OBU header and its leb128 size.
+            std::size_t p = 1;
+            while (header[p] & 0x80)
+                ++p;
+            ++p;
+            const std::span<const std::uint8_t> hbits = std::span(header).subspan(p);
+            std::size_t q = 1;
+            while (fr.data[q] & 0x80)
+                ++q;
+            ++q;
+            const std::span<const std::uint8_t> fbits = std::span(fr.data).subspan(q);
+            std::size_t last = hbits.size() * 8;
+            while (last > 0 && !bitAt(hbits, last - 1))
+                --last;
+            REQUIRE(last > 0);
+            const std::size_t headerBits = last - 1; // before the trailing one bit
+            bool same = true;
+            for (std::size_t b = 0; b < headerBits; ++b)
+                same = same && bitAt(hbits, b) == bitAt(fbits, b);
+            CHECK(same);
+
+            ++frames;
+            if (fr.tileSizes.size() > 1) ++multiTile;
+            if (fr.header.segmentationEnabled) ++segmented;
+            if (fr.header.gmType != std::array<std::uint32_t, 8>{}) ++globalMotion;
+        }
+    }
+    CHECK(frames >= 18);
+    CHECK(multiTile > 0);
+    CHECK(segmented > 0);
+    CHECK(globalMotion > 0);
+}
+
+TEST_CASE("An encoder's AV1 stream written from scratch reads back", "[av1][video]") {
+    // The shape of the Direct3D 12 encoder's output: 64x64 superblocks, no order hints, a key frame, then
+    // inter frames that predict from the previous frame and replace every reference slot.
+    av1::SequenceHeader seq;
+    seq.profile = 0;
+    seq.levelIdx = 9;
+    seq.operatingPointIdc = {0};
+    seq.frameWidthBitsMinus1 = 10;
+    seq.frameHeightBitsMinus1 = 10;
+    seq.maxFrameWidthMinus1 = 1919;
+    seq.maxFrameHeightMinus1 = 1079;
+    seq.enableCdef = true;
+    seq.seqForceScreenContentTools = 0;
+    seq.seqForceIntegerMv = 2;
+    seq.separateUvDeltaQ = true;
+    for (const std::uint32_t colsLog2 : {0u, 1u}) {
+        INFO("tile columns log2 " << colsLog2);
+        std::vector<std::uint8_t> stream;
+        constexpr std::uint32_t kFrames = 8;
+        for (std::uint32_t f = 0; f < kFrames; ++f) {
+            av1::FrameHeader h;
+            h.frameType = f == 0 ? av1::kKeyFrame : av1::kInterFrame;
+            h.showFrame = true;
+            h.refreshFrameFlags = 0xFF;
+            h.upscaledWidth = h.frameWidth = h.renderWidth = 1920;
+            h.frameHeight = h.renderHeight = 1080;
+            h.interpolationFilter = 0;
+            h.tiles.uniformSpacing = true;
+            h.tiles.colsLog2 = colsLog2;
+            h.tiles.tileSizeBytesMinus1 = 3;
+            h.baseQIdx = 110;
+            h.loopFilterLevel = {12, 10, 6, 6};
+            h.loopFilterSharpness = 1;
+            h.cdefDampingMinus3 = 2;
+            h.cdefBits = 1;
+            h.cdefYPri = {4, 8};
+            h.cdefYSec = {1, 3};
+            h.cdefUvPri = {2, 0};
+            h.txMode = 2;
+            stream.insert(stream.end(), {0x12, 0x00});
+            if (f == 0) {
+                const std::vector<std::uint8_t> sh = av1::writeSequenceHeader(seq);
+                stream.insert(stream.end(), sh.begin(), sh.end());
+            }
+            const std::vector<std::uint8_t> tileA(37 + f, static_cast<std::uint8_t>(f)), tileB(5, 0xEE);
+            std::vector<std::span<const std::uint8_t>> tiles = {tileA};
+            if (colsLog2) tiles.emplace_back(tileB);
+            const std::vector<std::uint8_t> obu = av1::writeFrame(seq, h, tiles);
+            stream.insert(stream.end(), obu.begin(), obu.end());
+        }
+        CHECK(av1::temporalDelimiter() == std::vector<std::uint8_t>{0x12, 0x00});
+
+        std::string error;
+        const auto st = av1::parse(stream, nullptr, &error);
+        INFO(error);
+        REQUIRE(st);
+        CHECK(st->seq.levelIdx == 9);
+        CHECK_FALSE(st->seq.enableOrderHint);
+        CHECK(st->seq.separateUvDeltaQ);
+        REQUIRE(st->frames.size() == kFrames);
+        for (std::uint32_t f = 0; f < kFrames; ++f) {
+            INFO("frame " << f);
+            const av1::Frame& fr = st->frames[f];
+            const av1::FrameHeader& h = fr.header;
+            CHECK(h.frameType == (f == 0 ? av1::kKeyFrame : av1::kInterFrame));
+            CHECK(h.refreshFrameFlags == 0xFF);
+            CHECK(h.primaryRefFrame == av1::kPrimaryRefNone);
+            CHECK(h.frameWidth == 1920);
+            CHECK(h.frameHeight == 1080);
+            CHECK(h.baseQIdx == 110);
+            CHECK(h.loopFilterLevel == std::array<std::uint32_t, 4>{12, 10, 6, 6});
+            CHECK(h.loopFilterSharpness == 1);
+            CHECK(h.cdefDampingMinus3 == 2);
+            CHECK(h.cdefYPri[1] == 8);
+            CHECK(h.cdefYSec[1] == 3);
+            CHECK(h.cdefUvPri[0] == 2);
+            CHECK(h.txMode == 2);
+            CHECK(h.tiles.cols == (colsLog2 ? 2u : 1u));
+            REQUIRE(fr.tileSizes.size() == h.tiles.cols);
+            CHECK(fr.tileSizes[0] == 37 + f);
+            CHECK(fr.data[fr.tileOffsets[0]] == f);
+            if (colsLog2) CHECK(fr.tileSizes[1] == 5);
+            if (f > 0)
+                for (std::size_t i = 0; i < 7; ++i)
+                    CHECK(fr.refFrames[i] == static_cast<std::int32_t>(f - 1));
         }
     }
 }

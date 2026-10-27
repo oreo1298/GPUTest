@@ -449,7 +449,7 @@ std::vector<CodecHooks> codecs() {
     return {
         {"h264", "H.264", D3D12_VIDEO_DECODE_PROFILE_H264, dxvaH264, h264Encoder},
         {"h265", "H.265", D3D12_VIDEO_DECODE_PROFILE_HEVC_MAIN, dxvaH265, h265Encoder},
-        {"av1", "AV1", D3D12_VIDEO_DECODE_PROFILE_AV1_PROFILE0, dxvaAv1, nullptr},
+        {"av1", "AV1", D3D12_VIDEO_DECODE_PROFILE_AV1_PROFILE0, dxvaAv1, av1Encoder},
     };
 }
 

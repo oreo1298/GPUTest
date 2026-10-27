@@ -127,8 +127,8 @@ std::string decodeFrames(ID3D12Device* dev, const DxvaStream& s, std::vector<std
 
 // --- encoding ----------------------------------------------------------------------------------------
 
-/// The codec half of an encode (video_d3d12_encode.cpp): what to ask the encoder for, the parameter sets the
-/// application writes, and how to read the result back. Frame f of the GOP is an IDR (f = 0) or a P-frame
+/// The codec half of an encode (video_d3d12_encode.cpp): what to ask the encoder for, the headers the
+/// application writes, and how to read the result back. Frame f of the GOP is a key frame (IDR, f = 0) or is
 /// predicted from frame f - 1.
 class EncodeCodec {
 public:
@@ -143,10 +143,24 @@ public:
     virtual D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION configuration() = 0;
     virtual D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE gop() = 0;
     virtual std::uint32_t quantizer() const = 0;
+    /// How a frame is split: one slice (H.264, H.265) or a grid of tiles (AV1).
+    virtual D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE layoutMode() const {
+        return D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_FULL_FRAME;
+    }
+    virtual D3D12_VIDEO_ENCODER_PICTURE_CONTROL_SUBREGIONS_LAYOUT_DATA layoutData() { return {}; }
+    /// Bytes of resolved metadata per frame (after configure()).
+    virtual UINT64 resolvedSize() const { return 4096; }
     /// Picture control for frame f in GOP repeat r (valid for the encoder's lifetime).
     virtual D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA picture(std::uint32_t f, std::uint32_t r) = 0;
-    /// The parameter sets, as Annex B NAL units.
+    /// What precedes the frames: the parameter sets as Annex B NAL units (AV1: nothing, its sequence header
+    /// travels with the key frame).
     virtual std::vector<std::uint8_t> headers() const = 0;
+    /// Frame f's part of the stream from the encoder's output: `bitstream` from the frame's start, `resolved`
+    /// its resolved metadata. Returns why it cannot (empty: done). By default the slices as Annex B NAL
+    /// units.
+    virtual std::string frameData(std::uint32_t f, std::span<const std::uint8_t> bitstream,
+                                  std::span<const std::uint8_t> resolved,
+                                  std::vector<std::uint8_t>& out) const;
     /// Parameter sets + encoded frames as a decode job.
     virtual std::optional<DxvaStream> readBack(std::span<const std::uint8_t> stream,
                                                std::string* error) const = 0;
@@ -155,6 +169,7 @@ public:
 };
 std::unique_ptr<EncodeCodec> h264Encoder();
 std::unique_ptr<EncodeCodec> h265Encoder();
+std::unique_ptr<EncodeCodec> av1Encoder();
 
 struct CodecHooks {
     std::string key, label; ///< "h264", "H.264"

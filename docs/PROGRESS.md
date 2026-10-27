@@ -77,15 +77,21 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   upload/readback memory, buffer layouts from DXBC reflection; on WARP its legacy scenes match the D3D12 frames
   (max cell difference 0–1) and the legacy suite passes with the debug layer. Legacy suite: Lattice, Courtyard,
   Atrium (+ lite), fill/texel/geometry/MSAA, fp32 ALU, memory bandwidth, draw calls.
-- **Milestone 12 (upscalers & video): in progress.** FSR 1 (EASU + RCAS ported to Slang): `--upscale fsr1|bilinear`
+- **Milestone 12 (upscalers & video): done.** FSR 1 (EASU + RCAS ported to Slang): `--upscale fsr1|bilinear`
   and `--upscale-mode` for scenes (GUI: Tests page), `feature.upscale` (cost per mode, PSNR against a supersampled
   reference; EASU beats bilinear on Vulkan and GL). Upscaler plugins (MIT C interface, off by default): example
   Vulkan plugin (tested in CI) and Intel XeSS (D3D12, user supplies `libxess.dll`); no DLSS (license).
   `feature.hdr` (PQ encoding check; HDR10 swapchain in a window). `feature.video` (Vulkan Video): decode fps
   on embedded 1080p reference streams (`data/video`, FFmpeg-made, frames checked by CRC against FFmpeg's
   decode) and encode fps with a GPU round-trip PSNR check; H.264, H.265 and AV1 on Vulkan; on D3D12 decode of
-  all three through DXVA and H.264 / H.265 encode with Kiln-written parameter sets (skips without video
-  engines; hardware-only, unverified). M12 is complete apart from hardware verification.
+  all three through DXVA and encode of all three, with Kiln-written parameter sets and AV1 headers (skips
+  without video engines; hardware-only, unverified).
+- **Milestone 13 (packaging): done.** AppImage, Flatpak (KDE runtime, built offline in CI), Arch PKGBUILD,
+  Windows installer (Inno Setup) and portable zip, all built on every push; a `v*` tag publishes them as a
+  GitHub release (version checked against `APP_VERSION`, notes from CHANGELOG.md). README with screenshots,
+  docs/USER_GUIDE.md, docs/BUILDING.md, CONTRIBUTING.md.
+- **Milestone 14 (polish): in progress.** UI review from light / dark screenshots of every page, runner help
+  and docs pass, accessibility audit of every focusable widget.
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
@@ -113,6 +119,10 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   CoopVec) are not implemented: no driver here or in CI supports them (docs/DECISIONS.md).
 - Telemetry on Windows for AMD (ADL/D3DKMT) and Intel (Level Zero) is still to do (planned alongside M5/M10).
 - Score references are provisional (docs/SCORING.md) until real hardware reports arrive.
+- WARP's Direct3D 12 video path (Media Foundation on the CPU) never completes the first H.264 DecodeFrame,
+  with one command list per frame and the debug layer silent about the arguments; `feature.video` skips
+  software adapters unless `--param feature.video.software=1`, and CI runs it report-only. All Direct3D 12
+  video results therefore wait for real hardware (docs/HARDWARE_TESTING.md, M12 item 6).
 - Windows CI uses Qt 6.10.3 instead of 6.12.0 (aqt cannot fetch 6.12.0's Windows metadata); revisit when aqt or
   the Qt repository changes — the workflow picks 6.12 automatically once it installs.
 
@@ -146,6 +156,13 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
 - M13: Flatpak manifest (KDE 6.11, offline, CI-built bundle), Windows installer (Inno Setup), tag-triggered release
   job, CHANGELOG.md; fixed the Windows portable zip missing Qt (windeployqt never ran). README rewritten with
   screenshots; docs/USER_GUIDE.md, docs/BUILDING.md, CONTRIBUTING.md.
+- M12: AV1 encode on Direct3D 12: AV1 sequence / frame header writer (every header of the three AV1 test
+  streams rewritten bit for bit in the unit tests), encoder configured with the SUPPORT1 query, headers from the
+  post-encode values. D3D12 video decode and encode use one command list per frame.
+- M14: Compare page hides empty tiles and frame charts; empty Results page shows only the hint; readable score
+  history note; top-aligned suite cards; Settings shows where system colours come from; accessible names for
+  the path fields; `kiln-run --help` layout and plain `--no-hud`; docs/CLI.md lists every option; the git
+  revision shown in the app no longer goes stale in incremental builds.
 
 ### 2026-10-26
 - Saved brief to docs/SPEC.md; research pass recorded in docs/RESEARCH.md (two research subagents).

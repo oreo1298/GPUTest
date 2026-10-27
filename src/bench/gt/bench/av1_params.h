@@ -1,8 +1,9 @@
 #pragma once
-// AV1 reader for Vulkan Video decoding (AV1 spec sections 5 and 7.20): OBU framing, the sequence header, the
+// AV1 reader for video decoding (AV1 spec sections 5 and 7.20): OBU framing, the sequence header, the
 // uncompressed frame header with the reference state carried between frames (order hints, loop filter
 // deltas, segmentation, global motion), and where each frame's tiles are. Streams with show_existing_frame,
-// short reference signalling, film grain or large scale tiles fail with a reason.
+// short reference signalling, film grain or large scale tiles fail with a reason. And the writer for the
+// same headers.
 
 #include <array>
 #include <cstdint>
@@ -24,6 +25,7 @@ struct SequenceHeader {
     std::uint32_t numUnitsInDisplayTick = 0, timeScale = 0, numTicksPerPictureMinus1 = 0;
     std::uint32_t bufferRemovalTimeLengthMinus1 = 0, framePresentationTimeLengthMinus1 = 0;
     std::vector<std::uint32_t> operatingPointIdc;
+    std::vector<std::uint32_t> opLevelIdx, opTier; ///< per operating point (the first: levelIdx / tier)
     std::vector<bool> decoderModelPresentForThisOp;
     std::uint32_t frameWidthBitsMinus1 = 0, frameHeightBitsMinus1 = 0, maxFrameWidthMinus1 = 0,
                   maxFrameHeightMinus1 = 0;
@@ -60,12 +62,14 @@ struct FrameHeader {
     std::uint32_t currentFrameId = 0;
     bool frameSizeOverride = false;
     std::uint32_t orderHint = 0, primaryRefFrame = kPrimaryRefNone, refreshFrameFlags = 0;
+    std::array<std::uint32_t, 8> refOrderHint{}; ///< as coded (error-resilient frames with order hints)
     bool bufferRemovalTimePresent = false;
     std::uint32_t frameWidth = 0, frameHeight = 0, upscaledWidth = 0, renderWidth = 0, renderHeight = 0;
     std::uint32_t miCols = 0, miRows = 0;
     bool renderAndFrameSizeDifferent = false, useSuperres = false;
     std::uint32_t codedDenom = 0;
     bool allowIntrabc = false, frameRefsShortSignaling = false;
+    std::int32_t foundRef = -1; ///< frame_size_with_refs(): the reference the size came from (-1: coded)
     std::array<std::uint32_t, 7> refFrameIdx{};
     std::array<std::uint32_t, 8> expectedFrameId{};
     bool allowHighPrecisionMv = false, isFilterSwitchable = false;
@@ -108,6 +112,7 @@ struct FrameHeader {
     bool allowWarpedMotion = false, reducedTxSet = false;
     std::array<std::uint32_t, 8> gmType{};
     std::array<std::array<std::int32_t, 6>, 8> gmParams{};
+    std::array<std::array<std::int32_t, 6>, 8> prevGmParams{}; ///< what gmParams are coded relative to
     bool frameIsIntra() const { return frameType == kKeyFrame || frameType == kIntraOnlyFrame; }
 };
 
@@ -140,5 +145,20 @@ std::vector<std::uint8_t> withSizeFields(std::span<const std::uint8_t> obus);
 /// data unless `seq` is given (an encoder's own, for output without one).
 std::optional<Stream> parse(std::span<const std::uint8_t> obus, const SequenceHeader* seq,
                             std::string* error);
+
+// Writing: OBUs with size fields from the same structures, for encoders that leave the headers to the
+// application (Direct3D 12). They write the coded values the reader keeps, so a parsed header is written back
+// bit for bit; decoder model information, initial display delays, reduced still-picture headers and
+// show_existing_frame are not written (std::runtime_error).
+
+/// A temporal delimiter OBU (it starts every temporal unit).
+std::vector<std::uint8_t> temporalDelimiter();
+/// A sequence header OBU.
+std::vector<std::uint8_t> writeSequenceHeader(const SequenceHeader& seq);
+/// A frame header OBU (uncompressed_header()). `h.orderHints[1..7]` are the references' order hints.
+std::vector<std::uint8_t> writeFrameHeader(const SequenceHeader& seq, const FrameHeader& h);
+/// A frame OBU: the frame header, then every tile in one tile group, `tiles` in raster order.
+std::vector<std::uint8_t> writeFrame(const SequenceHeader& seq, const FrameHeader& h,
+                                     std::span<const std::span<const std::uint8_t>> tiles);
 
 } // namespace gt::bench::av1

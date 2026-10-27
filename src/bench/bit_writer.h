@@ -2,6 +2,7 @@
 // Bit writer for video parameter sets (fixed-width fields, Exp-Golomb), the counterpart of bit_reader.h for
 // encoders that leave writing the parameter sets to the application. Internal to gt_bench.
 
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <vector>
@@ -34,7 +35,13 @@ public:
         while (m_bits % 8)
             bit(0);
     }
+    /// Zeros to the byte boundary (AV1 byte_alignment()).
+    void alignZero() {
+        while (m_bits % 8)
+            bit(0);
+    }
     const std::vector<std::uint8_t>& bytes() const { return m_data; }
+    std::size_t bitCount() const { return m_bits; }
 
 private:
     void bit(std::uint32_t b) {

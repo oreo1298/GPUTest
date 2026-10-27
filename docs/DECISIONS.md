@@ -329,8 +329,21 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   Slices without an Annex B start code get one. The joined stream is decoded on the D3D12 decoder for the
   round-trip PSNR. Reconstructed pictures are a two-slice reference-only array used in turn; recon in
   VIDEO_ENCODE_WRITE and the reference in VIDEO_ENCODE_READ around each EncodeFrame (states the specification
-  leaves unstated, taken from the resource-state names). AV1 encoding on D3D12 would need the frame header
-  written after each frame from the resolved metadata; it is not done, AV1 encode is measured on Vulkan.
+  leaves unstated, taken from the resource-state names).
+- **AV1 encode on Direct3D 12: headers written from the post-encode values.** The D3D12 AV1 encoder writes tile
+  data only; the application writes the sequence header, frame header and tile group (Microsoft's D3D12 AV1
+  encoding specification; Mesa's MIT-licensed d3d12 encoder, itself a client of this API, was read to confirm
+  how the values map onto syntax). `av1::writeSequenceHeader` / `writeFrame` are the parser's mirror image and
+  are tested by rewriting every header of the three AV1 test streams bit for bit (tiles, segmentation, global
+  motion, loop restoration). Configuration: AV1 Main, level 4.1 or the suggestion, only the coding tools the
+  encoder requires (plus order hints when a required tool needs them), a fixed 8-tap filter and transform
+  selection where offered, one tile (else the smallest uniform grid the encoder takes), constant base_q_idx
+  110 as on Vulkan, fixed deblocking levels and no CDEF strengths of our own; SUPPORT1 checks the whole set (the
+  older query refuses AV1). Each frame takes the quantizer, loop filter, CDEF, compound mode, primary
+  reference and reference indices from the resolved post-encode values where the encoder reports that it
+  chooses them. Every frame refreshes all eight reference slots, so the DPB only ever holds the previous
+  frame (the one reconstructed texture the GOP keeps). Each frame is a temporal unit (temporal delimiter,
+  the sequence header on the key frame, one frame OBU), checked by decoding it again on the D3D12 decoder.
 - **WARP's video engines are opt-in.** WARP (1.0.13 and later) decodes and encodes H.264 / H.265 through Media
   Foundation on the CPU, so `feature.video` skips software adapters unless `--param feature.video.software=1`
   is given: it is not a GPU measurement and it hung the first CI run. CI runs it in a separate, bounded,
