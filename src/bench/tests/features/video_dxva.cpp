@@ -61,21 +61,6 @@ std::vector<std::uint8_t> shortSlices(const std::vector<std::uint32_t>& starts, 
     return out;
 }
 
-/// Shifts frame data and its short-format slice entries by `bytes` inserted at the start; the first entry
-/// grows over the inserted bytes instead of moving when `first` is set.
-template <typename Slice>
-void shiftSlices(std::vector<std::uint8_t>& slices, UINT bytes, bool first) {
-    for (std::size_t at = 0; at + sizeof(Slice) <= slices.size(); at += sizeof(Slice)) {
-        Slice s;
-        std::memcpy(&s, slices.data() + at, sizeof(Slice));
-        if (at == 0 && first)
-            s.SliceBytesInBuffer += bytes;
-        else
-            s.BSNALunitDataLocation += bytes;
-        std::memcpy(slices.data() + at, &s, sizeof(Slice));
-    }
-}
-
 const char* h264ProfileName(std::uint32_t idc) {
     switch (idc) {
     case 66:
@@ -110,13 +95,6 @@ std::optional<DxvaStream> dxvaH264(std::span<const std::uint8_t> annexB, std::st
     out.profile = D3D12_VIDEO_DECODE_PROFILE_H264;
     out.width = (sps.widthInMbsMinus1 + 1) * 16;
     out.height = (sps.heightInMapUnitsMinus1 + 1) * 16;
-
-    for (const h264::NalUnit& n : h264::nalUnits(annexB)) {
-        if (n.type == 1 || n.type == 5) break; // the parameter sets ahead of the first slice
-        if (n.type == 7 || n.type == 8)
-            out.headers.insert(out.headers.end(), annexB.begin() + static_cast<std::ptrdiff_t>(n.offset),
-                               annexB.begin() + static_cast<std::ptrdiff_t>(n.end));
-    }
 
     DXVA_Qmatrix_H264 flat = zeroed<DXVA_Qmatrix_H264>(); // no scaling matrices: Flat_4x4_16 / Flat_8x8_16
     std::memset(&flat, 16, sizeof(flat));
@@ -217,12 +195,6 @@ std::optional<DxvaStream> dxvaH265(std::span<const std::uint8_t> annexB, std::st
     out.profile = D3D12_VIDEO_DECODE_PROFILE_HEVC_MAIN;
     out.width = sps.width;
     out.height = sps.height;
-    for (const h265::NalUnit& n : h265::nalUnits(annexB)) {
-        if (n.vcl()) break;
-        if (n.type >= 32 && n.type <= 34) // VPS, SPS, PPS
-            out.headers.insert(out.headers.end(), annexB.begin() + static_cast<std::ptrdiff_t>(n.offset),
-                               annexB.begin() + static_cast<std::ptrdiff_t>(n.end));
-    }
     const std::uint32_t log2MinCb = sps.log2MinCbMinus3 + 3;
 
     for (std::uint32_t f = 0; f < st->pictures.size(); ++f) {
@@ -533,17 +505,6 @@ std::optional<DxvaStream> dxvaAv1(std::span<const std::uint8_t> obus, std::strin
     if (error) *error = "this build's dxva.h has no AV1 structures";
     return std::nullopt;
 #endif
-}
-
-void inlineHeaders(DxvaStream& s, int mode) {
-    if (s.headers.empty() || s.frames.empty() || (mode != 1 && mode != 2)) return;
-    DxvaFrame& f = s.frames[0];
-    f.data.insert(f.data.begin(), s.headers.begin(), s.headers.end());
-    const auto bytes = static_cast<UINT>(s.headers.size());
-    if (std::memcmp(&s.profile, &D3D12_VIDEO_DECODE_PROFILE_H264, sizeof(GUID)) == 0)
-        shiftSlices<DXVA_Slice_H264_Short>(f.slices, bytes, mode == 2);
-    else
-        shiftSlices<DXVA_Slice_HEVC_Short>(f.slices, bytes, mode == 2);
 }
 
 } // namespace gt::bench::d3d12video

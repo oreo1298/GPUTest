@@ -73,10 +73,7 @@ via `VK_EXT_device_fault` where available, and the last sensor sample), keeps th
   Media Foundation and can take minutes, so it is skipped by default). `--param feature.video.frames=N` decodes
   only the first N frames of the Direct3D 12 reference streams (still checked bit for bit), for decoders that
   stall part-way; `--param feature.video.dump=DIR` writes the Direct3D 12 encoded streams there
-  (`d3d12_h264.h264`, ...) to examine with other decoders. `--param feature.video.inline_headers=1` (or `2`)
-  also puts the H.264 / H.265 reference stream's parameter sets into the first frame's Direct3D 12 bitstream,
-  ahead of the first slice entry (or inside it): DXVA passes those values in the picture parameters, and this
-  shows whether a decoder wants the NAL units as well.
+  (`d3d12_h264.h264`, ...) to examine with other decoders.
 
 ## Diagnostic parameters
 | Parameter | Meaning |

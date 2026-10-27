@@ -645,12 +645,6 @@ void decodeReference(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hook
     if (std::from_chars(limit.data(), limit.data() + limit.size(), n).ec == std::errc{} && n >= 1 &&
         n < stream->frames.size())
         stream->frames.resize(n);
-    const std::string headersMode = ctx.settings().param("feature.video.inline_headers");
-    if (headersMode == "1" || headersMode == "2") {
-        inlineHeaders(*stream, headersMode[0] - '0');
-        res.details["decode_inline_headers"] =
-            headersMode == "1" ? "ahead of the first slice entry" : "inside the first slice entry";
-    }
     const std::unique_ptr<Decoder, KeepIfHung> dec(new Decoder(dev, *stream));
     if (std::string why = dec->prepare(); !why.empty()) {
         res.decodeNote = why;

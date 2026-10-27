@@ -47,7 +47,8 @@ them as a GitHub release. About 40 000 lines of C++, 52 unit-test cases, and smo
 4. Vulkan on the Windows CI runner (Mesa's lavapipe for Windows) so the Vulkan path is exercised there.
 5. Answer the Agility SDK redistribution question (Kiln uses the system Direct3D 12 runtime until then).
 6. Vulkan image-based VRS and cooperative vectors once drivers in reach support them.
-7. Find out why WARP's video decode never completes, or drop the report-only CI step.
+7. WARP's video decode writes nothing (see Known issues): retry with newer WARP packages, and drop the
+   report-only CI step if it stays that way once real-hardware results confirm the decoder.
 8. Optionally submit the Flatpak to Flathub (manifest ready; needs the owner's account).
 
 ## Current state
@@ -169,11 +170,12 @@ them as a GitHub release. About 40 000 lines of C++, 52 unit-test cases, and smo
 - Telemetry on Windows for AMD (ADL/D3DKMT) and Intel (Level Zero) is still to do (planned alongside M5/M10).
 - Score references are provisional (docs/SCORING.md) until real hardware reports arrive.
 - WARP's Direct3D 12 video path (Media Foundation on the CPU) completes the H.264 reference stream's frames 0-2
-  with a decode status of "ok" but leaves the pictures empty (all-zero read-back, with a texture array or
-  separate textures alike), and never completes a fourth decode, with or without the debug layer. The stream
-  has one reference and no B-frames; DXVA never passes its VUI, so this looks like the CPU decoder holding
-  pictures back, not our reference setup. WARP lists H.264 decode only (no H.265 / AV1 decoder, no H.265 / AV1
-  encoder). Its H.264 encoder ignores the requested frame_num length and writes 8 bits, which Kiln now asks for
+  with a decode status of "ok" but never writes the pictures (they keep the fill pattern they get before
+  decoding, with a texture array or separate textures alike, so the read-back works), and never completes a
+  fourth decode, with or without the debug layer. Putting the stream's SPS / PPS (with its VUI) into the
+  bitstream changed nothing. The stream has one reference and no B-frames, so this looks like the CPU decoder
+  holding pictures back inside WARP, not our reference setup. WARP lists H.264 decode only (no H.265 / AV1
+  decoder, no H.265 / AV1 encoder). Its H.264 encoder ignores the requested frame_num length and writes 8 bits, which Kiln now asks for
   (docs/DECISIONS.md). `feature.video` skips software adapters unless
   `--param feature.video.software=1`, and CI runs it report-only (about 20 s now: a stuck decode or encode
   fails that codec after 20 s instead of hanging the run, and a decode failure no longer skips the encode). All Direct3D 12

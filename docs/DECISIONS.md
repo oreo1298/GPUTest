@@ -320,7 +320,9 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   256-byte offsets, zero-padded to 128 bytes), so throughput does not include uploads. The pictures that are
   read back are filled with 0xA5 before decoding, so a frame the decoder never writes is reported as such
   (`decode_unwritten`) instead of as a wrong checksum: WARP returned all-zero frames with a status of "ok", and
-  the fill shows whether nothing was written or zeros were. Reference resolution
+  the fill showed that it writes nothing (and that the read-back works). A trial that also put the stream's
+  SPS / PPS into the bitstream (ahead of or inside the first slice entry) changed nothing on WARP and was
+  removed again: DXVA decoders take those values from the picture parameters. Reference resolution
   (H.264 sliding window, H.265 RPS, AV1 slot map) moved into the parsers so both APIs use the same code.
   AV1 streams with rotation / affine global motion are refused on D3D12 (DXVA wants each model's validity,
   AV1 7.11.3.6, which is not derived); the reference stream has none.

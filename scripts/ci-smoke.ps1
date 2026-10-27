@@ -140,56 +140,25 @@ if (Test-Path "$out\plugins-d3d12.json") {
     Get-Content "$out\plugins-d3d12.log" -Tail 20 | Out-Host
 }
 # Video engines on WARP (report only): WARP decodes and encodes H.264 / H.265 through Media Foundation, which
-# exercises the DXVA and encoder code paths that no GPU runs here. Bounded; never fails the job. WARP stalls on
-# the reference stream's fourth frame (docs/PROGRESS.md), so only the first three are decoded and checked.
+# exercises the DXVA and encoder code paths that no GPU runs here. Bounded; never fails the job. WARP leaves the
+# decoded pictures unwritten and stalls on the reference stream's fourth frame (docs/PROGRESS.md), so only the
+# first three are decoded and checked.
 Write-Host "== Video engines on WARP (D3D12, report only, no debug layer)"
-function Invoke-WarpVideo([string]$Name, [string[]]$Extra) {
-    $videoArgs = @($stdCommon | Where-Object { $_ -notin @("--validation", "--fail-on-validation") }) +
-                 @("--test", "feature.video", "--param", "feature.video.software=1",
-                   "--param", "feature.video.frames=3") + $Extra +
-                 @("--out", "$out\$Name.json", "--log-file", "$out\$Name.log")
-    $proc = Start-Process -FilePath $runner.FullName -ArgumentList $videoArgs -NoNewWindow -PassThru `
-        -RedirectStandardOutput "$out\$Name.out" -RedirectStandardError "$out\$Name.err"
-    $null = $proc.Handle
-    if (-not $proc.WaitForExit(3 * 60 * 1000)) {
-        $proc.Kill(); Write-Host "::warning title=Video on WARP::$Name timed out after 3 min"
-    }
-    if (Test-Path "$out\$Name.json") { return Get-Content "$out\$Name.json" -Raw | ConvertFrom-Json }
-    return $null
-}
-$r = Invoke-WarpVideo "video-d3d12" @("--param", "feature.video.dump=$out\video")
-if ($r) {
+$videoArgs = @($stdCommon | Where-Object { $_ -notin @("--validation", "--fail-on-validation") }) +
+             @("--test", "feature.video", "--param", "feature.video.software=1", "--param", "feature.video.frames=3",
+               "--param", "feature.video.dump=$out\video",
+               "--out", "$out\video-d3d12.json", "--log-file", "$out\video-d3d12.log")
+$proc = Start-Process -FilePath $runner.FullName -ArgumentList $videoArgs -NoNewWindow -PassThru `
+    -RedirectStandardOutput "$out\video-d3d12.out" -RedirectStandardError "$out\video-d3d12.err"
+$null = $proc.Handle
+if (-not $proc.WaitForExit(3 * 60 * 1000)) { $proc.Kill(); Write-Host "::warning title=Video on WARP::timed out after 3 min" }
+if (Test-Path "$out\video-d3d12.json") {
+    $r = Get-Content "$out\video-d3d12.json" -Raw | ConvertFrom-Json
     $t = $r.tests | Select-Object -First 1
     Write-Host "feature.video: $($t.status) $($t.verdict) $($t.verdict_message) $($t.status_message)"
     Write-Host ($t.details | ConvertTo-Json -Depth 6 -Compress)
 }
 if (Test-Path "$out\video-d3d12.log") { Get-Content "$out\video-d3d12.log" -Tail 60 | Out-Host }
-# The same decode with the stream's SPS / PPS in the bitstream too (docs/CLI.md, feature.video.inline_headers).
-foreach ($mode in @(1, 2)) {
-    $v = Invoke-WarpVideo "video-d3d12-inline$mode" @("--param", "feature.video.inline_headers=$mode")
-    if ($v) {
-        $d = ($v.tests | Select-Object -First 1).details.h264
-        Write-Host "inline headers ${mode}: crc32 $($d.decode_crc32 -join ' ') status $($d.decode_status -join ' ') unwritten $($d.decode_unwritten -join ' ')"
-    }
-}
-# The start of the encoded H.264 stream (Kiln's SPS / PPS, then the encoder's first slice), as base64 so that
-# its headers can be traced offline (artifacts may not be reachable from where the log is read).
-if (Test-Path "$out\video\d3d12_h264.h264") {
-    $bytes = [System.IO.File]::ReadAllBytes("$out\video\d3d12_h264.h264")
-    $head = $bytes[0..([Math]::Min(1023, $bytes.Length - 1))]
-    Write-Host "d3d12_h264.h264 ($($bytes.Length) bytes), first $($head.Length) as base64:"
-    Write-Host ([Convert]::ToBase64String([byte[]]$head))
-    # And the start of the second frame (a P-frame: its frame_num shows how many bits the encoder gives it).
-    $sizes = @()
-    if ($r) { $sizes = @($r.tests[0].details.h264.encode_frame_bytes) }
-    if ($sizes.Count -ge 2) {
-        $total = 0; foreach ($n in $sizes) { $total += [long]$n }
-        $at = $bytes.Length - $total + [long]$sizes[0]
-        $p = $bytes[$at..([Math]::Min($at + 255, $bytes.Length - 1))]
-        Write-Host "frame 1 at byte $($at), first $($p.Length) as base64:"
-        Write-Host ([Convert]::ToBase64String([byte[]]$p))
-    }
-}
 
 if ($StrictStandard -and $problems -gt 0) { throw "D3D12 standard suite failed ($problems tests)" }
 

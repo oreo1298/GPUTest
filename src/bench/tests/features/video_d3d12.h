@@ -133,17 +133,12 @@ struct DxvaStream {
     GUID profile{};                      ///< D3D12_VIDEO_DECODE_PROFILE_*
     std::uint32_t width = 0, height = 0; ///< coded size
     std::vector<DxvaFrame> frames;
-    std::vector<std::uint8_t> headers; ///< H.264 / H.265: the parameter-set NAL units, which DXVA never sends
 };
 
 /// The parsed reference streams as DXVA buffers (video_dxva.cpp). Empty + error if a stream cannot be used.
 std::optional<DxvaStream> dxvaH264(std::span<const std::uint8_t> annexB, std::string* error);
 std::optional<DxvaStream> dxvaH265(std::span<const std::uint8_t> annexB, std::string* error);
 std::optional<DxvaStream> dxvaAv1(std::span<const std::uint8_t> obus, std::string* error);
-/// The feature.video.inline_headers diagnostic: puts the stream's parameter sets in frame 0's bitstream ahead
-/// of its first slice, outside the slice entries (mode 1) or inside the first one (mode 2). DXVA decoders
-/// take the parameters from the picture parameters; this shows whether one wants the NAL units as well.
-void inlineHeaders(DxvaStream& s, int mode);
 
 /// What the decoder reported for each frame (D3D12_QUERY_TYPE_VIDEO_DECODE_STATISTICS): "ok", or the status
 /// and the macroblocks affected. Empty when the driver has no decode statistics.
