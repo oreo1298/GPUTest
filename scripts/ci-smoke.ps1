@@ -158,6 +158,14 @@ if (Test-Path "$out\video-d3d12.json") {
     Write-Host ($t.details | ConvertTo-Json -Depth 6 -Compress)
 }
 if (Test-Path "$out\video-d3d12.log") { Get-Content "$out\video-d3d12.log" -Tail 60 | Out-Host }
+# The start of the encoded H.264 stream (Kiln's SPS / PPS, then the encoder's first slice), as base64 so that
+# its headers can be traced offline (artifacts may not be reachable from where the log is read).
+if (Test-Path "$out\video\d3d12_h264.h264") {
+    $bytes = [System.IO.File]::ReadAllBytes("$out\video\d3d12_h264.h264")
+    $head = $bytes[0..([Math]::Min(1023, $bytes.Length - 1))]
+    Write-Host "d3d12_h264.h264 ($($bytes.Length) bytes), first $($head.Length) as base64:"
+    Write-Host ([Convert]::ToBase64String([byte[]]$head))
+}
 
 if ($StrictStandard -and $problems -gt 0) { throw "D3D12 standard suite failed ($problems tests)" }
 
