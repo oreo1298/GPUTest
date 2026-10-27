@@ -4,7 +4,8 @@
 #
 #   ./hw-report.sh [--runner PATH] [--quick|--standard|--stress 20m] [--gpu N] [--api vulkan] [--out DIR]
 #
-# Run it from the extracted AppImage directory, the build tree, or with the AppImage:
+# Run it as kiln-hw-report when installed from a package, from the extracted AppImage directory,
+# the build tree, or with the AppImage:
 #   ./Kiln-*.AppImage run --version          # check the runner works
 #   APPIMAGE_RUNNER="./Kiln-*.AppImage run" ./hw-report.sh
 # Then commit the .tar.gz to hardware-reports/ or attach it to the session.
@@ -31,6 +32,11 @@ while [ $# -gt 0 ]; do
 done
 
 here="$(cd "$(dirname "$0")" && pwd)"
+self="$(basename "$0")"
+# Installed as <app>-hw-report next to <app>-run (distribution packages).
+if [ -z "$runner_cmd" ] && [ "${self%-hw-report}" != "$self" ] && [ -x "$here/${self%-hw-report}-run" ]; then
+    runner_cmd="$here/${self%-hw-report}-run"
+fi
 if [ -z "$runner_cmd" ]; then
     for c in "$here"/*-run "$here"/../bin/*-run "$here"/../../bin/*-run "$here"/../build/*/bin/*-run; do
         [ -x "$c" ] && { runner_cmd="$c"; break; }

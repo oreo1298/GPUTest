@@ -10,9 +10,12 @@ and screenshots into one archive — commit it under `hardware-reports/` or atta
   (Actions → CI → run → Artifacts), unzip, `chmod +x Kiln-*.AppImage`.
   - GUI: `./Kiln-*.AppImage`; runner CLI: `./Kiln-*.AppImage run --help`.
 - Windows: download `windows-portable`, unzip anywhere, run `kiln.exe` (GUI) or `kiln-run.exe` (CLI).
+- Arch / CachyOS: `cd GPUTest/packaging/arch && makepkg -si` from a clone (see README), or `sudo pacman -U` the
+  `arch-package` artifact. Then `kiln` (GUI, also in the app menu), `kiln-run` (CLI), `kiln-hw-report`.
 
 ## The hardware report (start here)
-- Linux: `./hw-report.sh` from the repo `scripts/` directory, or from inside the AppImage:
+- Linux: `kiln-hw-report` when installed from the Arch package, `./hw-report.sh` from the repo `scripts/`
+  directory, or from inside the AppImage:
   `./Kiln-*.AppImage --appimage-extract >/dev/null && squashfs-root/usr/share/kiln/hw-report.sh --runner squashfs-root/usr/bin/kiln-run`
 - Windows (portable zip folder): `powershell -ExecutionPolicy Bypass -File hw-report.ps1`
 - Options: `--standard` / `-Mode standard` (longer), `--stress 20m` / `-Mode stress -Stress 20m`, `--api`, `--gpu`.
@@ -20,6 +23,29 @@ and screenshots into one archive — commit it under `hardware-reports/` or atta
   and frame dumps, then the quick suite with frame dumps. Output: `hwreport-<host>-<time>.tar.gz` / `.zip`.
 
 ## Pending checks
+
+### Arch package (requested)
+On the CachyOS rig: install from a clone (`cd GPUTest/packaging/arch && makepkg -si`). Check that **Kiln** appears
+in the KDE application menu with its icon, that it starts on Wayland, that `kiln-run --list-devices` lists the 4090
+and the iGPU, and that `kiln-hw-report` finds the runner by itself. Tell me if makepkg complained about anything
+(missing dependency, namcap warnings) — CI builds it in a clean Arch container, but CachyOS's compiler flags differ.
+
+### M9 — scene benchmarks
+On the RTX 4090 (and once on the Radeon iGPU): `kiln-run --suite standard --dump-frames frames-std` and
+`kiln-run --suite raytracing --dump-frames frames-rt`; on the 4090 also `--suite extreme`. Send the results files and
+the frames folders (or just run `kiln-hw-report --standard`).
+1. **Frames**: every scene's PNGs should look like CI's (`smoke-linux-gcc` artifact → `scene-frames/`): Courtyard
+   (cloister in a meadow, lamp posts), Atrium (glass-roofed hall with balconies), Skyline (city at dusk with lit
+   windows), Glasshouse (steel conservatory, grass beds, chrome sculpture), Gallery (sculpture hall, red wall).
+   Black, garbled or flickering frames are bugs.
+2. **Glasshouse details**: `grass_path` should be "mesh shaders" and `variable_rate_shading` true on the 4090
+   (and mesh shaders on RADV). Do the grass blades look the same as in CI's vertex/mesh frames?
+3. **Gallery**: at high (4 paths, 4 bounces) and ultra (8 paths) the image should be much smoother than CI's
+   1-path frames; note the Mpaths/s metric and whether any fireflies (isolated bright dots) remain.
+4. **Calibration**: all scene references are guesses (docs/SCORING.md); your FPS at 1080p/high sets them.
+5. **CPU-heavy vs lite**: Courtyard/Atrium heavy variants measure draw submission; note the gap to `.lite`.
+6. **Windowed**: watch Skyline (async compute) and Glasshouse in the window (no `--offscreen`): any stutter,
+   flicker or tearing artefacts?
 
 ### M8 — feature tests
 Run `kiln-run --suite raytracing` and `kiln-run --test feature.mesh,feature.vrs,feature.async,feature.subgroups,feature.bindless,feature.pipelines,feature.drawcalls,feature.coopmat`

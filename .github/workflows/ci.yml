@@ -125,6 +125,53 @@ jobs:
         if: failure()
         run: scripts/ci-annotate.sh build/${{ matrix.preset }}
 
+  arch:
+    name: Arch Linux package
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    steps:
+      - name: Install build tools
+        run: pacman -Syu --noconfirm --needed git cmake ninja
+
+      - uses: actions/checkout@v5
+
+      - name: Check PKGBUILD versions
+        run: |
+          app="$(sed -nE 's/^set\(APP_VERSION "([^"]*)"\).*/\1/p' cmake/AppInfo.cmake)"
+          pkg="$(sed -nE 's/^pkgver=(.*)$/\1/p' packaging/arch/PKGBUILD)"
+          slang="$(sed -nE 's/^_slangver=(.*)$/\1/p' packaging/arch/PKGBUILD)"
+          ok=1
+          [ "$pkg" = "$app" ] || { echo "::error file=packaging/arch/PKGBUILD::pkgver $pkg differs from APP_VERSION $app"; ok=0; }
+          [ "$slang" = "$SLANG_VERSION" ] || { echo "::error file=packaging/arch/PKGBUILD::_slangver $slang differs from SLANG_VERSION $SLANG_VERSION"; ok=0; }
+          [ "$ok" = 1 ]
+
+      - name: makepkg (as in the README)
+        run: |
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+          chown -R builder: "$GITHUB_WORKSPACE"
+          cd packaging/arch
+          sudo -u builder makepkg -s --noconfirm
+
+      - name: Install and run the package
+        run: |
+          pacman -U --noconfirm packaging/arch/kiln-[0-9]*.pkg.tar.zst
+          pacman -S --noconfirm --needed vulkan-swrast ttf-dejavu
+          pacman -Ql kiln | grep -E '/usr/bin/|\.desktop$|\.svg$'
+          kiln-run --version
+          kiln-run --list-devices
+          kiln-run --suite smoke --offscreen --resolution 320x180 --out "$RUNNER_TEMP/arch-smoke.json"
+          kiln-hw-report --help
+          QT_QPA_PLATFORM=offscreen kiln --screenshots "$RUNNER_TEMP/shots"
+          ls "$RUNNER_TEMP/shots" | grep -c '\.png$'
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: packaging/arch/kiln-[0-9]*.pkg.tar.zst
+          if-no-files-found: error
+
   linux-sanitizers:
     name: Linux ASan+UBSan
     runs-on: ubuntu-24.04

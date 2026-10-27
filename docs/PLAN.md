@@ -81,7 +81,8 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 - [ ] HDR output check
 
 ## 13. Packaging
-- [ ] AppImage, Flatpak manifest, PKGBUILD, Windows installer + portable zip
+- [x] Arch PKGBUILD (`packaging/arch`, built and installed by CI) — done early on request
+- [ ] AppImage, Flatpak manifest, Windows installer + portable zip
 - [ ] Tag-triggered release workflow
 - [ ] README with screenshots, user docs, CONTRIBUTING.md
 

@@ -11,3 +11,7 @@ compile_commands.json
 /results-tmp/
 __pycache__/
 *.AppImage
+# makepkg work folders and packages (packaging/arch)
+/packaging/arch/src/
+/packaging/arch/pkg/
+*.pkg.tar*

@@ -18,6 +18,8 @@ scripts/ci-smoke.sh build/gcc-debug        # lavapipe smoke run (+ validation la
 - Run long builds in the background; 4 cores. ccache is on for all Linux presets.
 - GUI screenshots: `QT_QPA_PLATFORM=offscreen build/<preset>/bin/kiln --screenshots <dir>`.
 - Windows builds only in CI (`.github/workflows/ci.yml`); check runs with `gh api repos/oreo1298/GPUTest/actions/runs`.
+- Arch package: `packaging/arch/PKGBUILD` (`makepkg -si` in that folder; CI job "Arch Linux package" builds it).
+  Keep `pkgver` = `APP_VERSION` and `_slangver` = CI `SLANG_VERSION` (CI fails otherwise).
 
 ## Layout
 - `src/common` (gt_common): logging, stats, scoring, results schema, sysinfo, paths. No GPU code.

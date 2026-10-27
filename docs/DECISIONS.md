@@ -14,6 +14,14 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **Dependencies via FetchContent shallow git clones of pinned tags** (codeload tarballs are blocked here; git works everywhere); optional shared clone cache `GT_DEPS_CACHE`.
 - **SDL3 built from source (static, video subsystem only)**: no SDL3 package in Ubuntu 24.04; static avoids shipping a DLL; zlib license.
 
+- **Arch package from the checkout (`packaging/arch/PKGBUILD`, `makepkg -si`)**, the same install flow as the
+  owner's other projects; it sits in `packaging/arch` instead of the root because makepkg's work folder is `src/`
+  next to the PKGBUILD, which at the root is the project's source tree (`makepkg -c`/`-C` would delete it).
+  Static `pkgver` (a `pkgver()` function makes makepkg rewrite the tracked PKGBUILD, which blocks `git pull`); CI
+  checks it equals `APP_VERSION`, and the README's update command uses `makepkg -sif`. Slang comes from its pinned
+  release tarball in `source=()` (no Arch repo package); the other libraries keep coming from FetchContent so the
+  pins stay in one place.
+
 ## Architecture
 - **Two processes (runner + GUI) talking JSON lines over stdout**: a driver crash/TDR kills only the runner; the GUI keeps every event already received.
 - **Qt Widgets (not QML) for the GUI**: mature keyboard navigation and screen-reader support, native `windows11` style, cheap custom QPainter graphs, and works with the offscreen platform for screenshots.

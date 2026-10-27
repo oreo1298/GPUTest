@@ -1,0 +1,86 @@
+# Maintainer: Kiln contributors
+#
+# Build and install from a clone of this repository:
+#   git clone https://github.com/oreo1298/GPUTest.git
+#   cd GPUTest/packaging/arch
+#   makepkg -si
+#
+# The PKGBUILD lives here rather than in the repository root because makepkg works in a
+# "src" folder next to the PKGBUILD, and at the root that is the project's own source tree.
+# Keep pkgver equal to APP_VERSION in cmake/AppInfo.cmake (CI checks it).
+
+pkgname=kiln
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Open-source GPU benchmark, feature tester and diagnostic suite"
+arch=('x86_64')
+url="https://github.com/oreo1298/GPUTest"
+license=('MIT')
+# SDL (linked statically into kiln-run) loads the X11, Wayland and xkbcommon libraries at run time.
+depends=('gcc-libs' 'glibc' 'hicolor-icon-theme' 'libglvnd' 'qt6-base' 'qt6-svg' 'qt6-wayland'
+         'vulkan-icd-loader' 'libdecor' 'libx11' 'libxcursor' 'libxext' 'libxfixes' 'libxi' 'libxkbcommon'
+         'libxrandr' 'libxss' 'wayland')
+makedepends=('cmake' 'git' 'ninja')
+optdepends=('vulkan-driver: Vulkan driver for your GPU (vulkan-radeon, vulkan-intel, nvidia-utils)'
+            'nvidia-utils: NVIDIA clocks, temperatures, power and throttle reasons (NVML)'
+            'vulkan-validation-layers: runs with --validation'
+            'pciutils: PCIe details in hardware reports'
+            'vulkan-tools: vulkaninfo in hardware reports'
+            'mesa-utils: glxinfo in hardware reports'
+            'lm_sensors: sensor readings in hardware reports')
+options=('!lto')
+# Shaders are compiled at build time with Slang (prebuilt release; matches SLANG_VERSION in CI).
+_slangver=2026.20
+source=("slang-${_slangver}.tar.gz::https://github.com/shader-slang/slang/releases/download/v${_slangver}/slang-${_slangver}-linux-x86_64.tar.gz")
+noextract=("slang-${_slangver}.tar.gz")
+sha256sums=('e863e568c204810d6e8bc31852f056aef6763c55ea9925db2db7affa060347c9')
+
+# Find the checkout from wherever makepkg was started.
+_srcroot() {
+  local dir="$startdir"
+  while [[ ! -f "$dir/cmake/AppInfo.cmake" && "$dir" != / ]]; do
+    dir="$(dirname "$dir")"
+  done
+  if [[ ! -f "$dir/cmake/AppInfo.cmake" ]]; then
+    echo "Run makepkg inside the GPUTest checkout (in packaging/arch)." >&2
+    return 1
+  fi
+  printf '%s\n' "$dir"
+}
+
+prepare() {
+  local root
+  root="$(_srcroot)" || return 1
+  rm -rf "$srcdir/$pkgname" "$srcdir/slang"
+  mkdir -p "$srcdir/$pkgname" "$srcdir/slang"
+  # Copy the checkout, leaving out git data, build trees and makepkg's own work folders.
+  tar -C "$root" \
+      --exclude=./.git --exclude=./build --exclude=./out --exclude=./.cache --exclude=./.deps-cache \
+      --exclude=./hardware-reports --exclude=./packaging/arch/src --exclude=./packaging/arch/pkg \
+      --exclude='*.pkg.tar*' --exclude='*.AppImage' --exclude='__pycache__' \
+      -cf - . | tar -C "$srcdir/$pkgname" -xf -
+  tar -xzf "$srcdir/slang-${_slangver}.tar.gz" -C "$srcdir/slang"
+}
+
+build() {
+  cd "$srcdir/$pkgname"
+  # Third-party libraries are fetched by CMake at configure time (pinned tags, see THIRD_PARTY.md).
+  SLANG_DIR="$srcdir/slang" cmake -B build -S . -G Ninja -Wno-dev \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DGT_BUILD_TESTS=ON \
+    -DGT_WARNINGS_AS_ERRORS=OFF
+  cmake --build build
+}
+
+check() {
+  cd "$srcdir/$pkgname"
+  ctest --test-dir build --output-on-failure
+}
+
+package() {
+  cd "$srcdir/$pkgname"
+  DESTDIR="$pkgdir" cmake --install build
+  install -Dm644 LICENSE THIRD_PARTY.md -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -Dm644 README.md docs/CLI.md docs/SCORING.md docs/HARDWARE_TESTING.md -t "$pkgdir/usr/share/doc/$pkgname/"
+}
