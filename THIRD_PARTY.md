@@ -12,6 +12,10 @@ All components are MIT-compatible. "Build" = used only to build; "Linked" = comp
 | Vulkan Memory Allocator | 3.5.0 | MIT | Linked | https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator |
 | SDL3 | 3.4.18 | Zlib | Linked (static) | https://github.com/libsdl-org/SDL |
 | Slang | 2026.20 | Apache-2.0 WITH LLVM-exception | Build (shader compiler; not shipped) | https://github.com/shader-slang/slang |
+| SPIRV-Cross | 1.4.363 | Apache-2.0 | Build (GLSL generator `gt_glslgen`; not shipped) | https://github.com/KhronosGroup/SPIRV-Cross |
+| DirectX-Headers | 1.619.5 | MIT | Build (D3D12 headers) | https://github.com/microsoft/DirectX-Headers |
+| DirectX Shader Compiler (DXC) | 1.9.2609.5 (NuGet) | LLVM Release License + Microsoft license | Build (Windows CI: DXIL for slangc, HLSL work graphs; not shipped) | https://github.com/microsoft/DirectXShaderCompiler |
+| D3D12 Agility SDK, WARP | 1.619.6, 1.0.21 (NuGet) | Microsoft (redistribution terms; WARP test-only) | CI testing only (not shipped, see docs/DECISIONS.md) | https://devblogs.microsoft.com/directx/directx12agility/ |
 | Qt 6 (qtbase, qtsvg, qtwayland) | 6.12 LTS (CI) | LGPL-3.0 (dynamically linked) | Linked (GUI) | https://www.qt.io |
 | SQLite (via Qt's QSQLITE driver) | bundled with Qt | Public domain | Linked (GUI) | https://sqlite.org |
 | stb_image_write | 1.16 (commit 003501f) | Public domain / MIT | Linked (vendored in third_party/stb) | https://github.com/nothings/stb |

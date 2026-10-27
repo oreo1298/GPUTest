@@ -172,11 +172,11 @@ function(gt_compile_shaders)
       list(APPEND _embed_args "${_key}:dxbc=${_base}.dxbc")
       list(APPEND _outputs "${_base}.dxbc")
     endif()
-    if("gl" IN_LIST _apis AND GT_ENABLE_OPENGL AND GT_SPIRV_CROSS)
+    if("gl" IN_LIST _apis AND GT_ENABLE_OPENGL AND TARGET gt_glslgen)
       add_custom_command(OUTPUT "${_base}.glsl"
-        COMMAND "${GT_SPIRV_CROSS}" "${_base}.spv" --version ${_glsl} --no-es --output "${_base}.glsl"
-        DEPENDS "${_base}.spv" "${GT_SPIRV_CROSS}"
-        COMMENT "spirv-cross ${_key} -> GLSL ${_glsl}" VERBATIM)
+        COMMAND gt_glslgen "${_base}.spv" "${_base}.glsl" ${_glsl}
+        DEPENDS "${_base}.spv" gt_glslgen
+        COMMENT "glslgen ${_key} -> GLSL ${_glsl}" VERBATIM)
       list(APPEND _embed_args "${_key}:glsl=${_base}.glsl")
       list(APPEND _outputs "${_base}.glsl")
     endif()

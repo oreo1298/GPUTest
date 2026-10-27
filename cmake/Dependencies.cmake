@@ -37,6 +37,7 @@ gt_declare(volk https://github.com/zeux/volk.git vulkan-sdk-1.4.363.0)
 gt_declare(vma https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git v3.5.0)
 gt_declare(sdl3 https://github.com/libsdl-org/SDL.git release-3.4.18)
 gt_declare(directx_headers https://github.com/microsoft/DirectX-Headers.git v1.619.5)
+gt_declare(spirv_cross https://github.com/KhronosGroup/SPIRV-Cross.git vulkan-sdk-1.4.363.0)
 set_property(GLOBAL PROPERTY GT_DEPENDENCIES "${GT_DEPENDENCIES}")
 
 # --- always needed ----------------------------------------------------------
@@ -93,6 +94,17 @@ if(GT_BUILD_RUNNER)
     add_library(gt_vma INTERFACE)
     target_include_directories(gt_vma SYSTEM INTERFACE "${vma_SOURCE_DIR}/include")
   endif()
+endif()
+
+# --- OpenGL: SPIRV-Cross (build-time GLSL generator, src/tools/glslgen.cpp) ------
+if(GT_ENABLE_OPENGL AND GT_BUILD_RUNNER)
+  foreach(_opt CLI ENABLE_TESTS ENABLE_HLSL ENABLE_MSL ENABLE_CPP ENABLE_REFLECT ENABLE_C_API ENABLE_UTIL SHARED)
+    set(SPIRV_CROSS_${_opt} OFF CACHE INTERNAL "")
+  endforeach()
+  set(SPIRV_CROSS_STATIC ON CACHE INTERNAL "")
+  set(SPIRV_CROSS_ENABLE_GLSL ON CACHE INTERNAL "")
+  set(SPIRV_CROSS_SKIP_INSTALL ON CACHE INTERNAL "")
+  FetchContent_MakeAvailable(spirv_cross)
 endif()
 
 # --- Direct3D 12 (Windows) ------------------------------------------------------
