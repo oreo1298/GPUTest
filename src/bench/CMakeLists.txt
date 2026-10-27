@@ -19,6 +19,7 @@ add_library(gt_bench_tests OBJECT
   tests/scenes/courtyard.cpp
   tests/scenes/atrium.cpp
   tests/scenes/skyline.cpp
+  tests/scenes/glasshouse.cpp
   tests/debug/device_lost.cpp
   tests/diagnostics/vram.cpp
   tests/diagnostics/stress_common.cpp
