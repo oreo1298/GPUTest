@@ -122,6 +122,23 @@ foreach ($id in $standard) {
     }
 }
 Write-Host "D3D12 standard suite: $($standard.Count) tests, $problems with problems"
+
+# Upscaler plugins on D3D12 (report only: XeSS on WARP may be refused or slow). Bounded like the suite.
+Write-Host "== Upscaler plugins (D3D12, report only)"
+$pluginArgs = $stdCommon + @("--test", "feature.upscale", "--upscaler-plugins", "--out", "$out\plugins-d3d12.json",
+                             "--log-file", "$out\plugins-d3d12.log")
+$proc = Start-Process -FilePath $runner.FullName -ArgumentList $pluginArgs -NoNewWindow -PassThru `
+    -RedirectStandardOutput "$out\plugins-d3d12.out" -RedirectStandardError "$out\plugins-d3d12.err"
+$null = $proc.Handle
+if (-not $proc.WaitForExit(10 * 60 * 1000)) { $proc.Kill(); Write-Host "::warning title=Upscaler plugins::timed out" }
+if (Test-Path "$out\plugins-d3d12.json") {
+    $r = Get-Content "$out\plugins-d3d12.json" -Raw | ConvertFrom-Json
+    $t = $r.tests | Select-Object -First 1
+    Write-Host "feature.upscale: $($t.status) $($t.verdict) $($t.verdict_message)"
+    foreach ($p in $t.details.plugins) { Write-Host ("  {0}: {1} {2}" -f $p.file, $p.status, ($p | ConvertTo-Json -Compress)) }
+} elseif (Test-Path "$out\plugins-d3d12.log") {
+    Get-Content "$out\plugins-d3d12.log" -Tail 20 | Out-Host
+}
 if ($StrictStandard -and $problems -gt 0) { throw "D3D12 standard suite failed ($problems tests)" }
 
 # Direct3D 11 on WARP: the smoke suite, the legacy scenes checked against the Direct3D 12 frames

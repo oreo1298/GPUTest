@@ -3,6 +3,7 @@ add_library(gt_bench STATIC
   context.cpp
   micro.cpp
   presenter.cpp
+  plugins.cpp
   upscale.cpp
   suites.cpp
   scene.cpp

@@ -19,6 +19,8 @@ env:
   AGILITY_SDK_VERSION: "1.619.6"
   WARP_VERSION: "1.0.21"
   DXC_VERSION: "1.9.2609.5"
+  # Intel XeSS runtime for the upscaler-plugin smoke test only (user-installed in releases, docs/PLUGINS.md).
+  XESS_COMMIT: "de0fb9c1c510661c571164e1418ceca8101dab69"
 
 jobs:
   linux:
@@ -325,6 +327,18 @@ jobs:
           Copy-Item "$agility/D3D12Core.dll", "$agility/d3d12SDKLayers.dll" "$bin/D3D12/"
           Copy-Item "$tmp/microsoft.direct3d.warp/build/native/bin/x64/d3d10warp.dll" "$bin/"
           Get-ChildItem -Recurse $bin -Filter *.dll | ForEach-Object { Write-Host $_.FullName }
+
+      - name: Stage the Intel XeSS runtime (plugin test only, not packaged)
+        shell: pwsh
+        run: |
+          $dst = "build/ci-windows/bin/plugins"
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          try {
+            Invoke-WebRequest -Uri "https://github.com/intel/xess/raw/$env:XESS_COMMIT/bin/libxess.dll" -OutFile "$dst/libxess.dll"
+            Get-Item "$dst/libxess.dll" | Format-List Name, Length
+          } catch {
+            Write-Host "::warning title=XeSS runtime::download failed ($($_.Exception.Message)); the plugin will report it missing"
+          }
 
       - name: Runner smoke test (WARP)
         shell: pwsh

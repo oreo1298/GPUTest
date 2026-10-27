@@ -34,6 +34,7 @@ struct RunSettings {
     Upscaler upscaler = Upscaler::Off; ///< scenes render at a lower resolution and are upscaled to width x height
     UpscaleMode upscaleMode = UpscaleMode::Quality;
     float sharpness = 0.2f;      ///< FSR 1 RCAS: 0 is the sharpest, each stop halves the sharpening
+    bool upscalerPlugins = false; ///< load third-party upscaler plugins (feature.upscale tests them)
     bool dumpFrames = false;     ///< write golden frames as PNG
     std::string dumpDir;
     std::map<std::string, std::string> params; ///< free-form per-test overrides (--param key=value)

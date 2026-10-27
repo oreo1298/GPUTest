@@ -248,6 +248,19 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   itself aliased rewards blur (FSR's sharpening loses PSNR there), so the test renders an analytic image with 4x4
   supersampling at every size and requires EASU's PSNR to be at least bilinear's minus 0.5 dB.
 
+- **DLSS and XeSS: licenses checked (2026-10-27), plugins only.** XeSS SDK (github.com/intel/xess): the public
+  headers became MIT on 2026-09-09 (commit de0fb9c; tagged releases up to v3.0.2 still carry Intel's proprietary
+  notice, so the headers are vendored from that commit); the runtime (`libxess.dll`) is under the Intel
+  Simplified Software License — redistributable unmodified with its notice, no reverse engineering. NVIDIA DLSS SDK (github.com/NVIDIA/DLSS):
+  NVIDIA RTX SDKs license — distribution only in object form inside an application whose terms are "at least as
+  protective" as NVIDIA's, and the SDK must not become subject to an open-source license (section 3e); its headers
+  and libraries are not MIT. NVIDIA Streamline (github.com/NVIDIA-RTX/Streamline) is MIT, but the DLSS binaries it
+  loads are not. Consequences: Kiln ships neither vendor's binaries. Third-party upscalers load at run time
+  through a small MIT C interface (`src/bench/gt/bench/upscaler_plugin.h`, docs/PLUGINS.md), off by default
+  (`--upscaler-plugins`). The XeSS plugin (our code, from the MIT headers) ships in the Windows zip and needs the
+  user's `libxess.dll`; CI downloads that DLL only to test the plugin. A DLSS plugin can only be built by a user
+  from NVIDIA's SDK under NVIDIA's terms, so none is in this repository.
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.

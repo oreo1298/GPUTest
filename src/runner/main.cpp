@@ -117,6 +117,8 @@ int main(int argc, char** argv) {
     set->add_option("--upscale-mode", upscaleModeText,
                     "Upscaling ratio: ultra-quality (1.3x), quality (1.5x), balanced (1.7x) or performance (2x)");
     set->add_option("--sharpness", opt.settings.sharpness, "FSR 1 sharpening in stops: 0 sharpest (default 0.2)");
+    set->add_flag("--upscaler-plugins", opt.settings.upscalerPlugins,
+                  "Load upscaler plugins (XeSS, DLSS, ...) from the plugins folder; feature.upscale tests them");
     set->add_flag("--offscreen", opt.offscreen, "Render without a window (no present)");
     set->add_flag("--fullscreen", opt.fullscreen, "Fullscreen window");
     set->add_flag("--vsync", opt.vsync, "Enable vsync (off by default)");

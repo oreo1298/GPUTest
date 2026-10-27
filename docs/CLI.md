@@ -33,6 +33,7 @@ kiln-run --suite my-suite.json --offscreen --progress jsonl
 | `--upscale` | `off` (default), `fsr1` (AMD FSR 1: EASU + RCAS) or `bilinear`: scenes render below `--resolution` and are upscaled to it |
 | `--upscale-mode` | `ultra-quality` (1.3x), `quality` (1.5x, default), `balanced` (1.7x), `performance` (2x) per axis |
 | `--sharpness` | FSR 1 sharpening in stops (0 = sharpest, default 0.2) |
+| `--upscaler-plugins` | Load third-party upscaler plugins from `plugins/` next to the runner (off by default); `feature.upscale` measures each (docs/PLUGINS.md) |
 | `--loop, -l` | `1` (default), `N`, a duration (`20m`, `1h30m`) or `inf` |
 | `--offscreen` | No window, no present |
 | `--fullscreen`, `--vsync`, `--no-hud` | Window options (vsync is off by default) |

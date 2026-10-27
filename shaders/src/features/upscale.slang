@@ -1,11 +1,15 @@
 // Test image for feature.upscale: an analytic scene (gradient, disks, rotated squares, thin spokes,
 // "text" rows) rendered with 4x4 supersampling, so the same picture can be produced at any size —
-// a ground truth at the output resolution and anti-aliased inputs at render resolutions.
+// a ground truth at the output resolution and anti-aliased inputs at render resolutions. For temporal
+// upscalers the scene pans (offset) and the render is jittered; csMotion writes the matching motion
+// vectors and a constant depth.
 #include "common/bindings.slang"
 
 struct PatternParams {
     uint2 size;
-    uint pad0, pad1;
+    float2 offset; // scene translation, in units of the image height
+    float2 jitter; // sub-pixel offset of the samples, in pixels of this image
+    float2 motion; // csMotion: motion vector to write (pixels)
 };
 GT_PUSH_CONSTANTS(PatternParams, pc);
 
@@ -59,8 +63,19 @@ void csPattern(uint3 id: SV_DispatchThreadID) {
     float3 acc = 0.0;
     for (uint sy = 0; sy < 4; ++sy)
         for (uint sx = 0; sx < 4; ++sx) {
-            float2 p = (float2(id.xy) + (float2(sx, sy) + 0.5) / 4.0) * scale;
-            acc += scene(p);
+            float2 p = (float2(id.xy) + pc.jitter + (float2(sx, sy) + 0.5) / 4.0) * scale;
+            acc += scene(p - pc.offset);
         }
     outImage[id.xy] = float4(acc / 16.0, 1.0);
+}
+
+[format("rg16f")] RWTexture2D<float2> motionOut : register(u1);
+[format("r32f")] RWTexture2D<float> depthOut : register(u2);
+
+[shader("compute")]
+[numthreads(8, 8, 1)]
+void csMotion(uint3 id: SV_DispatchThreadID) {
+    if (any(id.xy >= pc.size)) return;
+    motionOut[id.xy] = pc.motion;
+    depthOut[id.xy] = 0.5;
 }

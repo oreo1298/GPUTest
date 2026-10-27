@@ -14,6 +14,7 @@ All components are MIT-compatible. "Build" = used only to build; "Linked" = comp
 | Slang | 2026.20 | Apache-2.0 WITH LLVM-exception | Build (shader compiler; not shipped) | https://github.com/shader-slang/slang |
 | SPIRV-Cross | 1.4.363 | Apache-2.0 | Build (GLSL generator `gt_glslgen`; not shipped) | https://github.com/KhronosGroup/SPIRV-Cross |
 | AMD FidelityFX Super Resolution 1 | 1.0 (FSR 1) | MIT | Ported (EASU/RCAS shaders in `shaders/src/upscale/fsr1.slang`, notice kept there) | https://github.com/GPUOpen-Effects/FidelityFX-FSR |
+| Intel XeSS SDK public headers | commit de0fb9c (2026-09-09) | MIT | Build (XeSS upscaler plugin, `third_party/xess`); the XeSS runtime is not distributed (docs/PLUGINS.md) | https://github.com/intel/xess |
 | DirectX-Headers | 1.619.5 | MIT | Build (D3D12 headers) | https://github.com/microsoft/DirectX-Headers |
 | DirectX Shader Compiler (DXC) | 1.9.2609.5 (NuGet) | LLVM Release License + Microsoft license | Build (Windows CI: DXIL for slangc, HLSL work graphs; not shipped) | https://github.com/microsoft/DirectXShaderCompiler |
 | D3D12 Agility SDK, WARP | 1.619.6, 1.0.21 (NuGet) | Microsoft (redistribution terms; WARP test-only) | CI testing only (not shipped, see docs/DECISIONS.md) | https://devblogs.microsoft.com/directx/directx12agility/ |

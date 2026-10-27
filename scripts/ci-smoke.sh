@@ -114,6 +114,10 @@ check_json "$out/bvh-bad.json" 'r["tests"][0]["verdict"] == "fail"'
     --fail-on-validation "${common[@]}" --out "$out/upscaled.json"
 python3 "$root/scripts/check-results.py" "$out/upscaled.json" --require-completed
 check_json "$out/upscaled.json" 'r["config"]["upscale"] == "fsr1-quality" and all(t["details"].get("upscaler") == "fsr1 quality" for t in r["tests"])'
+# Upscaler plugin interface: the example plugin (a Vulkan blit) is loaded, created, run and measured.
+"$runner" --test feature.upscale --duration smoke --upscaler-plugins --validation --fail-on-validation "${common[@]}" \
+    --out "$out/plugins.json"
+check_json "$out/plugins.json" 'any(p.get("id") == "example" and p["status"] == "measured" and p["psnr_last_frame"] > 15 for p in r["tests"][0]["details"]["plugins"])'
 end
 
 step "diagnostics: clean run with validation, and injected faults must be detected"

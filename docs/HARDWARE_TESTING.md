@@ -30,6 +30,17 @@ in the KDE application menu with its icon, that it starts on Wayland, that `kiln
 and the iGPU, and that `kiln-hw-report` finds the runner by itself. Tell me if makepkg complained about anything
 (missing dependency, namcap warnings) — CI builds it in a clean Arch container, but CachyOS's compiler flags differ.
 
+### M12 — upscaling
+1. **FSR 1 in scenes**: `kiln-run --test scene.courtyard --upscale fsr1 --upscale-mode quality` windowed at
+   1440p or 4K, and the same with `--upscale bilinear`: FSR should look sharper, with no shifted or ringing
+   edges. Compare the fps with a native run (`--upscale off`).
+2. **feature.upscale** on each API (`--api vulkan`, `d3d12`, `d3d11`, `opengl`): verdict pass, FSR 1 cost per mode
+   (`fsr1_*_ms`) at 4K output, and EASU PSNR at least bilinear's.
+3. **XeSS plugin (Windows, any GPU with DP4a)**: copy `libxess.dll` from https://github.com/intel/xess (`bin`) into
+   the zip's `plugins` folder and run `kiln-run.exe --test feature.upscale --upscaler-plugins --api d3d12`.
+   `details.plugins` should show XeSS "measured" with `psnr_last_frame` above `psnr_first_frame` (it accumulates
+   detail over the jittered sequence); if it is lower, the jitter or motion-vector sign convention needs flipping.
+
 ### M11 — OpenGL and Direct3D 11
 1. **OpenGL on the 4090 and the iGPU (Linux)**: `kiln-run --api opengl --suite legacy --duration quick` and the
    same windowed (drop `--offscreen`). The scenes should look like their Vulkan frames; the HUD should read
