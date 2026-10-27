@@ -1122,7 +1122,8 @@ void encodeAndCheck(TestContext& ctx, const rhi::NativeDevice& n, const CodecHoo
         return;
     }
     VideoRig rig(n);
-    std::vector<std::unique_ptr<EncodeCodec>> codecs = hooks.encoders();
+    std::vector<std::unique_ptr<EncodeCodec>> codecs =
+        hooks.encoders(static_cast<VkPhysicalDevice>(n.physicalDevice));
     std::unique_ptr<Encoder> enc;
     EncodeCodec* codec = nullptr;
     std::string why;

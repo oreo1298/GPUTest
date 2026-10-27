@@ -294,6 +294,18 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   and building the Khronos mock ICD to run the validation layers over this code was not allowed in this
   environment, so the Vulkan calls were checked against the spec text and are verified on hardware
   (docs/HARDWARE_TESTING.md).
+- **AV1 in `feature.video`.** The reader (`av1_params.h`) parses OBUs, the sequence header and the full
+  uncompressed frame header, carrying the reference state between frames (order hints, loop filter deltas,
+  segmentation, global motion, as in AV1 section 7.20) because Vulkan wants the resolved values; CDEF secondary
+  strengths stay as coded and loop restoration sizes are passed as log2 - 5, as Vulkan's `StdVideoAV1*` structs
+  define them. It is checked against FFmpeg's `trace_headers` on the reference stream and on two small libaom
+  streams with 2x2 tiles + segmentation and with global motion (`tests/data/video`, made by the same script).
+  Hidden frames, `show_existing_frame`, short reference signalling, film grain and large-scale tiles are refused
+  with a reason (no reference or GPU-encoded stream uses them). The encoder writes a key frame and 7 inter frames
+  that predict from LAST_FRAME only, with `primary_ref_frame` = none (each frame starts from default CDFs), at a
+  constant `base_q_idx` 110 where rate control can be disabled; it needs the `videoEncodeAV1` feature, which the
+  device now enables when offered. The spec does not say whether encoders write OBU size fields, so the output
+  of each encode is normalised (`av1::withSizeFields`) before the frames are joined and read back.
 
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).

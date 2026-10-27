@@ -56,6 +56,10 @@ and the iGPU, and that `kiln-hw-report` finds the runner by itself. Tell me if m
    mode, CRCs, encoder overrides, per-frame PSNR, and any `*_note` saying what was skipped) and the log,
    especially validation errors. A CRC mismatch on frame 0 only points at the decoder's parameter sets; on
    inter frames only, at the reference setup. Also send the "Video codecs" section of `kiln-run --caps`.
+   AV1 specifically: the reference stream uses CDEF, loop restoration and loop filter deltas, so a mismatch
+   that grows over the inter frames points at the reference state (`SavedOrderHints`, sign bias); an AV1 encode
+   note "videoEncodeAV1 feature" means the driver lists the extension but not the feature. GPUs with AV1 decode
+   only (RTX 30, RDNA 2) should report AV1 encode as not available, not as a failure.
 
 ### M11 — OpenGL and Direct3D 11
 1. **OpenGL on the 4090 and the iGPU (Linux)**: `kiln-run --api opengl --suite legacy --duration quick` and the

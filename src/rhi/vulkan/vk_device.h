@@ -375,6 +375,8 @@ struct FeatureSet {
     VkPhysicalDeviceDeviceGeneratedCommandsFeaturesEXT dgc{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_GENERATED_COMMANDS_FEATURES_EXT};
     VkPhysicalDeviceFaultFeaturesEXT fault{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT};
+    VkPhysicalDeviceVideoEncodeAV1FeaturesKHR encodeAv1{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VIDEO_ENCODE_AV1_FEATURES_KHR};
     // Pre-1.2 fallbacks (only chained when the device API version lacks the core struct).
     VkPhysicalDeviceTimelineSemaphoreFeatures timelineSemaphore{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES};

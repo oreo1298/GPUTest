@@ -78,14 +78,6 @@ const std::vector<WantedExtension>& wantedExtensions() {
         {VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME, VK_API_VERSION_1_3, {}},
         {VK_KHR_MAINTENANCE_5_EXTENSION_NAME, VK_API_VERSION_1_4, {VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME}},
         {VK_KHR_MAINTENANCE_6_EXTENSION_NAME, VK_API_VERSION_1_4, {}},
-        // Video engines (feature.video drives them natively).
-        {VK_KHR_VIDEO_QUEUE_EXTENSION_NAME, kNotPromoted, {VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME}},
-        {VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_QUEUE_EXTENSION_NAME}},
-        {VK_KHR_VIDEO_DECODE_H264_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME}},
-        {VK_KHR_VIDEO_DECODE_H265_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME}},
-        {VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_QUEUE_EXTENSION_NAME}},
-        {VK_KHR_VIDEO_ENCODE_H264_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME}},
-        {VK_KHR_VIDEO_ENCODE_H265_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME}},
         {VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, kNotPromoted, {}},
         {VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
          kNotPromoted,
@@ -135,6 +127,7 @@ const std::vector<WantedExtension>& wantedExtensions() {
          {VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME, VK_KHR_SPIRV_1_4_EXTENSION_NAME,
           VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME, VK_KHR_MAINTENANCE_5_EXTENSION_NAME,
           VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME}},
+        // Video engines (feature.video drives them natively).
         {VK_KHR_VIDEO_QUEUE_EXTENSION_NAME, kNotPromoted, {VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME}},
         {VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_QUEUE_EXTENSION_NAME}},
         {VK_KHR_VIDEO_DECODE_H264_EXTENSION_NAME, kNotPromoted, {VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME}},
@@ -455,6 +448,7 @@ void VulkanDevice::createLogicalDevice() {
     if (has(VK_KHR_SHADER_CLOCK_EXTENSION_NAME)) chain(tail, f.shaderClock);
     if (has(VK_EXT_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME)) chain(tail, f.dgc);
     if (has(VK_EXT_DEVICE_FAULT_EXTENSION_NAME)) chain(tail, f.fault);
+    if (has(VK_KHR_VIDEO_ENCODE_AV1_EXTENSION_NAME)) chain(tail, f.encodeAv1);
     vkGetPhysicalDeviceFeatures2(m_physical, &f.core);
 
     // Never enable features that change performance or memory behaviour of the measured workloads.

@@ -264,7 +264,7 @@ struct CodecHooks {
     std::function<std::unique_ptr<DecodeCodec>(std::span<const std::uint8_t> stream, std::string* error)>
         reference;
     /// Encoders to try, best profile first.
-    std::function<std::vector<std::unique_ptr<EncodeCodec>>()> encoders;
+    std::function<std::vector<std::unique_ptr<EncodeCodec>>(VkPhysicalDevice)> encoders;
     /// An encoder's output (its parameter sets and each frame's bytes) as a decode job.
     std::function<std::unique_ptr<DecodeCodec>(const std::vector<std::uint8_t>& parameters,
                                                const std::vector<std::vector<std::uint8_t>>& frames,
@@ -273,6 +273,7 @@ struct CodecHooks {
 };
 CodecHooks h264Hooks();
 CodecHooks h265Hooks();
+CodecHooks av1Hooks();
 
 bool canDecode(const rhi::NativeDevice& n, const CodecHooks& c);
 bool canEncode(const rhi::NativeDevice& n, const CodecHooks& c);

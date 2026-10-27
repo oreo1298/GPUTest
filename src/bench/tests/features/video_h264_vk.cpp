@@ -424,7 +424,7 @@ CodecHooks h264Hooks() {
     h.reference = [](std::span<const std::uint8_t> data, std::string* error) {
         return makeDecode(h264::split(data, nullptr, error), error);
     };
-    h.encoders = [] {
+    h.encoders = [](VkPhysicalDevice) {
         std::vector<std::unique_ptr<EncodeCodec>> v;
         for (const StdVideoH264ProfileIdc idc :
              {STD_VIDEO_H264_PROFILE_IDC_HIGH, STD_VIDEO_H264_PROFILE_IDC_MAIN,

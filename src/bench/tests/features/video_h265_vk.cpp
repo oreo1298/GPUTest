@@ -579,7 +579,7 @@ CodecHooks h265Hooks() {
     h.reference = [](std::span<const std::uint8_t> data, std::string* error) {
         return makeDecode(h265::split(data, nullptr, error), error);
     };
-    h.encoders = [] {
+    h.encoders = [](VkPhysicalDevice) {
         std::vector<std::unique_ptr<EncodeCodec>> v;
         v.push_back(std::make_unique<H265Encode>());
         return v;

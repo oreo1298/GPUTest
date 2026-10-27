@@ -47,7 +47,9 @@ public:
     const TestInfo& info() const override { return m_info; }
 
 #if GT_HAS_VULKAN
-    static std::vector<vkvideo::CodecHooks> codecs() { return {vkvideo::h264Hooks(), vkvideo::h265Hooks()}; }
+    static std::vector<vkvideo::CodecHooks> codecs() {
+        return {vkvideo::h264Hooks(), vkvideo::h265Hooks(), vkvideo::av1Hooks()};
+    }
 #endif
 
     SupportResult checkSupport(TestContext& ctx) override {
@@ -58,7 +60,7 @@ public:
         if (std::string why = vkvideo::blocker(n); !why.empty()) return SupportResult::no(why);
         for (const auto& c : codecs())
             if (vkvideo::canDecode(n, c) || vkvideo::canEncode(n, c)) return SupportResult::yes();
-        return SupportResult::no("the video queues offer none of the tested codecs (H.264, H.265)");
+        return SupportResult::no("the video queues offer none of the tested codecs (H.264, H.265, AV1)");
 #else
         (void)ctx;
         return SupportResult::no("built without Vulkan");

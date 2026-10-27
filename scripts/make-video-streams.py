@@ -6,7 +6,7 @@ and AV1 decoding is bit-exact, each decoded frame must match FFmpeg's own decode
 frame (NV12, 1920x1080, luma plane then interleaved CbCr) is stored in data/video/streams.json.
 
 The pictures are the same synthetic pattern feature.video encodes on the GPU (makeSource in
-src/bench/tests/features/video.cpp): eight 1080p frames, one IDR/key frame and seven inter frames, each
+src/bench/tests/features/video_vk.cpp): eight 1080p frames, one IDR/key frame and seven inter frames, each
 referencing only the frame before it (no B-frames, no hidden frames).
 
 Run from the repository root:  python3 scripts/make-video-streams.py
@@ -14,6 +14,7 @@ Needs: numpy and an ffmpeg with libx264, libx265 and libaom.
 """
 
 import json
+import re
 import pathlib
 import subprocess
 import sys
@@ -26,7 +27,7 @@ OUT = pathlib.Path("data/video")
 
 
 def source_frames():
-    """NV12 frames, identical to makeSource() in video.cpp but at 1080 rows."""
+    """NV12 frames, identical to makeSource() in video_vk.cpp but at 1080 rows."""
     frames = []
     for f in range(FRAMES):
         dx, dy = 6.0 * f, 3.0 * f
@@ -38,7 +39,7 @@ def source_frames():
         g = g + np.where(((bx + by) & 1) == 1, 30.0, -30.0)
         stripes = np.where(((np.floor(x).astype(np.int64) >> 2) & 1) == 1, 18.0, -18.0)
         g = g + np.where((bx * 7 + by * 3) % 5 == 0, stripes, 0.0)
-        # Texture noise fixed to the panning pattern (inter frames can predict it), as in video.cpp.
+        # Texture noise fixed to the panning pattern (inter frames can predict it), as in video_vk.cpp.
         xi = np.broadcast_to(np.floor(x).astype(np.uint32), (H, W))
         yi = np.broadcast_to(np.floor(y).astype(np.uint32), (H, W))
         h = (xi * np.uint32(73856093)) ^ (yi * np.uint32(19349663))
@@ -102,10 +103,75 @@ def psnr(a, b):
     return 99.0 if mse < 1e-10 else float(10.0 * np.log10(255.0 * 255.0 / mse))
 
 
+# Small AV1 streams for the parser's unit tests (tests/data/video), with tools the reference stream does not
+# use: several tiles with cyclic-refresh segmentation, and global motion. FFmpeg's trace of each frame header is
+# stored next to them as the expected values.
+TEST_OUT = pathlib.Path("tests/data/video")
+TEST_STREAMS = [
+    ("av1_tiles_segmentation.obu", ["-c:v", "libaom-av1", "-usage", "realtime", "-cpu-used", "7", "-crf", "45",
+                                    "-b:v", "0", "-g", "5", "-lag-in-frames", "0", "-tiles", "2x2", "-aq-mode", "3",
+                                    "-threads", "1", "-f", "obu"]),
+    ("av1_global_motion.obu", ["-c:v", "libaom-av1", "-cpu-used", "1", "-crf", "45", "-b:v", "0", "-g", "5",
+                               "-lag-in-frames", "0", "-threads", "1", "-aom-params", "enable-global-motion=1",
+                               "-f", "obu"]),
+]
+TRACE_FIELD = re.compile(r"^\s*(\d+)\s+(\S+)\s+([01]+)\s+=\s+(-?\d+)\s*$")
+
+
+def trace_frames(path):
+    """Per frame header: {field: value}, plus the bit position (from the OBU start) where the header ends."""
+    text = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-i", str(path), "-c", "copy", "-bsf:v", "trace_headers", "-f", "null", "-"],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout.decode(errors="replace")
+    frames, cur, section, obu = [], None, None, {}
+    for line in text.splitlines():
+        line = re.sub(r"^\[trace_headers[^\]]*\]\s*", "", line)
+        if line.startswith("OBU header"):
+            section, obu = "obu", {}
+            continue
+        if line.startswith("Frame Header"):
+            cur, section = {"fields": {}}, "header"
+            if obu.get("type") == 6:  # a frame OBU: header and tile group together
+                cur["obu_size"] = obu.get("size")
+            frames.append(cur)
+            continue
+        if line.startswith("Tile Group"):
+            section = "tiles"
+            continue
+        m = TRACE_FIELD.match(line)
+        if not m:
+            continue
+        pos, name, bits, value = int(m.group(1)), m.group(2), m.group(3), int(m.group(4))
+        if section == "obu":
+            if name in ("obu_type", "obu_size"):
+                obu[name[4:]] = value
+        elif section == "header" and cur is not None:
+            cur["fields"][name] = value
+            cur["header_end_bit"] = pos + len(bits)
+        elif section == "tiles" and cur is not None:
+            cur["tile_group_end_bit"] = pos + len(bits)
+    return frames
+
+
+def make_test_streams(src):
+    TEST_OUT.mkdir(parents=True, exist_ok=True)
+    raw = b"".join(src)
+    for name, args in TEST_STREAMS:
+        path = TEST_OUT / name
+        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "nv12",
+               "-s", f"{W}x{H}", "-r", "60", "-i", "-", "-frames:v", "5", "-vf", "scale=640:360"] + args + [str(path)]
+        run(cmd, raw)
+        frames = trace_frames(path)
+        (TEST_OUT / (path.stem + ".json")).write_text(json.dumps({"encoder": " ".join(args), "frames": frames},
+                                                                 indent=1) + "\n")
+        print(f"{path}: {path.stat().st_size} bytes, {len(frames)} frame headers")
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     src = source_frames()
     raw = b"".join(src)
+    make_test_streams(src)
     meta = {"width": W, "height": H, "frames": FRAMES, "generator": "scripts/make-video-streams.py",
             "ffmpeg": run(["ffmpeg", "-hide_banner", "-version"]).decode().splitlines()[0], "streams": []}
     for s in STREAMS:
