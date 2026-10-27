@@ -52,7 +52,7 @@ the suite score is the geometric mean, so one very fast or slow test cannot domi
 | Atrium (and *lite*) | all | Classic deferred shading with hundreds of moving point lights |
 | Skyline | Vulkan, D3D12 | GPU-driven city: GPU culling, indirect draws, PBR, cascaded shadows, AO and bloom on the async compute queue |
 | Glasshouse | Vulkan, D3D12 | Hybrid rendering: leafy trees, glass, mesh-shader grass, variable-rate shading; ray-traced soft shadows, AO, diffuse GI and reflections through alpha-tested foliage |
-| Gallery | Vulkan, D3D12 | Real-time path tracing with a denoiser |
+| Gallery | Vulkan, D3D12 | Real-time path tracing of a sculpture hall (glass, metals, dense procedural sculptures, 1440 floor tiles) with a denoiser |
 
 Scenes report average FPS, 1% and 0.1% lows, frame-time percentiles, stutters and GPU busy time. `--upscale fsr1`
 renders below the target resolution and upscales with AMD FSR 1.

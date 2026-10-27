@@ -37,6 +37,13 @@ MeshData sphere(std::uint32_t segments, std::uint32_t rings);     ///< radius 1
 MeshData cylinder(std::uint32_t segments, bool caps);             ///< radius 1, y from 0 to 1
 MeshData cone(std::uint32_t segments);                            ///< radius 1 at y = 0, apex at y = 1
 MeshData torus(std::uint32_t segments, std::uint32_t sides, float minor); ///< major radius 1, in the XZ plane
+/// Unit sphere from an icosahedron split `subdivisions` times (20 * 4^n triangles, evenly sized).
+MeshData icosphere(std::uint32_t subdivisions);
+/// Grid over a parametric surface: `uSteps` x `vSteps` quads of f(u, v) with u, v in [0, 1] (u is the first uv
+/// coordinate); normals from the triangles, so f must wind counter-clockwise seen from outside (u right, v up).
+MeshData parametric(std::uint32_t uSteps, std::uint32_t vSteps, const std::function<Vec3(float, float)>& f);
+/// Recomputes smooth vertex normals from the (area-weighted) triangle normals.
+void computeNormals(MeshData& m);
 /// Grid in the XZ plane (y = height(x, z)), `cells` x `cells` quads over [-size/2, size/2]²; normals from the
 /// height function by central differences; uv = world xz / uvScale.
 MeshData heightfield(std::uint32_t cells, float size, const std::function<float(float, float)>& height, float uvScale = 4.0f);

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 
 namespace gt::bench::scene {
 
@@ -153,6 +154,72 @@ void append(MeshData& dst, const MeshData& src, Vec3 offset, float scale, float 
         dst.vertices.push_back(v);
     }
     for (std::uint32_t i : src.indices) dst.indices.push_back(base + i);
+}
+
+MeshData icosphere(std::uint32_t subdivisions) {
+    const float t = (1.0f + std::sqrt(5.0f)) / 2.0f;
+    std::vector<Vec3> p = {{-1, t, 0}, {1, t, 0}, {-1, -t, 0}, {1, -t, 0}, {0, -1, t}, {0, 1, t},
+                           {0, -1, -t}, {0, 1, -t}, {t, 0, -1}, {t, 0, 1}, {-t, 0, -1}, {-t, 0, 1}};
+    for (Vec3& v : p) v = normalize(v);
+    std::vector<std::uint32_t> tris = {0, 11, 5, 0, 5, 1, 0, 1, 7, 0, 7, 10, 0, 10, 11, 1, 5, 9, 5, 11, 4,
+                                       11, 10, 2, 10, 7, 6, 7, 1, 8, 3, 9, 4, 3, 4, 2, 3, 2, 6, 3, 6, 8,
+                                       3, 8, 9, 4, 9, 5, 2, 4, 11, 6, 2, 10, 8, 6, 7, 9, 8, 1};
+    for (std::uint32_t level = 0; level < subdivisions; ++level) {
+        std::unordered_map<std::uint64_t, std::uint32_t> mid;
+        auto midpoint = [&](std::uint32_t a, std::uint32_t b) {
+            const std::uint64_t key = (std::uint64_t(std::min(a, b)) << 32) | std::max(a, b);
+            if (auto it = mid.find(key); it != mid.end()) return it->second;
+            p.push_back(normalize((p[a] + p[b]) * 0.5f));
+            return mid[key] = static_cast<std::uint32_t>(p.size() - 1);
+        };
+        std::vector<std::uint32_t> next;
+        next.reserve(tris.size() * 4);
+        for (std::size_t i = 0; i < tris.size(); i += 3) {
+            const std::uint32_t a = tris[i], b = tris[i + 1], c = tris[i + 2];
+            const std::uint32_t ab = midpoint(a, b), bc = midpoint(b, c), ca = midpoint(c, a);
+            next.insert(next.end(), {a, ab, ca, b, bc, ab, c, ca, bc, ab, bc, ca});
+        }
+        tris = std::move(next);
+    }
+    MeshData m;
+    m.vertices.reserve(p.size());
+    for (const Vec3& v : p)
+        m.vertices.push_back({v.x, v.y, v.z, v.x, v.y, v.z, 0.5f + std::atan2(v.z, v.x) / (2.0f * kPi),
+                              0.5f - std::asin(std::clamp(v.y, -1.0f, 1.0f)) / kPi});
+    m.indices = std::move(tris);
+    return m;
+}
+
+MeshData parametric(std::uint32_t uSteps, std::uint32_t vSteps, const std::function<Vec3(float, float)>& f) {
+    MeshData m;
+    m.vertices.reserve(std::size_t(uSteps + 1) * (vSteps + 1));
+    for (std::uint32_t j = 0; j <= vSteps; ++j)
+        for (std::uint32_t i = 0; i <= uSteps; ++i) {
+            const float u = float(i) / float(uSteps), v = float(j) / float(vSteps);
+            const Vec3 p = f(u, v);
+            m.vertices.push_back({p.x, p.y, p.z, 0, 1, 0, u, v});
+        }
+    for (std::uint32_t j = 0; j < vSteps; ++j)
+        for (std::uint32_t i = 0; i < uSteps; ++i) {
+            const std::uint32_t a = j * (uSteps + 1) + i, b = a + uSteps + 1;
+            m.indices.insert(m.indices.end(), {a, a + 1, b + 1, a, b + 1, b});
+        }
+    computeNormals(m);
+    return m;
+}
+
+void computeNormals(MeshData& m) {
+    std::vector<Vec3> n(m.vertices.size(), Vec3{0, 0, 0});
+    auto pos = [&](std::uint32_t i) { return Vec3{m.vertices[i].px, m.vertices[i].py, m.vertices[i].pz}; };
+    for (std::size_t i = 0; i + 2 < m.indices.size(); i += 3) {
+        const std::uint32_t a = m.indices[i], b = m.indices[i + 1], c = m.indices[i + 2];
+        const Vec3 fn = cross(pos(b) - pos(a), pos(c) - pos(a)); // length = twice the area
+        n[a] = n[a] + fn, n[b] = n[b] + fn, n[c] = n[c] + fn;
+    }
+    for (std::size_t i = 0; i < n.size(); ++i) {
+        const Vec3 v = dot(n[i], n[i]) > 0.0f ? normalize(n[i]) : Vec3{0, 1, 0};
+        m.vertices[i].nx = v.x, m.vertices[i].ny = v.y, m.vertices[i].nz = v.z;
+    }
 }
 
 void appendTube(MeshData& dst, Vec3 a, Vec3 b, float r0, float r1, std::uint32_t segments) {

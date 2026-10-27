@@ -1,7 +1,9 @@
 // "Gallery" (ultimate tier): real-time path tracing (shaders/src/scenes/gallery.slang).
-// A sculpture hall with skylights, a warm light panel, glass, polished metals, a lacquered floor
-// and a deep red wall for colour bleeding. A compute pass finds each pixel's primary hit and
-// traces N paths from it (sun next-event estimation, Russian roulette); the albedo-demodulated
+// A sculpture hall with skylights, a warm light panel, fluted columns, a glass bead chandelier,
+// polished metals, a lacquered floor and a deep red wall for colour bleeding. The exhibits are dense
+// procedural meshes (a displaced glass blob of up to 1.3 M triangles, a gold torus knot, a twisted
+// copper column, a steel lattice sphere, a stone blob). A compute pass finds each pixel's primary
+// hit and traces N paths from it (next-event estimation, Russian roulette); the albedo-demodulated
 // result goes through an edge-aware a-trous wavelet filter before re-modulation and tone mapping.
 // The score follows frame rate; paths per second are reported alongside.
 
@@ -23,7 +25,9 @@ namespace {
 
 using namespace scene;
 
-enum MeshKind { kBox, kCylinder, kSphere, kTorus, kMeshKinds };
+enum MeshKind {
+    kBox, kCylinder, kSphere, kTorus, kBlob, kKnot, kTwist, kLattice, kFluted, kBead, kRing, kMeshKinds
+};
 enum Material { kPlaster, kFloor, kWood, kGold, kChrome, kCopper, kGlass, kEmissive, kPaint, kStone };
 
 struct RectLight {
@@ -55,9 +59,100 @@ struct FilterParams {
 };
 
 constexpr float kSkylights[] = {-10.5f, -3.0f, 4.5f, 12.0f}; // centres along z: 4 m long, 6 m wide
+
+/// Mesh detail and path budget at each quality.
+struct Detail {
+    std::uint32_t blobLevel;               ///< icosphere subdivisions of the blobs (20 * 4^n triangles)
+    std::uint32_t knotSteps, knotSides;    ///< torus knot tube
+    std::uint32_t twistSteps, twistRows;   ///< twisted column
+    std::uint32_t latticeLevel;            ///< icosphere whose edges are the lattice's struts
+    std::uint32_t flutedSteps, flutedRows; ///< wall columns
+    std::uint32_t chandelierRings;
+    bool floorTiles;                       ///< the floor as 1440 tile instances (else one slab)
+    std::uint32_t paths, bounces;
+};
+
+Detail detailFor(Quality q, bool software) {
+    if (software) return {3, 128, 8, 48, 12, 1, 48, 4, 1, false, 1, 2};
+    switch (q) {
+    case Quality::Low: return {5, 256, 12, 96, 24, 2, 96, 8, 2, false, 1, 3};
+    case Quality::Medium: return {6, 512, 16, 128, 48, 2, 144, 12, 3, true, 3, 4};
+    case Quality::High: return {7, 1024, 24, 192, 96, 3, 192, 24, 3, true, 8, 5};
+    case Quality::Ultra: return {8, 2048, 32, 256, 128, 3, 256, 32, 3, true, 16, 6};
+    }
+    return {7, 1024, 24, 192, 96, 3, 192, 24, 3, true, 8, 5};
+}
+
+/// Smooth pseudo-noise in about [-1, 1] for displacing the blobs (sums of sines: cheap, deterministic).
+float blobNoise(Vec3 p) {
+    return 0.55f * std::sin(2.1f * p.x + 1.3f) * std::sin(1.7f * p.y + 0.4f) * std::sin(2.6f * p.z + 2.1f) +
+           0.30f * std::sin(4.3f * p.x + 1.1f * p.y) * std::sin(3.7f * p.z - 0.6f * p.y + 0.8f) +
+           0.15f * std::sin(8.1f * p.y + 2.3f * p.z) * std::sin(7.9f * p.x + 0.3f);
+}
+
+/// A lumpy unit blob: an icosphere pushed in and out by blobNoise (radius 0.75-1.25).
+MeshData blob(std::uint32_t level) {
+    MeshData m = icosphere(level);
+    for (Vertex& v : m.vertices) {
+        const Vec3 n{v.px, v.py, v.pz};
+        const Vec3 p = n * (1.0f + 0.25f * blobNoise(n * 1.7f));
+        v.px = p.x, v.py = p.y, v.pz = p.z;
+    }
+    computeNormals(m);
+    return m;
+}
+
+/// A (2, 5) torus knot tube about 3 units across, in the XZ plane.
+MeshData torusKnot(std::uint32_t steps, std::uint32_t sides) {
+    auto curve = [](float t) {
+        const float r = 2.0f + std::cos(5.0f * t);
+        return Vec3{r * std::cos(2.0f * t), std::sin(5.0f * t), r * std::sin(2.0f * t)};
+    };
+    return parametric(steps, sides, [&](float u, float v) {
+        const float t = u * 2.0f * kPi, e = 1e-3f;
+        const Vec3 c = curve(t), tangent = normalize(curve(t + e) - curve(t - e));
+        // A periodic frame: away from the torus's core circle, made perpendicular to the tangent.
+        const Vec3 core{2.0f * std::cos(2.0f * t), 0, 2.0f * std::sin(2.0f * t)};
+        Vec3 nrm = c - core;
+        nrm = normalize(nrm - tangent * dot(nrm, tangent));
+        const Vec3 bin = cross(tangent, nrm);
+        const float a = v * 2.0f * kPi;
+        return c + (nrm * std::cos(a) + bin * std::sin(a)) * 0.35f;
+    });
+}
+
+/// A fluted column of unit radius from y = 0 to 1; `twist` turns the flutes as they rise.
+MeshData flutedColumn(std::uint32_t steps, std::uint32_t rows, int flutes, float depth, float twist) {
+    return parametric(steps, rows, [=](float u, float v) {
+        // u runs clockwise seen from above so that u x v points outwards.
+        const float a = -u * 2.0f * kPi;
+        const float r = 1.0f - depth * (0.5f + 0.5f * std::cos(float(flutes) * a + twist * v));
+        return Vec3{r * std::cos(a), v, r * std::sin(a)};
+    });
+}
+
+/// The edges of an icosphere as thin struts (a geodesic lattice of radius 1).
+MeshData lattice(std::uint32_t level, float strut) {
+    const MeshData ico = icosphere(level);
+    MeshData m;
+    std::vector<std::uint64_t> edges;
+    for (std::size_t i = 0; i < ico.indices.size(); i += 3)
+        for (int k = 0; k < 3; ++k) {
+            const std::uint32_t a = ico.indices[i + k], b = ico.indices[i + (k + 1) % 3];
+            edges.push_back((std::uint64_t(std::min(a, b)) << 32) | std::max(a, b));
+        }
+    std::sort(edges.begin(), edges.end());
+    edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
+    auto pos = [&](std::uint64_t i) {
+        const Vertex& v = ico.vertices[static_cast<std::size_t>(i)];
+        return Vec3{v.px, v.py, v.pz};
+    };
+    for (std::uint64_t e : edges) appendTube(m, pos(e >> 32), pos(e & 0xFFFFFFFFu), strut, strut, 6);
+    return m;
+}
 constexpr Vec3 kPanelRadiance{7.0f, 5.74f, 4.2f}; // the emitter's instance colour is its radiance
 
-std::vector<RtInstance> buildGallery() {
+std::vector<RtInstance> buildGallery(const Detail& detail) {
     std::vector<RtInstance> v;
     auto add = [&](MeshKind mesh, Vec3 t, Vec3 s, Vec3 c, Material m, float yaw = 0.0f, float roll = 0.0f) {
         v.push_back(rtInstance(mesh, t, s, yaw, roll, c, float(m)));
@@ -65,8 +160,17 @@ std::vector<RtInstance> buildGallery() {
     // Unit box is centred on the origin; cylinders run from y = 0 to 1.
     const Vec3 plaster{0.86f, 0.84f, 0.80f}, red{0.52f, 0.09f, 0.07f}, stone{0.86f, 0.84f, 0.80f},
         wood{0.42f, 0.27f, 0.15f};
-    // Shell: floor, walls, ceiling with four skylights.
-    add(kBox, {0, -0.1f, 0}, {12.4f, 0.2f, 30.4f}, {1, 1, 1}, kFloor);
+    // Shell: floor, walls, ceiling with four skylights. The floor is one slab, or 0.5 m tiles (1440 instances)
+    // over a dark grout bed that shows in the gaps.
+    if (detail.floorTiles) {
+        add(kBox, {0, -0.1f, 0}, {12.4f, 0.2f, 30.4f}, {0.22f, 0.21f, 0.20f}, kStone);
+        for (int i = 0; i < 24; ++i)
+            for (int k = 0; k < 60; ++k)
+                add(kBox, {-5.75f + 0.5f * float(i), 0.015f, -14.75f + 0.5f * float(k)}, {0.49f, 0.03f, 0.49f},
+                    {1, 1, 1}, kFloor);
+    } else {
+        add(kBox, {0, -0.1f, 0}, {12.4f, 0.2f, 30.4f}, {1, 1, 1}, kFloor);
+    }
     add(kBox, {-6.1f, 3.5f, 0}, {0.2f, 7.0f, 30.4f}, plaster, kPlaster);
     add(kBox, {6.1f, 3.5f, 0}, {0.2f, 7.0f, 30.4f}, red, kPaint);
     add(kBox, {0, 3.5f, -15.1f}, {12.4f, 7.0f, 0.2f}, plaster, kPlaster);
@@ -83,7 +187,7 @@ std::vector<RtInstance> buildGallery() {
     for (int i = 0; i < 11; ++i) add(kBox, {0, 6.85f, -15.0f + 3.0f * float(i)}, {12.0f, 0.3f, 0.25f}, wood, kWood);
     for (float x : {-5.3f, 5.3f})
         for (float z : {-12.0f, -6.0f, 0.0f, 6.0f, 12.0f}) {
-            add(kCylinder, {x, 0, z}, {0.28f, 6.7f, 0.28f}, stone, kStone);
+            add(kFluted, {x, 0, z}, {0.28f, 6.7f, 0.28f}, stone, kStone);
             add(kBox, {x, 0.15f, z}, {0.8f, 0.3f, 0.8f}, stone, kStone);
         }
     // Light installation on the far wall.
@@ -101,17 +205,36 @@ std::vector<RtInstance> buildGallery() {
         add(kBox, {x, height / 2, z}, {size, height, size}, plaster, kPlaster);
     };
     plinth(-2.5f, -7.0f, 1.0f, 1.0f);
-    add(kSphere, {-2.5f, 1.56f, -7.0f}, {0.55f, 0.55f, 0.55f}, {0.92f, 0.97f, 0.95f}, kGlass);
+    add(kBlob, {-2.5f, 1.66f, -7.0f}, {0.55f, 0.55f, 0.55f}, {0.92f, 0.97f, 0.95f}, kGlass, 0.4f);
     plinth(2.5f, -7.0f, 1.0f, 1.0f);
-    add(kTorus, {2.5f, 1.75f, -7.0f}, {0.6f, 0.6f, 0.6f}, {1.0f, 0.78f, 0.34f}, kGold, 0.5f, 1.2f);
+    add(kKnot, {2.5f, 1.75f, -7.0f}, {0.22f, 0.22f, 0.22f}, {1.0f, 0.78f, 0.34f}, kGold, 0.5f, 1.2f);
     add(kBox, {0, 0.3f, -1.0f}, {2.2f, 0.6f, 2.2f}, stone, kStone);
     add(kSphere, {0, 1.5f, -1.0f}, {0.9f, 0.9f, 0.9f}, {0.95f, 0.95f, 0.96f}, kChrome);
     plinth(-2.5f, 5.0f, 1.0f, 1.0f);
-    add(kCylinder, {-2.5f, 1.0f, 5.0f}, {0.35f, 1.3f, 0.35f}, {0.95f, 0.64f, 0.54f}, kCopper);
+    add(kTwist, {-2.5f, 1.0f, 5.0f}, {0.35f, 1.3f, 0.35f}, {0.95f, 0.64f, 0.54f}, kCopper);
+    add(kSphere, {-2.5f, 2.42f, 5.0f}, {0.16f, 0.16f, 0.16f}, {0.95f, 0.64f, 0.54f}, kCopper);
     plinth(2.5f, 5.0f, 1.0f, 0.8f);
     add(kBox, {2.5f, 1.05f, 5.0f}, {0.7f, 0.5f, 0.7f}, {0.12f, 0.22f, 0.65f}, kPaint, 0.3f);
     add(kBox, {2.5f, 1.5f, 5.0f}, {0.55f, 0.4f, 0.55f}, {0.85f, 0.62f, 0.10f}, kPaint, 0.9f);
     add(kBox, {2.5f, 1.88f, 5.0f}, {0.4f, 0.36f, 0.4f}, {0.90f, 0.90f, 0.88f}, kPlaster, 1.4f);
+    plinth(-2.5f, 11.0f, 1.0f, 0.9f);
+    add(kLattice, {-2.5f, 1.52f, 11.0f}, {0.6f, 0.6f, 0.6f}, {0.95f, 0.95f, 0.96f}, kChrome, 0.3f);
+    plinth(2.5f, 11.0f, 1.0f, 0.8f);
+    add(kBlob, {2.5f, 1.45f, 11.0f}, {0.55f, 0.55f, 0.55f}, {0.56f, 0.51f, 0.45f}, kStone, 2.1f, 0.3f);
+    // A chandelier between the skylights: a chrome rod and rings hung with glass beads.
+    const float hangZ = 0.75f;
+    add(kCylinder, {0, 5.0f, hangZ}, {0.03f, 2.0f, 0.03f}, {0.95f, 0.95f, 0.96f}, kChrome);
+    const float ringRadius[] = {0.6f, 1.0f, 1.4f}, ringY[] = {5.7f, 5.4f, 5.1f};
+    const int ringBeads[] = {18, 30, 42};
+    for (std::uint32_t r = 0; r < detail.chandelierRings && r < 3; ++r) {
+        const float rr = ringRadius[r];
+        add(kRing, {0, ringY[r], hangZ}, {rr, rr, rr}, {0.95f, 0.95f, 0.96f}, kChrome);
+        for (int b = 0; b < ringBeads[r]; ++b) {
+            const float a = (float(b) + 0.5f * float(r)) * 2.0f * kPi / float(ringBeads[r]);
+            add(kBead, {rr * std::cos(a), ringY[r] - 0.1f, hangZ + rr * std::sin(a)}, {0.07f, 0.07f, 0.07f},
+                {0.95f, 0.97f, 0.98f}, kGlass);
+        }
+    }
     // Benches.
     for (float z : {9.5f, -11.5f}) {
         add(kBox, {0, 0.45f, z}, {3.0f, 0.1f, 0.8f}, wood, kWood);
@@ -144,18 +267,29 @@ public:
     void run(TestContext& ctx) override {
         rhi::Device& dev = ctx.device();
         const RunSettings& s = ctx.settings();
-        const bool software = dev.adapter().isSoftware();
+        // Software renderers get coarser meshes and fewer paths (--param scene.full_detail=1 keeps all of it).
+        const bool software = dev.adapter().isSoftware() && s.param("scene.full_detail") != "1";
         using U = rhi::BufferUsage;
         using TU = rhi::TextureUsage;
         using BT = rhi::BindingType;
 
         // --- content -----------------------------------------------------------------------------
+        const Detail detail = detailFor(s.quality, software);
         MeshPool pool;
-        const std::vector<std::uint32_t> meshIds = {pool.add(box(1, 1, 1)), pool.add(cylinder(software ? 16 : 32, true)),
-                                                    pool.add(sphere(software ? 24 : 48, software ? 16 : 32)),
-                                                    pool.add(torus(software ? 32 : 64, software ? 12 : 24, 0.22f))};
+        const std::vector<std::uint32_t> meshIds = {
+            pool.add(box(1, 1, 1)),
+            pool.add(cylinder(software ? 16 : 32, true)),
+            pool.add(sphere(software ? 24 : 48, software ? 16 : 32)),
+            pool.add(torus(software ? 32 : 64, software ? 12 : 24, 0.22f)),
+            pool.add(blob(detail.blobLevel)),
+            pool.add(torusKnot(detail.knotSteps, detail.knotSides)),
+            pool.add(flutedColumn(detail.twistSteps, detail.twistRows, 12, 0.12f, 2.0f * kPi)),
+            pool.add(lattice(detail.latticeLevel, 0.018f)),
+            pool.add(flutedColumn(detail.flutedSteps, detail.flutedRows, 24, 0.06f, 0.0f)),
+            pool.add(sphere(software ? 8 : 12, software ? 6 : 8)),
+            pool.add(torus(software ? 32 : 96, software ? 6 : 8, 0.02f))};
         pool.upload(dev, U::AccelInput);
-        std::vector<RtInstance> instances = buildGallery();
+        std::vector<RtInstance> instances = buildGallery(detail);
         const RtScene rs = buildRtScene(ctx, pool, meshIds, instances);
 
         // --- targets -----------------------------------------------------------------------------
@@ -200,16 +334,19 @@ public:
         cd.layout.bindings = {{BT::SampledTexture, 8}, {BT::SampledTexture, 7}};
         auto compositePipe = dev.createGraphicsPipeline(cd);
 
-        const std::uint32_t paths = software ? 1u : s.quality == Quality::Low ? 1u : s.quality == Quality::Medium ? 2u
-                                                   : s.quality == Quality::High ? 4u : 8u;
-        const std::uint32_t bounces = software ? 2u : s.quality == Quality::Low ? 2u : s.quality == Quality::Medium ? 3u : 4u;
+        const std::uint32_t paths = detail.paths, bounces = detail.bounces;
         const int filterPasses = 3; // steps 1, 2, 4: a 17x17 footprint
+        std::uint64_t bvhTriangles = 0;
+        for (const RtInstance& in : instances)
+            bvhTriangles += pool[meshIds[static_cast<std::size_t>(in.info[0])]].indexCount / 3;
         auto& d = ctx.details();
         d["instances"] = instances.size();
+        d["bvh_triangles"] = bvhTriangles;
+        d["blob_triangles"] = pool[meshIds[kBlob]].indexCount / 3;
         d["paths_per_pixel"] = paths;
         d["bounces_per_path"] = bounces;
         d["filter_passes"] = filterPasses;
-        if (software) d["note"] = "software renderer: one path per pixel, two bounces";
+        if (software) d["note"] = "software renderer: coarser meshes, one path per pixel, two bounces";
 
         // --- frame -------------------------------------------------------------------------------
         const CameraPath path({{{0, 1.7f, 13.5f}, {0, 1.6f, -2}},

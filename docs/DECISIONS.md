@@ -64,6 +64,10 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
     grass beds (up to 400k mesh-shader blades); per pixel 1/2/4 soft-shadow rays, 1/2/4/8 AO rays, 0/1/2/4 GI
     rays with a shadow ray at each hit and an a-trous filter (low/medium/high/ultra), plus reflection rays with
     hit shadows. Rough reflection and GI rays see the sky without the sun's disc (the direct term has the sun).
+  - Gallery: dense procedural exhibits (a displaced glass blob of 20k-1.3M triangles, a gold torus knot, a twisted
+    copper column, a steel lattice sphere, a stone blob), fluted columns, a glass bead chandelier, and a floor of
+    1440 tile instances (medium and up) so that most rays traverse a large TLAS; 1/3/8/16 paths per pixel with
+    3/4/5/6 bounces. Denser meshes alone added little: most path-tracing rays end on the walls and floor.
 - **Generated content uses a portable random generator** (`scene::Random`, SplitMix64): the std:: distributions
   differ between libstdc++ and MSVC, which would make the same scene differ between Linux and Windows builds.
 - **Golden-image checks use a 16×9 mean-colour signature with a tolerance (default 8/255) plus an exact hash**: exact hashes break across drivers/LLVM versions, signatures still catch broken rendering.
