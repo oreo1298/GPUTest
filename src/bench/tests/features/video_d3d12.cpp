@@ -209,23 +209,35 @@ public:
             m_refSubresources.push_back(i);
             m_refHeaps.push_back(m_heap.get());
         }
-        m_once = recordDecode(1);
-        m_timed = recordDecode(kRepeats);
+        // One command list per frame, as D3D12 video decoders are usually driven; the timed submissions pass
+        // kRepeats GOPs of them to one ExecuteCommandLists call.
+        for (std::uint32_t r = 0; r < kRepeats; ++r)
+            for (std::uint32_t f = 0; f < m_s.frames.size(); ++f)
+                m_lists.push_back(recordFrame(f));
         return {};
     }
 
-    /// Decodes the stream once; returns a failure message (empty on success).
+    /// Decodes the stream once, a frame at a time; returns a failure message (empty on success).
     std::string decodeOnce() {
-        execute(m_decode.queue.get(), m_once.get());
-        m_sync.signal(m_decode.queue.get());
-        m_sync.wait(m_dev);
+        for (std::uint32_t f = 0; f < m_s.frames.size(); ++f) {
+            execute(m_decode.queue.get(), m_lists[f].get());
+            m_sync.signal(m_decode.queue.get());
+            try {
+                m_sync.wait(m_dev);
+            } catch (const std::exception& e) {
+                throw std::runtime_error(std::format("decoding frame {}: {}", f, e.what()));
+            }
+        }
         return {};
     }
 
     double time(TestContext& ctx, double seconds) {
-        const auto frames = static_cast<std::uint64_t>(m_s.frames.size()) * kRepeats;
+        const auto frames = static_cast<std::uint64_t>(m_lists.size());
+        std::vector<ID3D12CommandList*> lists;
+        for (const auto& l : m_lists)
+            lists.push_back(l.get());
         auto submit = [&] {
-            execute(m_decode.queue.get(), m_timed.get());
+            m_decode.queue->ExecuteCommandLists(static_cast<UINT>(lists.size()), lists.data());
             m_sync.signal(m_decode.queue.get());
             m_sync.wait(m_dev);
         };
@@ -345,78 +357,66 @@ private:
         m_sync.wait(m_dev); // the buffer decays to COMMON
     }
 
-    /// Records `repeats` decodes of the whole stream. Per frame, its slice (both planes) is written and every
-    /// other slice is a possible reference; everything returns to COMMON afterwards.
-    Com<ID3D12VideoDecodeCommandList> recordDecode(std::uint32_t repeats) {
-        Com<ID3D12CommandAllocator> alloc;
-        check(m_dev->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_VIDEO_DECODE,
-                                            __uuidof(ID3D12CommandAllocator), alloc.putVoid()),
-              "CreateCommandAllocator (video decode)");
+    /// Records frame f's decode: its slice (both planes) is written and every other slice is a possible
+    /// reference; everything returns to COMMON afterwards.
+    Com<ID3D12VideoDecodeCommandList> recordFrame(std::uint32_t f) {
         Com<ID3D12VideoDecodeCommandList> cl;
-        check(m_dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_VIDEO_DECODE, alloc.get(), nullptr,
-                                       __uuidof(ID3D12VideoDecodeCommandList), cl.putVoid()),
+        check(m_dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_VIDEO_DECODE, m_decode.allocator.get(),
+                                       nullptr, __uuidof(ID3D12VideoDecodeCommandList), cl.putVoid()),
               "CreateCommandList (video decode)");
-        m_allocators.push_back(alloc);
-
         const D3D12_RESOURCE_BARRIER toRead =
             transition(m_bitstream.get(), D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
                        D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_VIDEO_DECODE_READ);
         cl->ResourceBarrier(1, &toRead);
         std::vector<D3D12_RESOURCE_BARRIER> before, after;
-        for (std::uint32_t r = 0; r < repeats; ++r)
-            for (std::uint32_t f = 0; f < m_s.frames.size(); ++f) {
-                const DxvaFrame& fr = m_s.frames[f];
-                before.clear();
-                for (std::uint32_t slot = 0; slot < video::kGop; ++slot)
-                    for (std::uint32_t p = 0; p < kPlanes; ++p)
-                        before.push_back(transition(m_dpb.get(), slot + p * video::kGop,
-                                                    D3D12_RESOURCE_STATE_COMMON,
-                                                    slot == f ? D3D12_RESOURCE_STATE_VIDEO_DECODE_WRITE
-                                                              : D3D12_RESOURCE_STATE_VIDEO_DECODE_READ));
-                if (m_referenceOnly)
-                    for (std::uint32_t p = 0; p < kPlanes; ++p)
-                        before.push_back(transition(m_output.get(), f + p * video::kGop,
-                                                    D3D12_RESOURCE_STATE_COMMON,
-                                                    D3D12_RESOURCE_STATE_VIDEO_DECODE_WRITE));
-                cl->ResourceBarrier(static_cast<UINT>(before.size()), before.data());
+        const DxvaFrame& fr = m_s.frames[f];
+        for (std::uint32_t slot = 0; slot < video::kGop; ++slot)
+            for (std::uint32_t p = 0; p < kPlanes; ++p)
+                before.push_back(transition(m_dpb.get(), slot + p * video::kGop, D3D12_RESOURCE_STATE_COMMON,
+                                            slot == f ? D3D12_RESOURCE_STATE_VIDEO_DECODE_WRITE
+                                                      : D3D12_RESOURCE_STATE_VIDEO_DECODE_READ));
+        if (m_referenceOnly)
+            for (std::uint32_t p = 0; p < kPlanes; ++p)
+                before.push_back(transition(m_output.get(), f + p * video::kGop, D3D12_RESOURCE_STATE_COMMON,
+                                            D3D12_RESOURCE_STATE_VIDEO_DECODE_WRITE));
+        cl->ResourceBarrier(static_cast<UINT>(before.size()), before.data());
 
-                D3D12_VIDEO_DECODE_OUTPUT_STREAM_ARGUMENTS out{};
-                if (m_referenceOnly) {
-                    out.pOutputTexture2D = m_output.get();
-                    out.OutputSubresource = f;
-                    out.ConversionArguments.Enable = TRUE;
-                    out.ConversionArguments.pReferenceTexture2D = m_dpb.get();
-                    out.ConversionArguments.ReferenceSubresource = f;
-                    out.ConversionArguments.OutputColorSpace = DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709;
-                    out.ConversionArguments.DecodeColorSpace = DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709;
-                } else {
-                    out.pOutputTexture2D = m_dpb.get();
-                    out.OutputSubresource = f;
-                }
-                D3D12_VIDEO_DECODE_INPUT_STREAM_ARGUMENTS in{};
-                auto arg = [&](D3D12_VIDEO_DECODE_ARGUMENT_TYPE type, const std::vector<std::uint8_t>& data) {
-                    if (data.empty()) return;
-                    in.FrameArguments[in.NumFrameArguments++] = {type, static_cast<UINT>(data.size()),
-                                                                 const_cast<std::uint8_t*>(data.data())};
-                };
-                arg(D3D12_VIDEO_DECODE_ARGUMENT_TYPE_PICTURE_PARAMETERS, fr.picParams);
-                arg(D3D12_VIDEO_DECODE_ARGUMENT_TYPE_INVERSE_QUANTIZATION_MATRIX, fr.qmatrix);
-                arg(D3D12_VIDEO_DECODE_ARGUMENT_TYPE_SLICE_CONTROL, fr.slices);
-                in.ReferenceFrames.NumTexture2Ds = video::kGop;
-                in.ReferenceFrames.ppTexture2Ds = m_refTextures.data();
-                in.ReferenceFrames.pSubresources = m_refSubresources.data();
-                in.ReferenceFrames.ppHeaps = m_refHeaps.data();
-                in.CompressedBitstream.pBuffer = m_bitstream.get();
-                in.CompressedBitstream.Offset = m_offsets[f];
-                in.CompressedBitstream.Size = m_sizes[f];
-                in.pHeap = m_heap.get();
-                cl->DecodeFrame(m_decoder.get(), &out, &in);
+        D3D12_VIDEO_DECODE_OUTPUT_STREAM_ARGUMENTS out{};
+        if (m_referenceOnly) {
+            out.pOutputTexture2D = m_output.get();
+            out.OutputSubresource = f;
+            out.ConversionArguments.Enable = TRUE;
+            out.ConversionArguments.pReferenceTexture2D = m_dpb.get();
+            out.ConversionArguments.ReferenceSubresource = f;
+            out.ConversionArguments.OutputColorSpace = DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709;
+            out.ConversionArguments.DecodeColorSpace = DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709;
+        } else {
+            out.pOutputTexture2D = m_dpb.get();
+            out.OutputSubresource = f;
+        }
+        D3D12_VIDEO_DECODE_INPUT_STREAM_ARGUMENTS in{};
+        auto arg = [&](D3D12_VIDEO_DECODE_ARGUMENT_TYPE type, const std::vector<std::uint8_t>& data) {
+            if (data.empty()) return;
+            in.FrameArguments[in.NumFrameArguments++] = {type, static_cast<UINT>(data.size()),
+                                                         const_cast<std::uint8_t*>(data.data())};
+        };
+        arg(D3D12_VIDEO_DECODE_ARGUMENT_TYPE_PICTURE_PARAMETERS, fr.picParams);
+        arg(D3D12_VIDEO_DECODE_ARGUMENT_TYPE_INVERSE_QUANTIZATION_MATRIX, fr.qmatrix);
+        arg(D3D12_VIDEO_DECODE_ARGUMENT_TYPE_SLICE_CONTROL, fr.slices);
+        in.ReferenceFrames.NumTexture2Ds = video::kGop;
+        in.ReferenceFrames.ppTexture2Ds = m_refTextures.data();
+        in.ReferenceFrames.pSubresources = m_refSubresources.data();
+        in.ReferenceFrames.ppHeaps = m_refHeaps.data();
+        in.CompressedBitstream.pBuffer = m_bitstream.get();
+        in.CompressedBitstream.Offset = m_offsets[f];
+        in.CompressedBitstream.Size = m_sizes[f];
+        in.pHeap = m_heap.get();
+        cl->DecodeFrame(m_decoder.get(), &out, &in);
 
-                after = before;
-                for (D3D12_RESOURCE_BARRIER& b : after)
-                    std::swap(b.Transition.StateBefore, b.Transition.StateAfter);
-                cl->ResourceBarrier(static_cast<UINT>(after.size()), after.data());
-            }
+        after = before;
+        for (D3D12_RESOURCE_BARRIER& b : after)
+            std::swap(b.Transition.StateBefore, b.Transition.StateAfter);
+        cl->ResourceBarrier(static_cast<UINT>(after.size()), after.data());
         const D3D12_RESOURCE_BARRIER toCommon =
             transition(m_bitstream.get(), D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
                        D3D12_RESOURCE_STATE_VIDEO_DECODE_READ, D3D12_RESOURCE_STATE_COMMON);
@@ -437,8 +437,7 @@ private:
     Com<ID3D12Resource> m_dpb, m_output, m_bitstream;
     std::vector<UINT64> m_offsets, m_sizes;
     Queue m_decode, m_copy;
-    std::vector<Com<ID3D12CommandAllocator>> m_allocators;
-    Com<ID3D12VideoDecodeCommandList> m_once, m_timed;
+    std::vector<Com<ID3D12VideoDecodeCommandList>> m_lists; ///< kRepeats GOPs, one list per frame
     std::vector<ID3D12Resource*> m_refTextures;
     std::vector<UINT> m_refSubresources;
     std::vector<ID3D12VideoDecoderHeap*> m_refHeaps;

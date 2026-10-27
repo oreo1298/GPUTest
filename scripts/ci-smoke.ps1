@@ -147,7 +147,7 @@ $videoArgs = $stdCommon + @("--test", "feature.video", "--param", "feature.video
 $proc = Start-Process -FilePath $runner.FullName -ArgumentList $videoArgs -NoNewWindow -PassThru `
     -RedirectStandardOutput "$out\video-d3d12.out" -RedirectStandardError "$out\video-d3d12.err"
 $null = $proc.Handle
-if (-not $proc.WaitForExit(5 * 60 * 1000)) { $proc.Kill(); Write-Host "::warning title=Video on WARP::timed out" }
+if (-not $proc.WaitForExit(3 * 60 * 1000)) { $proc.Kill(); Write-Host "::warning title=Video on WARP::timed out after 3 min" }
 if (Test-Path "$out\video-d3d12.json") {
     $r = Get-Content "$out\video-d3d12.json" -Raw | ConvertFrom-Json
     $t = $r.tests | Select-Object -First 1

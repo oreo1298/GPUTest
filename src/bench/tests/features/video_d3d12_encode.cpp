@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cstring>
 #include <format>
+#include <stdexcept>
 
 namespace gt::bench::d3d12video {
 
@@ -725,8 +726,12 @@ public:
         if (HRESULT hr = makeQueue(m_dev, D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE, m_encode); FAILED(hr))
             return "no video encode queue: " + hresultName(hr);
         check(makeQueue(m_dev, D3D12_COMMAND_LIST_TYPE_COPY, m_copy), "copy queue");
-        m_once = record(1, true);
-        m_timed = record(kRepeats, false);
+        // One command list per frame (the timed submissions pass kRepeats GOPs to one ExecuteCommandLists).
+        m_cqp = {m_c.quantizer(), m_c.quantizer(), m_c.quantizer()};
+        for (std::uint32_t r = 0; r < kRepeats; ++r)
+            for (std::uint32_t f = 0; f < video::kGop; ++f)
+                m_lists.push_back(recordFrame(f, r));
+        m_resolve = recordResolve();
         return {};
     }
 
@@ -783,15 +788,26 @@ public:
     /// Encodes the GOP once and reads the frames back; returns a failure message (empty on success).
     std::string encodeOnce() {
         m_sync.gpuWait(m_encode.queue.get());
-        execute(m_encode.queue.get(), m_once.get());
-        m_sync.signal(m_encode.queue.get());
-        m_sync.wait(m_dev);
+        for (std::uint32_t f = 0; f <= video::kGop; ++f) { // the frames, then the metadata resolves
+            execute(m_encode.queue.get(), f < video::kGop ? m_lists[f].get() : m_resolve.get());
+            m_sync.signal(m_encode.queue.get());
+            try {
+                m_sync.wait(m_dev);
+            } catch (const std::exception& e) {
+                throw std::runtime_error(f < video::kGop
+                                             ? std::format("encoding frame {}: {}", f, e.what())
+                                             : std::format("resolving the metadata: {}", e.what()));
+            }
+        }
         return readOutput();
     }
 
     double time(TestContext& ctx, double seconds) {
+        std::vector<ID3D12CommandList*> lists;
+        for (const auto& l : m_lists)
+            lists.push_back(l.get());
         auto submit = [&] {
-            execute(m_encode.queue.get(), m_timed.get());
+            m_encode.queue->ExecuteCommandLists(static_cast<UINT>(lists.size()), lists.data());
             m_sync.signal(m_encode.queue.get());
             m_sync.wait(m_dev);
         };
@@ -811,19 +827,21 @@ public:
     const std::vector<std::vector<std::uint8_t>>& output() const { return m_output; }
 
 private:
-    /// Records `repeats` encodes of the GOP; `resolve` adds the metadata resolves.
-    Com<ID3D12VideoEncodeCommandList2> record(std::uint32_t repeats, bool resolve) {
-        Com<ID3D12CommandAllocator> alloc;
-        check(m_dev->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE,
-                                            __uuidof(ID3D12CommandAllocator), alloc.putVoid()),
-              "CreateCommandAllocator (video encode)");
+    Com<ID3D12VideoEncodeCommandList2> newList() {
         Com<ID3D12VideoEncodeCommandList2> cl;
-        check(m_dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE, alloc.get(), nullptr,
-                                       __uuidof(ID3D12VideoEncodeCommandList2), cl.putVoid()),
+        check(m_dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE, m_encode.allocator.get(),
+                                       nullptr, __uuidof(ID3D12VideoEncodeCommandList2), cl.putVoid()),
               "CreateCommandList (video encode)");
-        m_allocators.push_back(alloc);
+        return cl;
+    }
+
+    /// Records frame f of GOP repeat r: its input slice is read, its reconstructed picture written, the
+    /// previous frame's read; everything returns to COMMON afterwards.
+    Com<ID3D12VideoEncodeCommandList2> recordFrame(std::uint32_t f, std::uint32_t r) {
+        Com<ID3D12VideoEncodeCommandList2> cl = newList();
         constexpr UINT kAll = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        const D3D12_RESOURCE_BARRIER begin[] = {
+        const UINT slot = f & 1, refSlot = (f + 1) & 1;
+        std::vector<D3D12_RESOURCE_BARRIER> before = {
             transition(m_input.get(), kAll, D3D12_RESOURCE_STATE_COMMON,
                        D3D12_RESOURCE_STATE_VIDEO_ENCODE_READ),
             transition(m_bitstream.get(), kAll, D3D12_RESOURCE_STATE_COMMON,
@@ -831,95 +849,79 @@ private:
             transition(m_metadata.get(), kAll, D3D12_RESOURCE_STATE_COMMON,
                        D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE),
         };
-        cl->ResourceBarrier(static_cast<UINT>(std::size(begin)), begin);
-
-        D3D12_VIDEO_ENCODER_RATE_CONTROL_CQP& q = m_cqp;
-        q = {m_c.quantizer(), m_c.quantizer(), m_c.quantizer()};
-        std::vector<D3D12_RESOURCE_BARRIER> before, after;
-        for (std::uint32_t r = 0; r < repeats; ++r)
-            for (std::uint32_t f = 0; f < video::kGop; ++f) {
-                const UINT slot = f & 1, refSlot = (f + 1) & 1;
-                before.clear();
-                for (std::uint32_t p = 0; p < kPlanes; ++p) {
-                    before.push_back(transition(m_recon.get(), slot + p * 2, D3D12_RESOURCE_STATE_COMMON,
-                                                D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE));
-                    if (f > 0)
-                        before.push_back(transition(m_recon.get(), refSlot + p * 2,
-                                                    D3D12_RESOURCE_STATE_COMMON,
-                                                    D3D12_RESOURCE_STATE_VIDEO_ENCODE_READ));
-                }
-                cl->ResourceBarrier(static_cast<UINT>(before.size()), before.data());
-
-                D3D12_VIDEO_ENCODER_ENCODEFRAME_INPUT_ARGUMENTS in{};
-                D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_DESC& seq = in.SequenceControlDesc;
-                seq.Flags = D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_FLAG_NONE;
-                seq.IntraRefreshConfig = {D3D12_VIDEO_ENCODER_INTRA_REFRESH_MODE_NONE, 0};
-                seq.RateControl = cqp(q);
-                seq.PictureTargetResolution = kResolution;
-                seq.SelectedLayoutMode = D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_FULL_FRAME;
-                seq.FrameSubregionsLayoutData = {};
-                seq.CodecGopSequence = m_c.gop();
-                D3D12_VIDEO_ENCODER_PICTURE_CONTROL_DESC& pic = in.PictureControlDesc;
-                pic.Flags = D3D12_VIDEO_ENCODER_PICTURE_CONTROL_FLAG_USED_AS_REFERENCE_PICTURE;
-                pic.PictureControlCodecData = m_c.picture(f, r);
-                if (f > 0) {
-                    pic.ReferenceFrames.NumTexture2Ds = 1;
-                    m_refTexture = m_recon.get();
-                    pic.ReferenceFrames.ppTexture2Ds = &m_refTexture;
-                    pic.ReferenceFrames.pSubresources = &m_refSubresources[refSlot];
-                }
-                in.pInputFrame = m_input.get();
-                in.InputFrameSubresource = f;
-                in.CurrentFrameBitstreamMetadataSize = 0;
-                D3D12_VIDEO_ENCODER_ENCODEFRAME_OUTPUT_ARGUMENTS out{};
-                out.Bitstream = {m_bitstream.get(), f * m_frameStride};
-                out.ReconstructedPicture = {m_recon.get(), slot};
-                out.EncoderOutputMetadata = {m_metadata.get(), f * m_metaStride};
-                cl->EncodeFrame(m_encoder.get(), m_heap.get(), &in, &out);
-
-                after = before;
-                for (D3D12_RESOURCE_BARRIER& b : after)
-                    std::swap(b.Transition.StateBefore, b.Transition.StateAfter);
-                cl->ResourceBarrier(static_cast<UINT>(after.size()), after.data());
-            }
-        if (resolve) {
-            const D3D12_RESOURCE_BARRIER toResolve[] = {
-                transition(m_metadata.get(), kAll, D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE,
-                           D3D12_RESOURCE_STATE_VIDEO_ENCODE_READ),
-                transition(m_resolved.get(), kAll, D3D12_RESOURCE_STATE_COMMON,
-                           D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE),
-            };
-            cl->ResourceBarrier(static_cast<UINT>(std::size(toResolve)), toResolve);
-            for (std::uint32_t f = 0; f < video::kGop; ++f) {
-                D3D12_VIDEO_ENCODER_RESOLVE_METADATA_INPUT_ARGUMENTS in{};
-                in.EncoderCodec = m_c.codec();
-                in.EncoderProfile = m_c.profile();
-                in.EncoderInputFormat = DXGI_FORMAT_NV12;
-                in.EncodedPictureEffectiveResolution = kResolution;
-                in.HWLayoutMetadata = {m_metadata.get(), f * m_metaStride};
-                D3D12_VIDEO_ENCODER_RESOLVE_METADATA_OUTPUT_ARGUMENTS out{};
-                out.ResolvedLayoutMetadata = {m_resolved.get(), f * kResolvedStride};
-                cl->ResolveEncoderOutputMetadata(&in, &out);
-            }
-            const D3D12_RESOURCE_BARRIER done[] = {
-                transition(m_metadata.get(), kAll, D3D12_RESOURCE_STATE_VIDEO_ENCODE_READ,
-                           D3D12_RESOURCE_STATE_COMMON),
-                transition(m_resolved.get(), kAll, D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE,
-                           D3D12_RESOURCE_STATE_COMMON),
-            };
-            cl->ResourceBarrier(static_cast<UINT>(std::size(done)), done);
-        } else {
-            const D3D12_RESOURCE_BARRIER done = transition(
-                m_metadata.get(), kAll, D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE, D3D12_RESOURCE_STATE_COMMON);
-            cl->ResourceBarrier(1, &done);
+        for (std::uint32_t p = 0; p < kPlanes; ++p) {
+            before.push_back(transition(m_recon.get(), slot + p * 2, D3D12_RESOURCE_STATE_COMMON,
+                                        D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE));
+            if (f > 0)
+                before.push_back(transition(m_recon.get(), refSlot + p * 2, D3D12_RESOURCE_STATE_COMMON,
+                                            D3D12_RESOURCE_STATE_VIDEO_ENCODE_READ));
         }
-        const D3D12_RESOURCE_BARRIER end[] = {
-            transition(m_input.get(), kAll, D3D12_RESOURCE_STATE_VIDEO_ENCODE_READ,
+        cl->ResourceBarrier(static_cast<UINT>(before.size()), before.data());
+
+        D3D12_VIDEO_ENCODER_ENCODEFRAME_INPUT_ARGUMENTS in{};
+        D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_DESC& seq = in.SequenceControlDesc;
+        seq.Flags = D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_FLAG_NONE;
+        seq.IntraRefreshConfig = {D3D12_VIDEO_ENCODER_INTRA_REFRESH_MODE_NONE, 0};
+        seq.RateControl = cqp(m_cqp);
+        seq.PictureTargetResolution = kResolution;
+        seq.SelectedLayoutMode = D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_FULL_FRAME;
+        seq.FrameSubregionsLayoutData = {};
+        seq.CodecGopSequence = m_c.gop();
+        D3D12_VIDEO_ENCODER_PICTURE_CONTROL_DESC& pic = in.PictureControlDesc;
+        pic.Flags = D3D12_VIDEO_ENCODER_PICTURE_CONTROL_FLAG_USED_AS_REFERENCE_PICTURE;
+        pic.PictureControlCodecData = m_c.picture(f, r);
+        if (f > 0) {
+            pic.ReferenceFrames.NumTexture2Ds = 1;
+            m_refTexture = m_recon.get();
+            pic.ReferenceFrames.ppTexture2Ds = &m_refTexture;
+            pic.ReferenceFrames.pSubresources = &m_refSubresources[refSlot];
+        }
+        in.pInputFrame = m_input.get();
+        in.InputFrameSubresource = f;
+        in.CurrentFrameBitstreamMetadataSize = 0;
+        D3D12_VIDEO_ENCODER_ENCODEFRAME_OUTPUT_ARGUMENTS out{};
+        out.Bitstream = {m_bitstream.get(), f * m_frameStride};
+        out.ReconstructedPicture = {m_recon.get(), slot};
+        out.EncoderOutputMetadata = {m_metadata.get(), f * m_metaStride};
+        cl->EncodeFrame(m_encoder.get(), m_heap.get(), &in, &out);
+
+        std::vector<D3D12_RESOURCE_BARRIER> after = before;
+        for (D3D12_RESOURCE_BARRIER& b : after)
+            std::swap(b.Transition.StateBefore, b.Transition.StateAfter);
+        cl->ResourceBarrier(static_cast<UINT>(after.size()), after.data());
+        check(cl->Close(), "Close (video encode)");
+        return cl;
+    }
+
+    /// Records the resolves of every frame's metadata.
+    Com<ID3D12VideoEncodeCommandList2> recordResolve() {
+        Com<ID3D12VideoEncodeCommandList2> cl = newList();
+        constexpr UINT kAll = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        const D3D12_RESOURCE_BARRIER toResolve[] = {
+            transition(m_metadata.get(), kAll, D3D12_RESOURCE_STATE_COMMON,
+                       D3D12_RESOURCE_STATE_VIDEO_ENCODE_READ),
+            transition(m_resolved.get(), kAll, D3D12_RESOURCE_STATE_COMMON,
+                       D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE),
+        };
+        cl->ResourceBarrier(static_cast<UINT>(std::size(toResolve)), toResolve);
+        for (std::uint32_t f = 0; f < video::kGop; ++f) {
+            D3D12_VIDEO_ENCODER_RESOLVE_METADATA_INPUT_ARGUMENTS in{};
+            in.EncoderCodec = m_c.codec();
+            in.EncoderProfile = m_c.profile();
+            in.EncoderInputFormat = DXGI_FORMAT_NV12;
+            in.EncodedPictureEffectiveResolution = kResolution;
+            in.HWLayoutMetadata = {m_metadata.get(), f * m_metaStride};
+            D3D12_VIDEO_ENCODER_RESOLVE_METADATA_OUTPUT_ARGUMENTS out{};
+            out.ResolvedLayoutMetadata = {m_resolved.get(), f * kResolvedStride};
+            cl->ResolveEncoderOutputMetadata(&in, &out);
+        }
+        const D3D12_RESOURCE_BARRIER done[] = {
+            transition(m_metadata.get(), kAll, D3D12_RESOURCE_STATE_VIDEO_ENCODE_READ,
                        D3D12_RESOURCE_STATE_COMMON),
-            transition(m_bitstream.get(), kAll, D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE,
+            transition(m_resolved.get(), kAll, D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE,
                        D3D12_RESOURCE_STATE_COMMON),
         };
-        cl->ResourceBarrier(static_cast<UINT>(std::size(end)), end);
+        cl->ResourceBarrier(static_cast<UINT>(std::size(done)), done);
         check(cl->Close(), "Close (video encode)");
         return cl;
     }
@@ -1001,8 +1003,8 @@ private:
     Com<ID3D12Resource> m_input, m_recon, m_bitstream, m_metadata, m_resolved;
     UINT64 m_frameStride = 0, m_metaStride = 0;
     Queue m_encode, m_copy;
-    std::vector<Com<ID3D12CommandAllocator>> m_allocators;
-    Com<ID3D12VideoEncodeCommandList2> m_once, m_timed;
+    std::vector<Com<ID3D12VideoEncodeCommandList2>> m_lists; ///< kRepeats GOPs, one list per frame
+    Com<ID3D12VideoEncodeCommandList2> m_resolve;
     D3D12_VIDEO_ENCODER_RATE_CONTROL_CQP m_cqp{};
     ID3D12Resource* m_refTexture = nullptr;
     std::array<UINT, 2> m_refSubresources{0, 1};

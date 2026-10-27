@@ -212,18 +212,19 @@ jobs:
           cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/*.yml') }}
           upload-artifact: false
 
-      - name: Run the runner inside the app
-        shell: bash
-        run: |
-          flatpak-builder --run flatpak_app packaging/flatpak/io.github.oreo1298.Kiln.yml kiln-run --version
-          flatpak-builder --run flatpak_app packaging/flatpak/io.github.oreo1298.Kiln.yml kiln-run --list-tests | head -5
-
       - name: Upload bundle
         uses: actions/upload-artifact@v4
         with:
           name: flatpak-bundle
           path: kiln.flatpak
           if-no-files-found: error
+
+      - name: Run the runner inside the app
+        shell: bash
+        # flatpak-builder --run needs FUSE, which the container lacks; `flatpak build` runs in the finished app.
+        run: |
+          flatpak build flatpak_app kiln-run --version
+          flatpak build flatpak_app kiln-run --list-tests | head -5
 
   linux-sanitizers:
     name: Linux ASan+UBSan
