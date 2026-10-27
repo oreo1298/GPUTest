@@ -79,9 +79,10 @@ int main(int argc, char** argv) {
                              app::kVersion),
                  app::kRunnerName};
     app.set_version_flag("--version", std::format("{} {} ({})", app::kRunnerName, app::kVersion, app::kGitRevision));
+    app.get_formatter()->column_width(42); // keeps every description on its option's line
 
     bool listDevices = false, listTests = false, listSuites = false, showCaps = false, showSys = false,
-         checkSupport = false, json = false, noSafety = false;
+         checkSupport = false, json = false, noSafety = false, noHud = false;
     std::string apiText, qualityText, durationText, progressText = "text", logLevel = "info", logFile, dumpDir,
                                                     deviceLost = "abort", upscaleText = "off",
                                                     upscaleModeText = "quality";
@@ -122,7 +123,7 @@ int main(int argc, char** argv) {
     set->add_flag("--offscreen", opt.offscreen, "Render without a window (no present)");
     set->add_flag("--fullscreen", opt.fullscreen, "Fullscreen window");
     set->add_flag("--vsync", opt.vsync, "Enable vsync (off by default)");
-    set->add_flag("!--no-hud", opt.hud, "Hide the in-window HUD");
+    set->add_flag("--no-hud", noHud, "Hide the in-window HUD");
     set->add_option("--window-width", opt.windowWidth, "Window width in pixels");
     set->add_option("--window-height", opt.windowHeight, "Window height in pixels");
     set->add_option("--seed", opt.settings.seed, "Workload seed (keep the default for comparable scores)");
@@ -357,6 +358,7 @@ int main(int argc, char** argv) {
     if (!dumpDir.empty()) opt.settings.dumpDir = dumpDir;
     opt.settings.dumpFrames = !dumpDir.empty() || !opt.goldenDir.empty();
     if (noSafety) opt.safety.enabled = false;
+    if (noHud) opt.hud = false;
     if (deviceLost == "recover") opt.onDeviceLost = runner::DeviceLostPolicy::Recover;
     else if (deviceLost != "abort") {
         std::fprintf(stderr, "invalid --on-device-lost '%s'\n", deviceLost.c_str());
