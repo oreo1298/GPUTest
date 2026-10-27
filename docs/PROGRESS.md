@@ -143,6 +143,9 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
 - M12: Direct3D 12 Video encode (H.264, H.265) in `feature.video`: configuration from the support queries,
   SPS / PPS / VPS written by new parameter-set writers (round-trip unit tests), metadata resolve, round trip
   through the D3D12 decoder.
+- M13: Flatpak manifest (KDE 6.11, offline, CI-built bundle), Windows installer (Inno Setup), tag-triggered release
+  job, CHANGELOG.md; fixed the Windows portable zip missing Qt (windeployqt never ran). README rewritten with
+  screenshots; docs/USER_GUIDE.md, docs/BUILDING.md, CONTRIBUTING.md.
 
 ### 2026-10-26
 - Saved brief to docs/SPEC.md; research pass recorded in docs/RESEARCH.md (two research subagents).

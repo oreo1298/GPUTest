@@ -1,20 +1,50 @@
 # Kiln
 
-**Kiln** (working name) is a free, open-source (MIT) GPU benchmark, feature tester, and stress/diagnostic tool for
+**Kiln** (working name) is a free, open-source (MIT) GPU benchmark, feature tester and stress / diagnostic tool for
 AMD, NVIDIA and Intel GPUs on Linux and Windows.
 
-> Status: early development. See [docs/PROGRESS.md](docs/PROGRESS.md) and [docs/PLAN.md](docs/PLAN.md).
+![Four of the benchmark scenes: Skyline, Courtyard, Atrium and Lattice](docs/images/scenes.jpg)
 
-- Scene benchmarks from legacy OpenGL 3.3 / D3D11 up to ray-traced and path-traced Vulkan / D3D12 scenes
-- Feature tests: ray tracing, mesh shaders, VRS, work graphs, cooperative matrix, async compute, …
-- Synthetic tests: compute throughput, memory bandwidth/latency, fill rates, geometry
-- Diagnostics for the repair bench: VRAM tester, artifact detection, compute correctness, thermal soak, PCIe link check
-- Detailed results: frame-time percentiles, telemetry graphs, history and comparisons, JSON/CSV/HTML export
+- **Scene benchmarks** from OpenGL 3.3 / Direct3D 11 class rendering up to GPU-driven, ray-traced and path-traced
+  Vulkan / Direct3D 12 scenes, with frame-time percentiles, 1% / 0.1% lows, stutter counts and scores.
+- **Feature tests** that check the result as well as the speed: ray tracing (ray queries vs pipelines, BVH builds,
+  SER, opacity micromaps), mesh shaders, variable-rate shading, sampler feedback, work graphs, cooperative matrix,
+  subgroups, bindless, async compute, pipeline compilation, FSR 1 and upscaler plugins, HDR output, and the video
+  engines (H.264, H.265 and AV1 decode and encode through Vulkan Video and Direct3D 12 Video).
+- **Synthetic tests**: FP32 / FP16 / FP64 / INT32 / INT8-dot throughput, memory bandwidth and latency, atomics,
+  pixel and texel fill, geometry, MSAA and transfers.
+- **Diagnostics for the repair bench**: VRAM tester, rendering-artifact detection, compute error check, thermal
+  soak and PCIe link check, with clear PASS / FAIL verdicts and a hardware report script.
+- **Results** you can keep: live charts, telemetry (clocks, temperatures, power, fans) where the driver offers it,
+  run history, side-by-side comparison, and JSON / CSV / HTML export.
 
-## Install on Arch Linux (and CachyOS, EndeavourOS, Manjaro)
+| | |
+|---|---|
+| ![The Results page of a run](docs/images/results.png) | ![The Home page, picking the GPU and API](docs/images/home.png) |
 
-Run these as your normal user (not root); `makepkg` asks for your password
-when it installs the package:
+> Status: version 0.1, under active development. The code is tested in CI on software renderers (lavapipe,
+> llvmpipe, WARP); results on real GPUs are being collected ([docs/HARDWARE_TESTING.md](docs/HARDWARE_TESTING.md)).
+> Progress: [docs/PROGRESS.md](docs/PROGRESS.md).
+
+## Download
+
+Releases are on the [Releases page](https://github.com/oreo1298/GPUTest/releases). Every push to `main` also builds
+every package — open the latest [CI run](https://github.com/oreo1298/GPUTest/actions/workflows/ci.yml) → Artifacts.
+
+| System | Package | How to run |
+|---|---|---|
+| Windows 10 / 11 (x64) | `Kiln-<version>-…-setup.exe` (installer) | Run it; Kiln is in the Start menu. No administrator rights needed. |
+| Windows 10 / 11 (x64) | `Kiln-<version>-…-portable.zip` | Unzip anywhere and run `kiln.exe`; settings and results stay in that folder. |
+| Linux (x86_64) | `Kiln-<version>-…-x86_64.AppImage` | `chmod +x Kiln-*.AppImage && ./Kiln-*.AppImage` |
+| Linux (x86_64) | `Kiln-<version>-x86_64.flatpak` | `flatpak install --user Kiln-*.flatpak && flatpak run io.github.oreo1298.Kiln` |
+| Arch, CachyOS, EndeavourOS, Manjaro | `packaging/arch/PKGBUILD` | See below. |
+
+You need a current GPU driver: Vulkan for most tests on Linux, Direct3D 12 / Vulkan on Windows. Older GPUs run the
+`legacy` suite through OpenGL 3.3+ or Direct3D 11.
+
+### Install on Arch Linux (and CachyOS, EndeavourOS, Manjaro)
+
+Run these as your normal user (not root); `makepkg` asks for your password when it installs the package:
 
 ```sh
 sudo pacman -S --needed base-devel git
@@ -23,14 +53,12 @@ cd GPUTest/packaging/arch
 makepkg -si
 ```
 
-This builds Kiln from the checkout and installs the `kiln` app (with a **Kiln**
-entry in your application menu), the `kiln-run` command-line runner and the
-`kiln-hw-report` hardware report script. The build downloads its pinned
+This builds Kiln from the checkout and installs the `kiln` app (with a **Kiln** entry in your application menu),
+the `kiln-run` command-line runner and the `kiln-hw-report` hardware report script. The build downloads its pinned
 libraries and the Slang shader compiler, and takes a few minutes.
 
-Dependencies (pulled in automatically) include `qt6-base`, `qt6-svg`,
-`qt6-wayland` and `vulkan-icd-loader`. You also need the Vulkan driver for your
-GPU: `vulkan-radeon` (AMD), `vulkan-intel` (Intel) or `nvidia-utils` (NVIDIA),
+Dependencies (pulled in automatically) include `qt6-base`, `qt6-svg`, `qt6-wayland` and `vulkan-icd-loader`. You
+also need the Vulkan driver for your GPU: `vulkan-radeon` (AMD), `vulkan-intel` (Intel) or `nvidia-utils` (NVIDIA),
 which also provides NVML for NVIDIA clocks, temperatures and power.
 
 To update later, pull the new code and build again from the same folder:
@@ -41,33 +69,38 @@ git pull
 makepkg -sif
 ```
 
-`-f` rebuilds even when the version number has not changed (it only changes for
-releases). If `makepkg` says `PKGBUILD does not exist`, you are not in the
-`GPUTest/packaging/arch` folder. To uninstall: `sudo pacman -R kiln`.
+`-f` rebuilds even when the version number has not changed (it only changes for releases). If `makepkg` says
+`PKGBUILD does not exist`, you are not in the `GPUTest/packaging/arch` folder. To uninstall: `sudo pacman -R kiln`.
 
-Each CI run also uploads the built package (`arch-package` artifact); install that one
-with `sudo pacman -U kiln-*.pkg.tar.zst`.
+### Other Linux distributions
 
-### Other distributions
+Use the AppImage or the Flatpak bundle, or build from source: [docs/BUILDING.md](docs/BUILDING.md).
 
-Use the AppImage (below), or build and install with CMake. You need a C++20 compiler,
-CMake, Ninja, git, Qt 6 (Widgets, Sql, Svg, DBus) development packages and the
-[Slang](https://github.com/shader-slang/slang/releases) shader compiler (extract a
-release and point `SLANG_DIR` at it); the other libraries are fetched by CMake:
+## Quick start
+
+Open **Kiln**, pick the GPU and API on the Home page and press **Run recommended suite**. When it finishes, the
+Results page shows the scores, every test's metrics and verdict, frame-time charts and the sensor data; History keeps
+every run, and Compare puts two runs side by side.
+
+Everything the app does goes through the `kiln-run` command-line runner, so it can also be scripted:
 
 ```sh
-export SLANG_DIR=$HOME/slang
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local
-cmake --build build
-sudo cmake --install build
+kiln-run --list-devices                  # GPUs per API
+kiln-run --check-support                 # which tests this GPU / API can run, and why not
+kiln-run --suite standard                # the recommended suite (scores, results in the data folder)
+kiln-run --suite diagnostics --api vulkan --gpu 1
+kiln-run --test scene.skyline --resolution 1440p --quality ultra --loop 20m
+kiln-run --export-html results.json report.html
 ```
 
-## Downloads
-Every push to `main` builds a Linux AppImage, an Arch package and a Windows portable zip — see the latest
-[CI run](https://github.com/oreo1298/GPUTest/actions/workflows/ci.yml) → Artifacts.
+## Documentation
 
-## Building
-See [CLAUDE.md](CLAUDE.md) for the short version; full instructions will live in `docs/BUILDING.md`.
+- [User guide](docs/USER_GUIDE.md): suites, settings, reading the results, diagnostics, telemetry, where files are
+- [Command line](docs/CLI.md) and [results format](docs/RESULTS_SCHEMA.md)
+- [Scoring](docs/SCORING.md) and [upscaler plugins](docs/PLUGINS.md)
+- [Building from source](docs/BUILDING.md) and [contributing](CONTRIBUTING.md)
+- Design decisions: [docs/DECISIONS.md](docs/DECISIONS.md); plan: [docs/PLAN.md](docs/PLAN.md)
 
 ## License
-MIT — see [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md).
+
+MIT — see [LICENSE](LICENSE). Third-party components and their licenses: [THIRD_PARTY.md](THIRD_PARTY.md).

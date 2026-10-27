@@ -82,5 +82,5 @@ package() {
   cd "$srcdir/$pkgname"
   DESTDIR="$pkgdir" cmake --install build
   install -Dm644 LICENSE THIRD_PARTY.md -t "$pkgdir/usr/share/licenses/$pkgname/"
-  install -Dm644 README.md docs/CLI.md docs/SCORING.md docs/HARDWARE_TESTING.md -t "$pkgdir/usr/share/doc/$pkgname/"
+  install -Dm644 README.md docs/USER_GUIDE.md docs/CLI.md docs/SCORING.md docs/HARDWARE_TESTING.md -t "$pkgdir/usr/share/doc/$pkgname/"
 }
