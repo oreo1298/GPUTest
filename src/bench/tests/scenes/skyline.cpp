@@ -395,6 +395,7 @@ public:
         FrameLoopDesc fl;
         fl.framesPerPass = s.framesPerPass(900);
         fl.simDuration = 36.0;
+        fl.realTime = true;
         fl.output = output.get();
         fl.goldenFrames = {0, fl.framesPerPass / 2};
         std::uint32_t frameCounter = 0;

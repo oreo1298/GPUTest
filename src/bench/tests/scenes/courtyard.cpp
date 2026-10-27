@@ -310,6 +310,7 @@ public:
         FrameLoopDesc fl;
         fl.framesPerPass = s.framesPerPass(900);
         fl.simDuration = 30.0;
+        fl.realTime = true;
         fl.output = output.get();
         fl.goldenFrames = {0, fl.framesPerPass / 2};
         fl.record = [&](FrameContext& fc) {

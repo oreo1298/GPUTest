@@ -41,6 +41,10 @@ struct RunSettings {
 
     /// Frame-loop sizing for the current duration preset.
     std::uint32_t framesPerPass(std::uint32_t standardFrames) const;
+    /// Real-time frame loops (FrameLoopDesc::realTime): how fast a pass plays (quick 2x, else 1x) and how
+    /// many passes a test renders (extreme 3, else 1).
+    double playbackSpeed() const;
+    std::uint32_t realTimePasses() const;
     double minSeconds() const;
     double maxSeconds() const;
     std::string param(const std::string& key, const std::string& fallback = {}) const;
@@ -62,19 +66,25 @@ class Presenter; // window + swapchain + HUD (optional)
 
 struct FrameContext {
     rhi::CommandList& cmd;
-    std::uint32_t frame;     ///< index within the pass (0..framesPerPass-1), -1 style warmups use 0
+    std::uint32_t frame;     ///< index within the pass (golden frames: their index; warmups use 0)
     std::uint32_t pass;
-    double simTime;          ///< deterministic simulated time for this frame
-    double dt;               ///< simulated time step
+    double simTime;          ///< simulated time of this frame (0..simDuration)
+    double dt;               ///< simulated time since the pass's previous frame
     bool warmup;
     std::uint32_t slot = 0;  ///< frame-in-flight index (0..kFramesInFlight-1) for per-frame resources
 };
 inline constexpr std::uint32_t kFramesInFlight = 2;
 
 struct FrameLoopDesc {
+    /// Frames of a deterministic pass: frame f shows simulated time f * simDuration / framesPerPass.
+    /// Real-time loops use it only to place the golden frames.
     std::uint32_t framesPerPass = 600;
-    std::uint32_t warmupFrames = 30;
+    std::uint32_t warmupFrames = 30; ///< at most; warm-up also ends after 2 s
     double simDuration = 20.0; ///< simulated seconds covered by one pass
+    /// Play each pass in real time: a frame shows the wall time since its pass began (scaled by
+    /// RunSettings::playbackSpeed()), so the camera moves at the same speed on every GPU and a faster GPU
+    /// renders more frames. Smoke runs stay deterministic (whole passes of framesPerPass frames).
+    bool realTime = false;
     std::function<void(FrameContext&)> record;
     /// Optional async-compute stage: recorded into a compute-queue list that waits for `record`'s
     /// submission and overlaps the next frame's graphics work; `recordPost` (graphics) waits for it
@@ -83,7 +93,8 @@ struct FrameLoopDesc {
     std::function<void(FrameContext&)> recordAsync;
     std::function<void(FrameContext&)> recordPost;
     rhi::Texture* output = nullptr; ///< final image (shown in the window, dumped as golden frames)
-    std::vector<std::uint32_t> goldenFrames; ///< frame indices (of pass 0) to dump/hash
+    /// Deterministic frames to dump/hash when frames are dumped; rendered (untimed) before the warm-up.
+    std::vector<std::uint32_t> goldenFrames;
     double minSeconds = -1.0; ///< overrides the duration preset's minimum run time when >= 0
     double maxSeconds = -1.0; ///< overrides the preset's hard time limit when > 0
 };
@@ -127,8 +138,9 @@ public:
     void log(const std::string& message);
 
     // --- harness services
-    /// Deterministic frame loop: renders whole passes of `framesPerPass` frames until
-    /// the duration preset's minimum time is reached (or the time limit / a stop).
+    /// Frame loop: renders the golden frames (when dumping), warms up, then renders timed passes: real-time
+    /// ones (FrameLoopDesc::realTime) or whole passes of `framesPerPass` frames until the duration preset's
+    /// minimum time is reached (either way bounded by the time limit and stops).
     FrameLoopResult runFrames(const FrameLoopDesc& desc);
     /// Records with `record`, submits on `queue`, waits, and returns the GPU time in ms
     /// measured with timestamps (falls back to CPU wall time when unsupported). `submitCpuMs`

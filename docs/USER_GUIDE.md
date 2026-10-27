@@ -35,6 +35,10 @@ results with it.
 | `diagnostics` | Repair-bench checks (below) | depends on the duration |
 | `full` | Every test the selected GPU and API support | |
 
+Durations: a scene plays its camera path in real time, the same speed on every GPU (a faster GPU renders more
+frames of it): `quick` plays it once at double speed (about 15 s), `standard` once (about 30 s), `extreme` three
+times. Synthetic and feature tests measure for a few seconds each.
+
 Scores are only comparable between runs with the same suite, API, resolution, quality and duration (the Results and
 Compare pages say when two runs differ). Each test's score is 1000 × its result relative to a fixed reference, and
 the suite score is the geometric mean, so one very fast or slow test cannot dominate.

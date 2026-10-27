@@ -60,8 +60,8 @@ them as a GitHub release. About 40 000 lines of C++, 52 unit-test cases, and smo
   - RHI (`src/rhi/gt/rhi/rhi.h`) + Vulkan backend (volk, VMA, push descriptors or descriptor-set fallback,
     render-pass/framebuffer caches, timeline semaphores, deferred destruction, swapchain via SDL3).
   - Capability explorer data generated from vk.xml (`scripts/gen_vk_caps.py` → `src/rhi/vulkan/vk_caps_gen.inc`).
-  - Bench framework: test registry, deterministic frame loop (fixed frame sequence, whole passes until the preset's
-    minimum time), GPU timestamps, HUD, golden-frame dumps with tolerant signatures.
+  - Bench framework: test registry, frame loop (deterministic passes; scenes later switched to real-time playback of
+    their timeline), GPU timestamps, HUD, golden-frame dumps with tolerant signatures.
   - First scene: `scene.lattice`. Telemetry: NVML + amdgpu/i915/xe sysfs + VK memory budget, sampler thread,
     safety cutoffs. Results JSON v1, JSON-lines progress stream, CLI (`docs/CLI.md`).
   - `scripts/ci-smoke.sh` (lavapipe: offscreen + validation + golden + windowed under Xvfb),

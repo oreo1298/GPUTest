@@ -57,6 +57,10 @@ std::uint32_t RunSettings::framesPerPass(std::uint32_t standardFrames) const {
     return standardFrames;
 }
 
+double RunSettings::playbackSpeed() const { return duration == DurationPreset::Quick ? 2.0 : 1.0; }
+
+std::uint32_t RunSettings::realTimePasses() const { return duration == DurationPreset::Extreme ? 3u : 1u; }
+
 double RunSettings::minSeconds() const {
     switch (duration) {
     case DurationPreset::Smoke: return 0.0;
@@ -236,27 +240,30 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
     const std::uint32_t pairs = async ? 2 * kInFlight : kInFlight;
     std::unique_ptr<rhi::QueryPool> qp;
     if (m_device.features().timestamps) qp = m_device.createQueryPool(rhi::QueryType::Timestamp, pairs * 2);
-    constexpr std::int64_t kNoFrame = -1, kUntimedFrame = -2; ///< slotFrame values besides a frame index
+    constexpr std::int64_t kNoFrame = -1; ///< slotFrame value of a pair that holds no timed frame
     std::vector<std::int64_t> slotFrame(pairs, kNoFrame);
     auto readSlot = [&](std::uint32_t slot) {
         if (!qp || slotFrame[slot] == kNoFrame) return;
         std::uint64_t t[2] = {0, 0};
-        // Read untimed frames' timestamps too: on some drivers the read is what paces the loop.
-        if (qp->read(slot * 2, 2, t) && t[1] >= t[0] && slotFrame[slot] >= 0)
+        if (qp->read(slot * 2, 2, t) && t[1] >= t[0])
             out.gpuMs[static_cast<std::size_t>(slotFrame[slot])] = static_cast<double>(t[1] - t[0]) / 1e6;
         slotFrame[slot] = kNoFrame;
     };
 
+    // Deterministic step: smoke runs and the golden frames. Real-time passes follow the clock instead.
     const double dt = d.simDuration / std::max(1u, d.framesPerPass);
+    const bool realTime = d.realTime && m_settings.duration != DurationPreset::Smoke;
+    const double speed = realTime ? m_settings.playbackSpeed() : 1.0;
+    const std::uint32_t realTimePasses = m_settings.realTimePasses();
     const double minS = d.minSeconds >= 0.0 ? d.minSeconds : m_settings.minSeconds();
     const double maxS = d.maxSeconds > 0.0 ? d.maxSeconds : m_settings.maxSeconds();
+    // Expected length of the timed part, for progress.
+    const double plannedS = realTime ? realTimePasses * d.simDuration / speed : minS;
     const std::uint32_t warmup = m_settings.duration == DurationPreset::Smoke ? std::min(d.warmupFrames, 2u)
                                                                               : d.warmupFrames;
+    enum class Kind { Warmup, Golden, Timed };
     std::uint64_t counter = 0;
-    // The frames in flight after a golden-frame dump (which drains the GPU) do not wait for an earlier frame;
-    // their time would be the CPU's recording alone, so they are rendered but not timed.
-    std::uint32_t untimed = 0;
-    const auto start = clock::now();
+    auto start = clock::now();
     auto lastFrameEnd = start;
     auto lastEvent = start;
     std::size_t lastEventFrame = 0;
@@ -275,28 +282,36 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
     }
     rhi::Texture* shown = upscale ? upscale->output() : d.output;
 
+    // Where the run is, for the HUD and the progress events.
+    auto position = [&](std::uint32_t index, std::uint32_t pass, double simTime) {
+        return realTime ? std::format("Pass {}  {:.1f}/{:.0f} s", pass + 1, simTime, d.simDuration)
+                        : std::format("Pass {}  frame {}/{}", pass + 1, index + 1, d.framesPerPass);
+    };
+
     // Records the end of a frame (timestamp, HUD, presentation) into `fin` and submits it.
-    auto finish = [&](rhi::CommandList& fin, std::uint32_t pair, std::uint32_t index, std::uint32_t pass, bool isWarmup,
-                      std::span<const rhi::QueueWait> waits) {
+    auto finish = [&](rhi::CommandList& fin, std::uint32_t pair, std::uint32_t index, std::uint32_t pass,
+                      double simTime, Kind kind, std::span<const rhi::QueueWait> waits) {
         if (upscale) upscale->record(fin, d.output); // part of the frame's GPU time
-        if (qp && !isWarmup) {
+        if (qp && kind == Kind::Timed) {
             fin.writeTimestamp(qp.get(), pair * 2 + 1);
             fin.resolveQueries(qp.get(), pair * 2, 2); // D3D12 copies results to readable memory here
         }
         bool presented = false;
         if (m_presenter) {
-            if (!isWarmup && m_presenter->hudEnabled()) {
+            if (kind == Kind::Timed && m_presenter->hudEnabled()) {
                 const auto& ft = out.frameMs;
                 const double lastMs = ft.empty() ? 0.0 : ft.back();
                 hud = {std::format("{}  [{}]", m_info.name, rhi::apiDisplayName(m_device.api())),
-                       std::format("Pass {}  frame {}/{}", pass + 1, index + 1, d.framesPerPass),
+                       position(index, pass, simTime),
                        std::format("{:.1f} fps  {:.2f} ms", lastMs > 0 ? 1000.0 / lastMs : 0.0, lastMs)};
                 if (hudStatus) {
                     auto extra = hudStatus();
                     hud.insert(hud.end(), extra.begin(), extra.end());
                 }
-            } else if (isWarmup) {
+            } else if (kind == Kind::Warmup) {
                 hud = {std::format("{}  warming up...", m_info.name)};
+            } else if (kind == Kind::Golden) {
+                hud = {std::format("{}  reference frames...", m_info.name)};
             }
             presented = m_presenter->record(fin, shown, hud);
         }
@@ -316,106 +331,129 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
         if (pendingPost) std::exchange(pendingPost, {})();
     };
 
-    auto frame = [&](std::uint32_t index, std::uint32_t pass, bool isWarmup) {
+    auto frame = [&](std::uint32_t index, std::uint32_t pass, double simTime, double step, Kind kind) {
         const std::uint32_t slot = static_cast<std::uint32_t>(counter % kInFlight);
         const std::uint32_t pair = static_cast<std::uint32_t>(counter % pairs);
         ++counter;
         rhi::CommandList& cmd = *lists[slot];
         cmd.begin();
         readSlot(pair);
-        if (qp && !isWarmup) {
+        if (qp && kind == Kind::Timed) {
             cmd.resetQueries(qp.get(), pair * 2, 2);
             cmd.writeTimestamp(qp.get(), pair * 2);
         }
-        const double simTime = isWarmup ? 0.0 : index * dt;
-        FrameContext fc{cmd, index, pass, simTime, dt, isWarmup, slot};
+        const bool isWarmup = kind == Kind::Warmup;
+        FrameContext fc{cmd, index, pass, simTime, step, isWarmup, slot};
         d.record(fc);
         if (!async) {
-            finish(cmd, pair, index, pass, isWarmup, {});
+            finish(cmd, pair, index, pass, simTime, kind, {});
         } else {
             cmd.end();
             rhi::CommandList* gl[] = {&cmd};
             const std::uint64_t gv = m_device.submit(rhi::QueueType::Graphics, rhi::SubmitInfo{gl});
             rhi::CommandList& ccmd = *computeLists[slot];
             ccmd.begin();
-            FrameContext cfc{ccmd, index, pass, simTime, dt, isWarmup, slot};
+            FrameContext cfc{ccmd, index, pass, simTime, step, isWarmup, slot};
             d.recordAsync(cfc);
             ccmd.end();
             rhi::CommandList* cl[] = {&ccmd};
             const rhi::QueueWait cw[] = {{rhi::QueueType::Graphics, gv}};
             const std::uint64_t cv = m_device.submit(rhi::QueueType::Compute, rhi::SubmitInfo{cl, cw});
             flushPost();
-            pendingPost = [&, slot, pair, index, pass, isWarmup, simTime, cv] {
+            pendingPost = [&, slot, pair, index, pass, isWarmup, simTime, step, kind, cv] {
                 rhi::CommandList& post = *postLists[slot];
                 post.begin();
-                FrameContext pfc{post, index, pass, simTime, dt, isWarmup, slot};
+                FrameContext pfc{post, index, pass, simTime, step, isWarmup, slot};
                 if (d.recordPost) d.recordPost(pfc);
                 const rhi::QueueWait pw[] = {{rhi::QueueType::Compute, cv}};
-                finish(post, pair, index, pass, isWarmup, pw);
+                finish(post, pair, index, pass, simTime, kind, pw);
             };
-            const bool golden = !isWarmup && pass == 0 && m_settings.dumpFrames &&
-                                std::find(d.goldenFrames.begin(), d.goldenFrames.end(), index) != d.goldenFrames.end();
-            if (golden) flushPost(); // the image must be complete before it is dumped
         }
         if (m_presenter && !m_presenter->pumpEvents()) {
             if (m_stopFlag) m_stopFlag->store(true);
             if (m_stopReason && m_stopReason->empty()) *m_stopReason = "benchmark window closed";
         }
         const auto now = clock::now();
-        if (!isWarmup) {
-            if (untimed > 0) {
-                --untimed;
-                slotFrame[pair] = kUntimedFrame;
-            } else {
-                out.frameMs.push_back(std::chrono::duration<double, std::milli>(now - lastFrameEnd).count());
-                out.gpuMs.push_back(std::numeric_limits<double>::quiet_NaN());
-                slotFrame[pair] = static_cast<std::int64_t>(out.gpuMs.size() - 1);
-            }
-            if (pass == 0 && m_settings.dumpFrames &&
-                std::find(d.goldenFrames.begin(), d.goldenFrames.end(), index) != d.goldenFrames.end() && d.output) {
-                m_device.waitIdle();
-                dumpTexture(shown, std::format("frame{:04}", index));
-                untimed = kInFlight;
-            }
+        if (kind == Kind::Timed) {
+            out.frameMs.push_back(std::chrono::duration<double, std::milli>(now - lastFrameEnd).count());
+            out.gpuMs.push_back(std::numeric_limits<double>::quiet_NaN());
+            slotFrame[pair] = static_cast<std::int64_t>(out.gpuMs.size() - 1);
         }
         lastFrameEnd = clock::now();
-        if (m_events && now - lastEvent >= std::chrono::milliseconds(250) && !isWarmup) {
+        if (m_events && now - lastEvent >= std::chrono::milliseconds(250) && kind == Kind::Timed) {
             const double elapsed = std::chrono::duration<double>(now - start).count();
             nlohmann::json batch = nlohmann::json::array();
             for (std::size_t i = lastEventFrame; i < out.frameMs.size(); ++i)
                 batch.push_back(std::round(out.frameMs[i] * 1000.0) / 1000.0);
             lastEventFrame = out.frameMs.size();
+            const double done =
+                realTime ? (pass * d.simDuration + simTime) / std::max(1e-9, realTimePasses * d.simDuration)
+                         : (pass * d.framesPerPass + index + 1.0) / std::max(1.0, d.framesPerPass * 1.0);
             const double frac =
-                std::max(std::min(1.0, (pass * d.framesPerPass + index + 1.0) / std::max(1.0, d.framesPerPass * 1.0)),
-                         minS > 0 ? std::min(1.0, elapsed / minS) : 0.0);
+                std::max(std::min(1.0, done), plannedS > 0 ? std::min(1.0, elapsed / plannedS) : 0.0);
             m_events->emit({{"type", "frames"}, {"test", m_info.id}, {"frame_ms", batch}, {"pass", pass},
                             {"elapsed_s", elapsed}});
-            progress(std::min(frac, 0.999), std::format("pass {} frame {}/{}", pass + 1, index + 1, d.framesPerPass));
+            progress(std::min(frac, 0.999), position(index, pass, simTime));
             lastEvent = now;
         }
     };
 
-    for (std::uint32_t i = 0; i < warmup && !stop; ++i) {
-        frame(0, 0, true);
-        stop = stopRequested();
-    }
-    lastFrameEnd = clock::now();
-    for (std::uint32_t pass = 0; !stop; ++pass) {
-        for (std::uint32_t f = 0; f < d.framesPerPass; ++f) {
+    // Golden frames first, at their deterministic times: dumping drains the GPU, which must not happen
+    // between timed frames.
+    if (m_settings.dumpFrames && d.output)
+        for (const std::uint32_t g : d.goldenFrames) {
             if (stopRequested()) {
                 stop = true;
                 break;
             }
-            const double elapsed = std::chrono::duration<double>(clock::now() - start).count();
-            if (elapsed > maxS) {
+            frame(g, 0, g * dt, dt, Kind::Golden);
+            flushPost(); // the image must be complete before it is dumped
+            m_device.waitIdle();
+            dumpTexture(shown, std::format("frame{:04}", g));
+        }
+    const auto warmupStart = clock::now();
+    for (std::uint32_t i = 0; i < warmup && !stop; ++i) {
+        frame(0, 0, 0.0, 0.0, Kind::Warmup);
+        stop = stopRequested();
+        // Slow GPUs: two seconds of warm-up are enough.
+        if (i >= 1 && std::chrono::duration<double>(clock::now() - warmupStart).count() >= 2.0) break;
+    }
+    start = clock::now();
+    lastEvent = start;
+    lastFrameEnd = start;
+    for (std::uint32_t pass = 0; !stop; ++pass) {
+        const auto passStart = clock::now();
+        double previous = 0.0;
+        for (std::uint32_t f = 0;; ++f) {
+            if (stopRequested()) {
+                stop = true;
+                break;
+            }
+            const auto now = clock::now();
+            if (std::chrono::duration<double>(now - start).count() > maxS) {
                 out.timeLimited = true;
                 stop = true;
                 break;
             }
-            frame(f, pass, false);
+            double simTime = f * dt;
+            bool last = false;
+            if (realTime) {
+                simTime = std::chrono::duration<double>(now - passStart).count() * speed;
+                if (simTime >= d.simDuration) {
+                    simTime = d.simDuration;
+                    last = true;
+                }
+            } else if (f >= d.framesPerPass) {
+                break;
+            }
+            frame(f, pass, simTime, simTime - previous, Kind::Timed);
+            previous = simTime;
+            if (last) break;
         }
         if (!stop) out.passes = pass + 1;
-        if (std::chrono::duration<double>(clock::now() - start).count() >= minS) break;
+        if (realTime ? out.passes >= realTimePasses
+                     : std::chrono::duration<double>(clock::now() - start).count() >= minS)
+            break;
     }
     flushPost();
     m_device.waitIdle();

@@ -10,8 +10,9 @@ Each scored test has a primary metric (usually average FPS) and a fixed **refere
 - higher-is-better metrics: `score = 1000 × value / reference`
 - lower-is-better metrics: `score = 1000 × reference / value`
 
-A test that did not complete is not scored. Frame-based tests render a fixed sequence of frames (deterministic
-simulated time, fixed seed), so every GPU renders exactly the same images; passes are repeated whole until the
+A test that did not complete is not scored. Scenes play a fixed timeline (camera path, fixed seed) in real time,
+so every GPU renders the same content at the same pace and a faster GPU renders more frames of it; the average over
+the timeline is what is scored. Other frame-based tests render a fixed sequence of frames, repeated whole until the
 duration preset's minimum time is reached, which keeps boost/thermal behaviour realistic without changing what is
 measured.
 
