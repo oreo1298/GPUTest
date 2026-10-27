@@ -183,10 +183,17 @@ void HistoryPage::updateTrend() {
     const auto rows = selectedRows();
     if (rows.isEmpty()) {
         m_trend->clearData();
+        m_trend->setEmptyText(tr("Select a run to see the scores of all comparable runs over time."));
         m_trendNote->setText(QString());
         return;
     }
-    const QString key = m_entries[rows.front()].comparableKey;
+    const HistoryEntry& sel = m_entries[rows.front()];
+    const QString key = sel.comparableKey;
+    const QString settings = QStringLiteral("%1 · %2 · %3×%4 · %5 / %6")
+                                 .arg(sel.suite, apiDisplayName(sel.api))
+                                 .arg(sel.width)
+                                 .arg(sel.height)
+                                 .arg(sel.quality, sel.duration);
     // All comparable runs (ignoring the text filter), oldest first.
     auto all = History::instance().entries();
     std::reverse(all.begin(), all.end());
@@ -199,10 +206,15 @@ void HistoryPage::updateTrend() {
     }
     m_trend->resetZoom();
     m_trend->setPoints(0, pts);
-    m_trendNote->setText(pts.size() < 2 ? tr("Only one run with these settings (%1) so far.").arg(key)
-                                        : tr("%1 runs with the same settings (%2) on %3.")
-                                              .arg(pts.size())
-                                              .arg(key, gpus.join(QStringLiteral(", "))));
+    m_trend->setEmptyText(tr("This run has no overall score."));
+    if (sel.overall <= 0)
+        m_trendNote->setText(tr("This run (%1) has no overall score: its tests are unscored or did not finish.").arg(settings));
+    else if (pts.size() < 2)
+        m_trendNote->setText(tr("Only one scored run with these settings (%1) so far.").arg(settings));
+    else
+        m_trendNote->setText(tr("%1 scored runs with the same settings (%2) on %3.")
+                                 .arg(pts.size())
+                                 .arg(settings, gpus.join(QStringLiteral(", "))));
 }
 
 void HistoryPage::importFiles() {

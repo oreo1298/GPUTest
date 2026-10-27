@@ -218,6 +218,7 @@ void TestsPage::rebuildSuites() {
                                   s.tests.isEmpty() ? Badge::Kind::Neutral : Badge::Kind::Accent));
         l->addLayout(head);
         l->addWidget(makeHint(s.description));
+        l->addStretch(); // top-aligned when a neighbour in the row has a longer description
         const QString id = s.id;
         connect(card, &Card::clicked, this, [this, id] { selectSuite(id); });
         grid->addWidget(card, i / 3, i % 3);

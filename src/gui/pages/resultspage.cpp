@@ -200,8 +200,9 @@ ResultsPage::ResultsPage(AppState* state, QWidget* parent)
     m_content->addWidget(m_tabs);
     m_content->addStretch();
 
-    for (QWidget* w : {static_cast<QWidget*>(m_compare), static_cast<QWidget*>(m_export), static_cast<QWidget*>(m_tabs)})
-        w->setEnabled(false);
+    m_compare->setEnabled(false);
+    m_export->setEnabled(false);
+    m_tabs->hide(); // nothing but the hint and Open until a run is loaded
 
     connect(open, &QPushButton::clicked, this, [this] {
         const QString f = QFileDialog::getOpenFileName(this, tr("Open results"), Settings::instance().resultsDir(),
@@ -228,8 +229,8 @@ void ResultsPage::showRun(const results::RunResult& run, const QString& file) {
     m_run = run;
     m_file = file;
     m_loaded = true;
-    for (QWidget* w : {static_cast<QWidget*>(m_compare), static_cast<QWidget*>(m_export), static_cast<QWidget*>(m_tabs)})
-        w->setEnabled(true);
+    m_export->setEnabled(true);
+    m_tabs->show();
     m_compare->setEnabled(!file.isEmpty());
     m_note->hide();
     const auto& g = run.system.gpu;
