@@ -424,6 +424,7 @@ public:
 
     // --- native access
     ID3D12Device* d3dDevice() const { return m_device.get(); }
+    ID3D12Device2* device2() const { return m_device2.get(); }
     ID3D12Device5* device5() const { return m_device5.get(); }
     IDXGIAdapter1* dxgiAdapter() const { return m_adapterDxgi.get(); }
     IDXGIFactory4* dxgiFactory() const { return m_factory.get(); }
@@ -467,6 +468,7 @@ private:
     Com<IDXGIFactory4> m_factory;
     Com<IDXGIAdapter1> m_adapterDxgi;
     Com<ID3D12Device> m_device;
+    Com<ID3D12Device2> m_device2;
     Com<ID3D12Device5> m_device5;
     Com<ID3D12InfoQueue> m_infoQueue;
     DWORD m_callbackCookie = 0;

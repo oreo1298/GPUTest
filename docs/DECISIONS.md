@@ -152,6 +152,23 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **No local DXC/fxc**: Windows compiler binaries can be downloaded but this environment does not allow running
   them, so D3D shader compilation is verified only by Windows CI (which builds with `-k 0` to report every error).
 
+- **D3D12 backend binding model**: one root signature per pipeline layout (cached): push constants as root
+  constants at b13, buffers and acceleration structures as root descriptors (moved into the table only when a
+  layout would exceed the 64-DWORD limit), one descriptor table for texture views and one for samplers, filled by
+  copying CPU-heap descriptors into per-command-list blocks of the shader-visible heaps at draw time.
+- **D3D12 resource states**: buffers and simultaneous-access textures (`concurrentQueues`) decay to COMMON after
+  every ExecuteCommandLists, so they are tracked per command list from COMMON, and submit() executes one list per
+  call; other textures are tracked globally (record order = submit order, as with Vulkan layouts). Every binding
+  transitions its resource to a usable state, so tests written against Vulkan's laxer rules still work.
+- **D3D12 runtime selection at run time**: d3d12.dll/dxgi.dll are loaded dynamically; when "D3D12\D3D12Core.dll"
+  sits next to the runner, devices come from that Agility SDK through ID3D12SDKConfiguration1::CreateDeviceFactory,
+  otherwise from Windows' built-in runtime. No D3D12SDKVersion export, so a missing folder can never break startup.
+- **Agility SDK and WARP are not shipped**: WARP's NuGet license is test-only; the Agility SDK's redistribution
+  terms require end-user terms that protect Microsoft and an indemnity from the distributor, which is the owner's
+  call (asked). CI stages both next to the test build only; the portable zip uses Windows' runtime.
+- **DirectX-Headers v1.619.5** (MIT) for the API (no Windows SDK d3d12.h); the backend is compile-checked on
+  Linux with mingw-w64 (`scripts/check-d3d12.sh`) because nothing can run Windows binaries here.
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.

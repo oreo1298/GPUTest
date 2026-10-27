@@ -50,19 +50,24 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   `feature.pipelines`, `feature.drawcalls`, `feature.coopmat`. On lavapipe 10 run (SER/OMM as baselines); VRS,
   SER, OMM and cooperative matrices need real hardware (docs/HARDWARE_TESTING.md). Work graphs, cooperative
   vectors and image-based VRS moved to M10 (docs/DECISIONS.md).
-- **Milestone 9 (scene benchmarks): in progress.** Scene toolkit (`gt/bench/scene.h`: procedural meshes, mesh
+- **Milestone 9 (scene benchmarks): done** (CI green at 36611a8). Scene toolkit (`gt/bench/scene.h`: procedural meshes, mesh
   pool, camera paths, culling helpers) and an async-compute frame loop. Scenes: `scene.courtyard` (+`.lite`, legacy
   forward: PCF sun shadows, MSAA, tessellated terrain where available), `scene.atrium` (+`.lite`, legacy deferred
   with light volumes), `scene.skyline` (modern: GPU culling + indirect draws, cascaded shadows, async-compute AO
   and bloom), `scene.glasshouse` (ultimate hybrid: ray-queried soft shadows/AO/reflections, mesh-shader grass,
   VRS), `scene.gallery` (ultimate: path tracer with sun/portal/emitter next-event estimation and an a-trous
   denoiser; reports Mpaths/s). Skyline, Glasshouse and Gallery are CPU-light by construction (GPU-driven or
-  compute-only). Remaining: scoring references, suites, golden references, docs, GUI screenshots.
+  compute-only). Provisional score references in docs/SCORING.md; CI renders every scene at 320x180 with
+  validation and compares golden frames (GCC and Clang builds agree within 1, Gallery's noise within 5).
 - **Arch package (requested ahead of M13): done.** `packaging/arch/PKGBUILD` builds from the checkout like the
   owner's other projects (`cd GPUTest/packaging/arch && makepkg -si`); CI job "Arch Linux package" runs makepkg in
   an `archlinux:base-devel` container, installs the package, runs a smoke suite and GUI screenshots from it, and
   uploads the `.pkg.tar.zst`. README has the install section.
-- Next: finish Milestone 9, then Milestone 10 (D3D12).
+- **Milestone 10 (D3D12): in progress.** Backend under `src/rhi/d3d12` (device, adapters, descriptor heaps,
+  root signatures, resources, pipelines so far), compile-checked locally with `scripts/check-d3d12.sh` (mingw-w64)
+  and built/run in Windows CI.
+- Next: finish the D3D12 command list, swapchain and acceleration structures, wire the backend into CMake and the
+  runner (Agility SDK export), then WARP smoke tests in CI.
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,

@@ -249,7 +249,10 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
     // Records the end of a frame (timestamp, HUD, presentation) into `fin` and submits it.
     auto finish = [&](rhi::CommandList& fin, std::uint32_t pair, std::uint32_t index, std::uint32_t pass, bool isWarmup,
                       std::span<const rhi::QueueWait> waits) {
-        if (qp && !isWarmup) fin.writeTimestamp(qp.get(), pair * 2 + 1);
+        if (qp && !isWarmup) {
+            fin.writeTimestamp(qp.get(), pair * 2 + 1);
+            fin.resolveQueries(qp.get(), pair * 2, 2); // D3D12 copies results to readable memory here
+        }
         bool presented = false;
         if (m_presenter) {
             if (!isWarmup && m_presenter->hudEnabled()) {

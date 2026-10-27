@@ -14,6 +14,10 @@ env:
   QT_VERSION: "6.12.0"
   SLANG_VERSION: "2026.20"
   VULKAN_SDK_VERSION: "1.4.363.0"
+  # Direct3D 12 test runtimes for the Windows smoke test (staged next to the test build only;
+  # neither is packaged: WARP's license is test-only, the Agility SDK's needs an owner decision).
+  AGILITY_SDK_VERSION: "1.619.6"
+  WARP_VERSION: "1.0.21"
 
 jobs:
   linux:
@@ -292,6 +296,23 @@ jobs:
 
       - name: Unit tests
         run: ctest --preset ci-windows
+
+      - name: Stage Direct3D 12 test runtimes (Agility SDK, WARP)
+        shell: pwsh
+        run: |
+          $tmp = Join-Path $env:RUNNER_TEMP "d3d12-nuget"
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          foreach ($p in @(@("microsoft.direct3d.d3d12", $env:AGILITY_SDK_VERSION), @("microsoft.direct3d.warp", $env:WARP_VERSION))) {
+            $zip = Join-Path $tmp "$($p[0]).zip"
+            Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/$($p[0])/$($p[1])/$($p[0]).$($p[1]).nupkg" -OutFile $zip
+            Expand-Archive -Path $zip -DestinationPath (Join-Path $tmp $p[0]) -Force
+          }
+          $bin = "build/ci-windows/bin"
+          New-Item -ItemType Directory -Force -Path "$bin/D3D12" | Out-Null
+          $agility = "$tmp/microsoft.direct3d.d3d12/build/native/bin/x64"
+          Copy-Item "$agility/D3D12Core.dll", "$agility/d3d12SDKLayers.dll" "$bin/D3D12/"
+          Copy-Item "$tmp/microsoft.direct3d.warp/build/native/bin/x64/d3d10warp.dll" "$bin/"
+          Get-ChildItem -Recurse $bin -Filter *.dll | ForEach-Object { Write-Host $_.FullName }
 
       - name: Runner smoke test (WARP)
         shell: pwsh

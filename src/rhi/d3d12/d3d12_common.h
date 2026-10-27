@@ -111,10 +111,19 @@ struct Runtime {
     PFN_D3D12_CREATE_DEVICE createDevice = nullptr;
     PFN_D3D12_GET_DEBUG_INTERFACE getDebugInterface = nullptr;
     PFN_D3D12_SERIALIZE_VERSIONED_ROOT_SIGNATURE serializeRootSignature = nullptr;
+    PFN_D3D12_GET_INTERFACE getInterface = nullptr; ///< SDK configuration (side-by-side Agility SDK)
     HRESULT(WINAPI* createDxgiFactory2)(UINT, REFIID, void**) = nullptr;
     std::string error; ///< why Direct3D 12 is unavailable (empty when loaded)
 };
 const Runtime& runtime();
+
+/// Creates devices and debug interfaces from the Direct3D 12 Agility SDK runtime in
+/// "<runner folder>\D3D12\" when one is there (D3D12SDKConfiguration1), otherwise from the
+/// operating system's runtime.
+HRESULT createRawDevice(IUnknown* adapter, REFIID iid, void** device);
+HRESULT getDebugInterface(REFCLSID clsid, REFIID iid, void** object);
+/// "Agility SDK 619 (path)" or "Windows built-in runtime".
+std::string runtimeDescription();
 
 /// Validation (debug layer) message counters shared by every device.
 ValidationCounts globalValidationCounts();

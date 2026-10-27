@@ -19,6 +19,20 @@ if(GT_ENABLE_VULKAN)
   list(APPEND _rhi_libs gt_volk_headers gt_vma)
 endif()
 
+if(GT_ENABLE_D3D12)
+  list(APPEND _rhi_sources
+    d3d12/d3d12_util.cpp
+    d3d12/d3d12_device.cpp
+    d3d12/d3d12_resources.cpp
+    d3d12/d3d12_pipeline.cpp
+    d3d12/d3d12_commandlist.cpp
+    d3d12/d3d12_raytracing.cpp
+    d3d12/d3d12_swapchain.cpp)
+  list(APPEND _rhi_defs GT_HAS_D3D12=1)
+  # Headers only: d3d12.dll and dxgi.dll are loaded at run time.
+  list(APPEND _rhi_libs Microsoft::DirectX-Headers Microsoft::DirectX-Guids)
+endif()
+
 add_library(gt_rhi STATIC ${_rhi_sources})
 target_include_directories(gt_rhi PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(gt_rhi PUBLIC ${_rhi_defs})

@@ -156,12 +156,69 @@ const Runtime& runtime() {
         r.getDebugInterface = proc<PFN_D3D12_GET_DEBUG_INTERFACE>(r.d3d12, "D3D12GetDebugInterface");
         r.serializeRootSignature =
             proc<PFN_D3D12_SERIALIZE_VERSIONED_ROOT_SIGNATURE>(r.d3d12, "D3D12SerializeVersionedRootSignature");
+        r.getInterface = proc<PFN_D3D12_GET_INTERFACE>(r.d3d12, "D3D12GetInterface");
         r.createDxgiFactory2 = proc<HRESULT(WINAPI*)(UINT, REFIID, void**)>(r.dxgi, "CreateDXGIFactory2");
         if (!r.createDevice || !r.serializeRootSignature || !r.createDxgiFactory2)
             r.error = "this Windows version's Direct3D 12 runtime is too old (missing entry points)";
         return r;
     }();
     return rt;
+}
+
+namespace {
+
+struct Agility {
+    Com<ID3D12DeviceFactory> factory;
+    std::string path;
+};
+
+const Agility& agility() {
+    static const Agility a = [] {
+        Agility out;
+        const Runtime& rt = runtime();
+        if (!rt.getInterface) return out;
+        wchar_t exe[MAX_PATH];
+        const DWORD n = GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        if (n == 0 || n >= MAX_PATH) return out;
+        std::wstring dir(exe, n);
+        dir = dir.substr(0, dir.find_last_of(L"\\/") + 1) + L"D3D12\\";
+        if (GetFileAttributesW((dir + L"D3D12Core.dll").c_str()) == INVALID_FILE_ATTRIBUTES) return out;
+        Com<ID3D12SDKConfiguration1> config;
+        if (FAILED(rt.getInterface(CLSID_D3D12SDKConfiguration, __uuidof(ID3D12SDKConfiguration1), config.putVoid()))) {
+            log::info("Direct3D 12: this Windows version cannot load the Agility SDK side by side; using its own runtime");
+            return out;
+        }
+        const std::string path = narrow(dir.c_str());
+        const HRESULT hr = config->CreateDeviceFactory(D3D12_SDK_VERSION, path.c_str(), __uuidof(ID3D12DeviceFactory),
+                                                       out.factory.putVoid());
+        if (FAILED(hr)) {
+            log::warn("Direct3D 12: Agility SDK in {} not usable ({}); using the Windows runtime", path, hresultName(hr));
+            out.factory.reset();
+            return out;
+        }
+        out.path = path;
+        return out;
+    }();
+    return a;
+}
+
+} // namespace
+
+HRESULT createRawDevice(IUnknown* adapter, REFIID iid, void** device) {
+    if (const Agility& a = agility(); a.factory)
+        return a.factory->CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, iid, device);
+    return runtime().createDevice(adapter, D3D_FEATURE_LEVEL_11_0, iid, device);
+}
+
+HRESULT getDebugInterface(REFCLSID clsid, REFIID iid, void** object) {
+    if (const Agility& a = agility(); a.factory) return a.factory->GetConfigurationInterface(clsid, iid, object);
+    if (!runtime().getDebugInterface) return E_NOINTERFACE;
+    return runtime().getDebugInterface(iid, object);
+}
+
+std::string runtimeDescription() {
+    const Agility& a = agility();
+    return a.factory ? std::format("Agility SDK {} ({})", D3D12_SDK_VERSION, a.path) : "Windows built-in runtime";
 }
 
 ValidationCounts globalValidationCounts() {

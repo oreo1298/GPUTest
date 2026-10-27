@@ -1,19 +1,77 @@
-# Windows CI smoke test. Until the D3D12/D3D11 backends land (WARP), this checks that the
-# runner starts, enumerates devices (none on CI runners) and lists tests and suites.
-param([Parameter(Mandatory = $true)][string]$BuildDir)
+# Windows CI smoke test: the runner starts and lists tests and suites; then, on Direct3D 12 with
+# WARP (CI runners have no GPU), the smoke suite and every scene run offscreen with the debug layer,
+# and must complete with zero debug-layer errors. The standard suite also runs at smoke size; its
+# outcome is reported (annotations) without failing the job until every test is ported.
+param(
+    [Parameter(Mandatory = $true)][string]$BuildDir,
+    [switch]$StrictStandard
+)
 $ErrorActionPreference = "Stop"
+$root = Split-Path -Parent $PSScriptRoot
 $runner = Get-ChildItem (Join-Path $BuildDir "bin\*-run.exe") | Select-Object -First 1
 if (-not $runner) { throw "runner not found in $BuildDir\bin" }
 $out = Join-Path $BuildDir "smoke"
 New-Item -ItemType Directory -Force -Path $out | Out-Null
-& $runner.FullName --version
-if ($LASTEXITCODE -ne 0) { throw "--version failed" }
+
+function Run([string]$what, [string[]]$runnerArgs, [int[]]$okCodes = @(0)) {
+    Write-Host "== $what"
+    & $runner.FullName @runnerArgs
+    $code = $LASTEXITCODE
+    if ($okCodes -notcontains $code) { throw "$what failed (exit $code)" }
+    return $code
+}
+
+Run "version" @("--version") | Out-Null
 & $runner.FullName --list-devices --json | Out-File -Encoding utf8 (Join-Path $out "devices.json")
 if ($LASTEXITCODE -ne 0) { throw "--list-devices failed" }
-Get-Content (Join-Path $out "devices.json") -Raw | ConvertFrom-Json | Out-Null
+$devices = Get-Content (Join-Path $out "devices.json") -Raw | ConvertFrom-Json
 & $runner.FullName --list-tests --json | Out-File -Encoding utf8 (Join-Path $out "tests.json")
 if ($LASTEXITCODE -ne 0) { throw "--list-tests failed" }
 $tests = Get-Content (Join-Path $out "tests.json") -Raw | ConvertFrom-Json
 if ($tests.Count -lt 1) { throw "no tests registered" }
 & $runner.FullName --list-suites | Out-Host
-Write-Host "windows smoke OK ($($tests.Count) tests)"
+
+$d3d12 = $devices.apis | Where-Object { $_.api -eq "d3d12" }
+if (-not $d3d12 -or -not $d3d12.adapters -or $d3d12.adapters.Count -lt 1) {
+    throw "no Direct3D 12 adapter (WARP) found: $(Get-Content (Join-Path $out 'devices.json') -Raw)"
+}
+Write-Host "Direct3D 12 adapters: $(($d3d12.adapters | ForEach-Object { $_.name }) -join ', ')"
+& $runner.FullName --api d3d12 --caps --json | Out-File -Encoding utf8 (Join-Path $out "caps-d3d12.json")
+if ($LASTEXITCODE -ne 0) { throw "--caps --api d3d12 failed" }
+& $runner.FullName --api d3d12 --check-support | Out-File -Encoding utf8 (Join-Path $out "support-d3d12.txt")
+
+$common = @("--api", "d3d12", "--offscreen", "--resolution", "320x180", "--validation", "--fail-on-validation",
+            "--log-level", "info")
+
+# Core: must pass.
+Run "D3D12 smoke suite" ($common + @("--suite", "smoke", "--dump-frames", "$out\frames-d3d12",
+                                      "--out", "$out\smoke-d3d12.json", "--log-file", "$out\smoke-d3d12.log")) | Out-Null
+python "$root/scripts/check-results.py" "$out\smoke-d3d12.json" --require-completed
+if ($LASTEXITCODE -ne 0) { throw "D3D12 smoke results check failed" }
+
+$scenes = "scene.lattice,scene.courtyard,scene.courtyard.lite,scene.atrium,scene.atrium.lite,scene.skyline,scene.glasshouse,scene.gallery"
+Run "D3D12 scenes" ($common + @("--test", $scenes, "--duration", "smoke", "--quality", "low",
+                                 "--dump-frames", "$out\scene-frames-d3d12", "--out", "$out\scenes-d3d12.json",
+                                 "--log-file", "$out\scenes-d3d12.log")) | Out-Null
+python "$root/scripts/check-results.py" "$out\scenes-d3d12.json" --require-completed
+if ($LASTEXITCODE -ne 0) { throw "D3D12 scene results check failed" }
+
+# Broad: every other test at smoke size (report only unless -StrictStandard).
+Write-Host "== D3D12 standard suite (smoke size)"
+& $runner.FullName @common --suite standard --duration smoke --quality low --out "$out\standard-d3d12.json" `
+    --log-file "$out\standard-d3d12.log"
+$code = $LASTEXITCODE
+if (Test-Path "$out\standard-d3d12.json") {
+    $r = Get-Content "$out\standard-d3d12.json" -Raw | ConvertFrom-Json
+    foreach ($t in $r.tests) {
+        $line = "{0,-28} {1,-10} {2}" -f $t.id, $t.status, ($(if ($t.verdict) { "$($t.verdict): $($t.verdict_message)" } else { $t.status_message }))
+        if ($t.status -ne "completed" -and $t.status -ne "skipped" -or $t.verdict -eq "fail") {
+            Write-Host "::warning title=D3D12 $($t.id)::$line"
+        } else {
+            Write-Host $line
+        }
+    }
+    Write-Host "debug-layer errors: $($r.validation.errors)"
+}
+if ($StrictStandard -and $code -ne 0) { throw "D3D12 standard suite failed (exit $code)" }
+Write-Host "windows smoke OK ($($tests.Count) tests; D3D12 standard suite exit $code)"

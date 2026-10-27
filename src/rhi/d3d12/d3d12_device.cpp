@@ -79,7 +79,6 @@ struct FoundAdapter {
 
 /// Adapters that can create a Direct3D 12 device, in DXGI order.
 std::vector<FoundAdapter> findAdapters(IDXGIFactory4* factory) {
-    const Runtime& rt = runtime();
     std::vector<FoundAdapter> out;
     for (UINT i = 0;; ++i) {
         Com<IDXGIAdapter1> a;
@@ -87,7 +86,7 @@ std::vector<FoundAdapter> findAdapters(IDXGIFactory4* factory) {
         DXGI_ADAPTER_DESC1 d{};
         if (FAILED(a->GetDesc1(&d))) continue;
         Com<ID3D12Device> dev;
-        if (FAILED(rt.createDevice(a.get(), D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), dev.putVoid()))) continue;
+        if (FAILED(createRawDevice(a.get(), __uuidof(ID3D12Device), dev.putVoid()))) continue;
         FoundAdapter f;
         f.adapter = a;
         AdapterInfo& ai = f.info;
@@ -105,7 +104,7 @@ std::vector<FoundAdapter> findAdapters(IDXGIFactory4* factory) {
                                                                                                : AdapterType::Discrete;
         ai.driverName = std::string(vendorName(d.VendorId));
         ai.driverVersion = driverVersion(a.get(), d.VendorId);
-        ai.driverInfo = std::format("WDDM user-mode driver {}", ai.driverVersion);
+        ai.driverInfo = std::format("WDDM user-mode driver {}; {}", ai.driverVersion, runtimeDescription());
         ai.apiVersion = std::format("FL {}, SM {}", featureLevelName(maxFeatureLevel(dev.get())),
                                     shaderModelName(highestShaderModel(dev.get())));
         ai.dedicatedMemory = d.DedicatedVideoMemory;
@@ -263,7 +262,7 @@ D3D12Device::D3D12Device(const DeviceCreateInfo& info) {
 
     if (info.validation) {
         Com<ID3D12Debug> debug;
-        if (rt.getDebugInterface && SUCCEEDED(rt.getDebugInterface(__uuidof(ID3D12Debug), debug.putVoid()))) {
+        if (SUCCEEDED(getDebugInterface(CLSID_D3D12Debug, __uuidof(ID3D12Debug), debug.putVoid()))) {
             debug->EnableDebugLayer();
             if (info.gpuAssisted)
                 if (auto d1 = debug.as<ID3D12Debug1>()) d1->SetEnableGPUBasedValidation(TRUE);
@@ -273,9 +272,10 @@ D3D12Device::D3D12Device(const DeviceCreateInfo& info) {
         }
     }
     // Device-removed extended data: breadcrumbs and page-fault details for device-loss reports.
-    if (rt.getDebugInterface) {
+    {
         Com<ID3D12DeviceRemovedExtendedDataSettings> dred;
-        if (SUCCEEDED(rt.getDebugInterface(__uuidof(ID3D12DeviceRemovedExtendedDataSettings), dred.putVoid()))) {
+        if (SUCCEEDED(getDebugInterface(CLSID_D3D12DeviceRemovedExtendedData,
+                                        __uuidof(ID3D12DeviceRemovedExtendedDataSettings), dred.putVoid()))) {
             dred->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
             dred->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
         }
@@ -288,8 +288,8 @@ D3D12Device::D3D12Device(const DeviceCreateInfo& info) {
                                 adapters.size()));
     m_adapterDxgi = adapters[info.adapterIndex].adapter;
     m_adapter = adapters[info.adapterIndex].info;
-    check(rt.createDevice(m_adapterDxgi.get(), D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), m_device.putVoid()),
-          "D3D12CreateDevice");
+    check(createRawDevice(m_adapterDxgi.get(), __uuidof(ID3D12Device), m_device.putVoid()), "D3D12CreateDevice");
+    m_device2 = m_device.as<ID3D12Device2>();
     m_device5 = m_device.as<ID3D12Device5>();
     setName(m_device.get(), "kiln-device");
     if (m_validation) installMessageCallback();
@@ -308,8 +308,8 @@ D3D12Device::D3D12Device(const DeviceCreateInfo& info) {
                                                         kSamplerHeapCapacity, kSamplerBlock);
     createQueues();
     fillFeatures();
-    log::info("Direct3D 12 device: {} ({}, driver {}, {}){}", m_adapter.name, m_adapter.driverName,
-              m_adapter.driverVersion, m_adapter.apiVersion, m_validation ? ", debug layer on" : "");
+    log::info("Direct3D 12 device: {} ({}, driver {}, {}, {}){}", m_adapter.name, m_adapter.driverName,
+              m_adapter.driverVersion, m_adapter.apiVersion, runtimeDescription(), m_validation ? ", debug layer on" : "");
 }
 
 D3D12Device::~D3D12Device() {
