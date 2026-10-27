@@ -68,6 +68,18 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
     copper column, a steel lattice sphere, a stone blob), fluted columns, a glass bead chandelier, and a floor of
     1440 tile instances (medium and up) so that most rays traverse a large TLAS; 1/3/8/16 paths per pixel with
     3/4/5/6 bounces. Denser meshes alone added little: most path-tracing rays end on the walls and floor.
+  - Atrium (legacy deferred): 64/256/1024/2048 point lights (high and ultra reach 30 % further; past 256 each
+    light dims so the hall keeps its exposure), screen-space AO (0/8/16/32 samples, a plain fragment shader),
+    shadow maps up to 8192, fluted columns, turned balusters and noise-displaced marble sculptures.
+  - Courtyard (legacy forward): 150/400/1200/2500 trees, rounder meshes, terrain grids up to 768², shadow maps
+    up to 8192 and up to 8x MSAA, fluted arcade columns from medium up.
+  - Skyline (modern): 16/24/40/60 blocks per side, ledges at the floor lines (every 3rd/2nd/every floor from
+    medium up; extra instances for the GPU culling and the cascades), shadow tiles up to 4096, 4-32 AO samples.
+  - Lattice: up to 96 x 8 x 96 blocks with rounded, subdivided faces (12-192 triangles each).
+  Software renderers keep small content in every scene (`--param scene.full_detail=1` overrides).
+- **Micro measurements sample for a minimum time** (quick 1 s, standard 3 s, extreme 8 s, on top of the minimum
+  sample count) and report the median: a 4090 finished the synthetic tests in 0.07-0.3 s, before its clocks had
+  settled and too fast to look like a test at all.
 - **Generated content uses a portable random generator** (`scene::Random`, SplitMix64): the std:: distributions
   differ between libstdc++ and MSVC, which would make the same scene differ between Linux and Windows builds.
 - **Golden-image checks use a 16×9 mean-colour signature with a tolerance (default 8/255) plus an exact hash**: exact hashes break across drivers/LLVM versions, signatures still catch broken rendering.

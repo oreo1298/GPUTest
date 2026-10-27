@@ -44,6 +44,12 @@ MeshData icosphere(std::uint32_t subdivisions);
 MeshData parametric(std::uint32_t uSteps, std::uint32_t vSteps, const std::function<Vec3(float, float)>& f);
 /// Recomputes smooth vertex normals from the (area-weighted) triangle normals.
 void computeNormals(MeshData& m);
+/// A lumpy unit sphere for sculptures: an icosphere pushed in and out by smooth noise (radius 0.75-1.25).
+MeshData blob(std::uint32_t subdivisions);
+/// A fluted column of unit radius from y = 0 to 1, `flutes` grooves `depth` deep; `twist` turns them as they rise.
+MeshData flutedColumn(std::uint32_t steps, std::uint32_t rows, int flutes, float depth, float twist = 0.0f);
+/// A solid of revolution about Y from y = 0 to 1 with the given radius at each height (balusters, vases).
+MeshData lathe(std::uint32_t steps, std::uint32_t rows, const std::function<float(float)>& radius);
 /// Grid in the XZ plane (y = height(x, z)), `cells` x `cells` quads over [-size/2, size/2]²; normals from the
 /// height function by central differences; uv = world xz / uvScale.
 MeshData heightfield(std::uint32_t cells, float size, const std::function<float(float, float)>& height, float uvScale = 4.0f);

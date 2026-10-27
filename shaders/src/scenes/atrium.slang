@@ -1,7 +1,7 @@
 // "Atrium" (legacy tier): a colonnaded hall with two balcony levels under a skylight, rendered
-// with classic deferred shading — a G-buffer (albedo + specular, normal + gloss, depth), a sun
-// pass with a shadow map through the skylight, hundreds of moving point lights drawn as light
-// volumes with additive blending, and a tone-mapping pass. Vertex and pixel shaders, constant
+// with classic deferred shading — a G-buffer (albedo + specular, normal + gloss, depth), screen-
+// space ambient occlusion, a sun pass with a shadow map through the skylight, up to thousands of
+// moving point lights drawn as light volumes with additive blending, and a tone-mapping pass. Vertex and pixel shaders, constant
 // buffers and texture loads only (OpenGL 3.3 / D3D11 feature level 10).
 #include "common/bindings.slang"
 
@@ -13,6 +13,7 @@ struct FrameData {
     float4 sunDir;    // xyz towards the sun, w = intensity
     float4 sunColor;  // rgb, a = shadow-map texel size
     float4 screen;    // width, height, 1/width, 1/height
+    float4 params;    // x = SSAO samples (0: none), y = SSAO radius
 };
 ConstantBuffer<FrameData> frame : register(b0);
 
@@ -36,6 +37,7 @@ Texture2D<float4> gNormal : register(t1);
 Texture2D<float> gDepth : register(t2);
 Texture2D<float> shadowMap : register(t3);
 Texture2D<float4> hdr : register(t4);
+Texture2D<float> aoTex : register(t5);
 SamplerComparisonState shadowSampler : register(s0);
 
 struct VSIn {
@@ -207,6 +209,40 @@ float3 shade(float3 albedo, float specI, float3 n, float gloss, float3 l, float3
     return (albedo * ndl + specular * ndl) * radiance;
 }
 
+// --- screen-space ambient occlusion: points in the normal's hemisphere, tested against the depth buffer ---
+[shader("fragment")]
+float psSsao(FsOut i) : SV_Target {
+    int3 px = int3(int2(i.pos.xy), 0);
+    float depth = gDepth.Load(px);
+    if (depth >= 1.0) return 1.0;
+    float3 world = worldFromDepth(i.pos.xy, depth);
+    float3 n = normalize(gNormal.Load(px).xyz);
+    float3 t = normalize(abs(n.y) < 0.99 ? cross(n, float3(0, 1, 0)) : cross(n, float3(1, 0, 0)));
+    float3 b = cross(n, t);
+    uint seed = gtHash(uint(px.x) * 1973u + uint(px.y) * 9277u);
+    int samples = int(frame.params.x);
+    float radius = frame.params.y, occlusion = 0.0;
+    int2 maxPx = int2(frame.screen.xy) - 1;
+    [loop]
+    for (int k = 0; k < samples; ++k) {
+        seed = gtHash(seed + uint(k));
+        float u1 = gtHashFloat(seed), u2 = gtHashFloat(seed ^ 0x68E31DA4u), u3 = gtHashFloat(seed ^ 0xB5297A4Du);
+        float r = sqrt(u1), phi = 6.2831853 * u2;
+        float3 dir = t * (r * cos(phi)) + b * (r * sin(phi)) + n * sqrt(max(0.0, 1.0 - u1));
+        float3 p = world + n * 0.03 + dir * radius * lerp(0.15, 1.0, u3 * u3);
+        float4 c = mul(frame.viewProj, float4(p, 1.0));
+        if (c.w <= 0.0) continue;
+        float2 uv = c.xy / c.w * float2(0.5, -0.5) + 0.5;
+        int2 q = clamp(int2(uv * frame.screen.xy), int2(0, 0), maxPx);
+        float sceneDepth = gDepth.Load(int3(q, 0));
+        if (sceneDepth < c.z / c.w - 1e-5) {
+            float3 hit = worldFromDepth(float2(q) + 0.5, sceneDepth);
+            occlusion += saturate(1.0 - length(hit - p) / (radius * 2.0)); // nothing far in front counts
+        }
+    }
+    return samples > 0 ? 1.0 - occlusion / float(samples) : 1.0;
+}
+
 [shader("fragment")]
 float4 psSunAmbient(FsOut i) : SV_Target {
     int3 px = int3(int2(i.pos.xy), 0);
@@ -224,7 +260,8 @@ float4 psSunAmbient(FsOut i) : SV_Target {
     float3 v = normalize(frame.cameraPos.xyz - world);
     float shadow = sunShadow(world, n);
     float3 sun = shade(a.rgb, a.a * 2.0, n, nn.w, frame.sunDir.xyz, frame.sunColor.rgb * frame.sunDir.w * shadow, v);
-    float3 ambient = a.rgb * lerp(float3(0.05, 0.045, 0.04), float3(0.09, 0.10, 0.12), n.y * 0.5 + 0.5);
+    float3 ambient =
+        a.rgb * lerp(float3(0.05, 0.045, 0.04), float3(0.09, 0.10, 0.12), n.y * 0.5 + 0.5) * aoTex.Load(px);
     return float4(sun + ambient, 1.0);
 }
 

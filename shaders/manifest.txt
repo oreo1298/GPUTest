@@ -110,6 +110,7 @@ scenes/atrium.slang            vsShadowObject   vertex          vk,d3d12,d3d11,g
 scenes/atrium.slang            vsShadowInstanced vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
 scenes/atrium.slang            psGBuffer        fragment        vk,d3d12,d3d11,gl   d3d11=sm_4_0
 scenes/atrium.slang            vsFullscreen     vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
+scenes/atrium.slang            psSsao           fragment        vk,d3d12,d3d11,gl   d3d11=sm_4_0
 scenes/atrium.slang            psSunAmbient     fragment        vk,d3d12,d3d11,gl   d3d11=sm_4_0
 scenes/atrium.slang            vsLight          vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
 scenes/atrium.slang            vsLightInstanced vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0

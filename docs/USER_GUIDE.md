@@ -47,9 +47,9 @@ the suite score is the geometric mean, so one very fast or slow test cannot domi
 
 | Scene | APIs | What it stresses |
 |---|---|---|
-| Lattice | all | Thousands of instanced, animated blocks: pure rasterization, CPU-light |
+| Lattice | all | Up to 74k instanced, animated, rounded blocks: pure rasterization, CPU-light |
 | Courtyard (and *lite*) | all | Classic forward renderer with a shadow map, fog and tessellated terrain, one draw call per object (the *lite* version instances, to measure the GPU rather than the CPU) |
-| Atrium (and *lite*) | all | Classic deferred shading with hundreds of moving point lights |
+| Atrium (and *lite*) | all | Classic deferred shading with up to 2048 moving point lights, ambient occlusion and ornate columns, balusters and sculptures |
 | Skyline | Vulkan, D3D12 | GPU-driven city: GPU culling, indirect draws, PBR, cascaded shadows, AO and bloom on the async compute queue |
 | Glasshouse | Vulkan, D3D12 | Hybrid rendering: leafy trees, glass, mesh-shader grass, variable-rate shading; ray-traced soft shadows, AO, diffuse GI and reflections through alpha-tested foliage |
 | Gallery | Vulkan, D3D12 | Real-time path tracing of a sculpture hall (glass, metals, dense procedural sculptures, 1440 floor tiles) with a denoiser |

@@ -8,7 +8,7 @@ struct PostParams {
     float threshold; // bloom: bright-pass threshold (first downsample only)
     float strength;  // bloom upsample: weight of the coarser level
     uint frameIndex;
-    uint pad;
+    uint aoSamples;  // ambient occlusion: samples per pixel
 };
 GT_PUSH_CONSTANTS(PostParams, post);
 
@@ -35,12 +35,13 @@ void csAmbientOcclusion(uint3 tid: SV_DispatchThreadID) {
     float3 n = normalize(normalTex.Load(int3(px, 0)).xyz * 2.0 - 1.0);
     float radius = 1.2, occlusion = 0.0;
     uint h = gtHash(tid.x * 1973u + tid.y * 9277u + post.frameIndex * 26699u);
-    [unroll]
-    for (uint k = 0; k < 8; ++k) {
+    uint samples = max(post.aoSamples, 1u);
+    [loop]
+    for (uint k = 0; k < samples; ++k) {
         h = gtHash(h);
         float3 dir = normalize(float3(float(h & 1023u), float((h >> 10) & 1023u), float((h >> 20) & 1023u)) / 511.5 - 1.0);
         if (dot(dir, n) < 0.0) dir = -dir;
-        float3 q = p + dir * radius * (0.25 + 0.75 * float(k + 1) / 8.0);
+        float3 q = p + dir * radius * (0.25 + 0.75 * float(k + 1) / float(samples));
         float4 c = mul(frame.viewProj, float4(q, 1.0));
         float2 uv = (c.xy / c.w) * float2(0.5, -0.5) + 0.5;
         if (any(uv < 0.0) || any(uv > 1.0)) continue;
@@ -51,7 +52,7 @@ void csAmbientOcclusion(uint3 tid: SV_DispatchThreadID) {
         float range = saturate(radius * 2.0 / max(abs(distQ - distS), 1e-3));
         occlusion += (distS < distQ - 0.05 ? 1.0 : 0.0) * range;
     }
-    aoOut[tid.xy] = saturate(1.0 - occlusion / 8.0 * 1.2);
+    aoOut[tid.xy] = saturate(1.0 - occlusion / float(samples) * 1.2);
 }
 
 [shader("compute")]

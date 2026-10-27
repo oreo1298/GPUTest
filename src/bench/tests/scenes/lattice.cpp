@@ -5,6 +5,7 @@
 #include "gt/bench/math.h"
 #include "gt/bench/test.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
@@ -25,18 +26,33 @@ struct SceneParams {
 };
 static_assert(sizeof(SceneParams) == 128);
 
-void buildCube(std::vector<Vertex>& v, std::vector<std::uint16_t>& idx) {
+/// The block: a cube over [-1, 1]³, each face split `subdiv` x `subdiv` times; past one split its edges are
+/// rounded (radius 0.25), with the grid packed towards them.
+void buildCube(std::vector<Vertex>& v, std::vector<std::uint16_t>& idx, std::uint32_t subdiv) {
     const Vec3 normals[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    const float inner = subdiv > 1 ? 0.75f : 1.0f;
+    auto coord = [&](std::uint32_t i) {
+        const float x = -1.0f + 2.0f * float(i) / float(subdiv);
+        return subdiv > 1 ? std::sin(x * kPi * 0.5f) : x;
+    };
     for (const Vec3& n : normals) {
         const Vec3 t = n.y != 0.0f ? Vec3{1, 0, 0} : Vec3{0, 1, 0};
         const Vec3 b = cross(n, t); // t x b == n, so (t, b) order is counter-clockwise seen from outside
         const auto base = static_cast<std::uint16_t>(v.size());
-        const float corners[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
-        for (const auto& c : corners) {
-            const Vec3 p = n + t * c[0] + b * c[1];
-            v.push_back({p.x, p.y, p.z, n.x, n.y, n.z});
-        }
-        for (int k : {0, 1, 2, 0, 2, 3}) idx.push_back(static_cast<std::uint16_t>(base + k));
+        for (std::uint32_t j = 0; j <= subdiv; ++j)
+            for (std::uint32_t i = 0; i <= subdiv; ++i) {
+                const Vec3 p = n + t * coord(i) + b * coord(j);
+                const Vec3 q{std::clamp(p.x, -inner, inner), std::clamp(p.y, -inner, inner),
+                             std::clamp(p.z, -inner, inner)};
+                const Vec3 nr = normalize(p - q);
+                const Vec3 r = q + nr * (1.0f - inner);
+                v.push_back({r.x, r.y, r.z, nr.x, nr.y, nr.z});
+            }
+        for (std::uint32_t j = 0; j < subdiv; ++j)
+            for (std::uint32_t i = 0; i < subdiv; ++i) {
+                const std::uint32_t a = j * (subdiv + 1) + i, c = a + subdiv + 1;
+                for (std::uint32_t k : {a, a + 1, c + 1, a, c + 1, c}) idx.push_back(static_cast<std::uint16_t>(base + k));
+            }
     }
 }
 
@@ -59,19 +75,24 @@ public:
     void run(TestContext& ctx) override {
         rhi::Device& dev = ctx.device();
         const auto& s = ctx.settings();
+        // Blocks (x, y, z), pattern octaves and face splits per quality; software renderers get the low grid
+        // (--param scene.full_detail=1 keeps the quality's).
         std::array<std::uint32_t, 4> grid{};
-        switch (s.quality) {
-        case Quality::Low: grid = {16, 3, 16, 2}; break;
-        case Quality::Medium: grid = {24, 4, 24, 3}; break;
-        case Quality::High: grid = {32, 6, 32, 4}; break;
-        case Quality::Ultra: grid = {48, 8, 48, 5}; break;
+        std::uint32_t subdiv = 1;
+        const bool software = dev.adapter().isSoftware() && s.param("scene.full_detail") != "1";
+        switch (software ? Quality::Low : s.quality) {
+        case Quality::Low: grid = {16, 3, 16, 2}, subdiv = 1; break;
+        case Quality::Medium: grid = {32, 4, 32, 3}, subdiv = 2; break;
+        case Quality::High: grid = {64, 6, 64, 4}, subdiv = 3; break;
+        case Quality::Ultra: grid = {96, 8, 96, 5}, subdiv = 4; break;
         }
         const std::uint32_t instances = grid[0] * grid[1] * grid[2];
-        ctx.details()["instances"] = instances;
 
         std::vector<Vertex> cubeV;
         std::vector<std::uint16_t> cubeI;
-        buildCube(cubeV, cubeI);
+        buildCube(cubeV, cubeI, subdiv);
+        ctx.details()["instances"] = instances;
+        ctx.details()["triangles"] = std::uint64_t(instances) * (cubeI.size() / 3);
         const std::vector<Vertex> floorV = {{-1, 0, -1, 0, 1, 0}, {1, 0, -1, 0, 1, 0}, {1, 0, 1, 0, 1, 0}, {-1, 0, 1, 0, 1, 0}};
         const std::vector<std::uint16_t> floorI = {0, 2, 1, 0, 3, 2};
 

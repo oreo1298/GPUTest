@@ -69,8 +69,8 @@ via `VK_EXT_device_fault` where available, and the last sensor sample), keeps th
 - `--param feature.rt.bvh.inject=1` moves the BVH test's geometry without refitting; its probe rays must FAIL.
 - `--param feature.rt.ser.baseline_only=1` / `feature.rt.omm.baseline_only=1` run the plain halves of the SER and
   opacity-micromap tests on GPUs without those features (CI on lavapipe).
-- `--param scene.full_detail=1` gives the ray-traced scenes their full content on software renderers (lavapipe,
-  WARP), which otherwise get fewer leaves, blades and rays to stay usable.
+- `--param scene.full_detail=1` gives the scenes their full content on software renderers (lavapipe, WARP,
+  llvmpipe), which otherwise get coarser meshes and fewer lights, leaves and rays to stay usable.
 - `--param feature.video.software=1` runs `feature.video` on software adapters (WARP decodes on the CPU through
   Media Foundation and can take minutes, so it is skipped by default). `--param feature.video.frames=N` decodes
   only the first N frames of the Direct3D 12 reference streams (still checked bit for bit), for decoders that

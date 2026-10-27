@@ -83,25 +83,6 @@ Detail detailFor(Quality q, bool software) {
     return {7, 1024, 24, 192, 96, 3, 192, 24, 3, true, 8, 5};
 }
 
-/// Smooth pseudo-noise in about [-1, 1] for displacing the blobs (sums of sines: cheap, deterministic).
-float blobNoise(Vec3 p) {
-    return 0.55f * std::sin(2.1f * p.x + 1.3f) * std::sin(1.7f * p.y + 0.4f) * std::sin(2.6f * p.z + 2.1f) +
-           0.30f * std::sin(4.3f * p.x + 1.1f * p.y) * std::sin(3.7f * p.z - 0.6f * p.y + 0.8f) +
-           0.15f * std::sin(8.1f * p.y + 2.3f * p.z) * std::sin(7.9f * p.x + 0.3f);
-}
-
-/// A lumpy unit blob: an icosphere pushed in and out by blobNoise (radius 0.75-1.25).
-MeshData blob(std::uint32_t level) {
-    MeshData m = icosphere(level);
-    for (Vertex& v : m.vertices) {
-        const Vec3 n{v.px, v.py, v.pz};
-        const Vec3 p = n * (1.0f + 0.25f * blobNoise(n * 1.7f));
-        v.px = p.x, v.py = p.y, v.pz = p.z;
-    }
-    computeNormals(m);
-    return m;
-}
-
 /// A (2, 5) torus knot tube about 3 units across, in the XZ plane.
 MeshData torusKnot(std::uint32_t steps, std::uint32_t sides) {
     auto curve = [](float t) {
@@ -118,16 +99,6 @@ MeshData torusKnot(std::uint32_t steps, std::uint32_t sides) {
         const Vec3 bin = cross(tangent, nrm);
         const float a = v * 2.0f * kPi;
         return c + (nrm * std::cos(a) + bin * std::sin(a)) * 0.35f;
-    });
-}
-
-/// A fluted column of unit radius from y = 0 to 1; `twist` turns the flutes as they rise.
-MeshData flutedColumn(std::uint32_t steps, std::uint32_t rows, int flutes, float depth, float twist) {
-    return parametric(steps, rows, [=](float u, float v) {
-        // u runs clockwise seen from above so that u x v points outwards.
-        const float a = -u * 2.0f * kPi;
-        const float r = 1.0f - depth * (0.5f + 0.5f * std::cos(float(flutes) * a + twist * v));
-        return Vec3{r * std::cos(a), v, r * std::sin(a)};
     });
 }
 

@@ -17,8 +17,11 @@ struct MicroResult {
     double spreadPct = 0.0;  ///< (slowest - fastest) / median of the samples
 };
 
-/// Number of timed submissions for the duration preset (smoke 2, quick 5, standard 9, extreme 15).
+/// Minimum number of timed submissions for the duration preset (smoke 2, quick 5, standard 9, extreme 15).
 std::uint32_t microSamples(const RunSettings& s);
+/// Minimum time spent on the timed submissions of one measurement (smoke 0, quick 1 s, standard 3 s, extreme
+/// 8 s): long enough for clocks to settle, so a fast GPU does not finish a test in a blink.
+double microSeconds(const RunSettings& s);
 
 /// `record(cmd, rep)` records one repetition. Throws StopRequested when the run is stopped.
 /// `maxReps` bounds repetitions per submission (for workloads that use per-list transient memory).

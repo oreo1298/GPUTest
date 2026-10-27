@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
-#include <random>
 
 namespace gt::bench {
 namespace {
@@ -40,7 +39,28 @@ struct ObjectData {
 static_assert(sizeof(ObjectData) == 48);
 
 enum Material { kStone, kPlaster, kBark, kLeaves, kWater, kRoof, kTerrain, kMetal, kLamp };
-enum MeshKind { kBox, kCylinder, kSphere, kCone, kTorus, kMeshKinds };
+enum MeshKind { kBox, kCylinder, kSphere, kCone, kTorus, kFluted, kMeshKinds };
+
+/// What there is to draw at each quality.
+struct Detail {
+    int trees;
+    std::uint32_t round;        ///< segments of cylinders, spheres, cones
+    std::uint32_t cells;        ///< terrain grid
+    std::uint32_t shadowSize;
+    std::uint32_t msaa;         ///< wanted samples (fewer where the GPU has fewer)
+    bool flutedColumns;
+};
+
+Detail detailFor(Quality q, bool software) {
+    if (software) return {150, 10, 48, 1024, 1, false};
+    switch (q) {
+    case Quality::Low: return {150, 12, 128, 1024, 1, false};
+    case Quality::Medium: return {400, 20, 256, 2048, 2, true};
+    case Quality::High: return {1200, 32, 512, 4096, 4, true};
+    case Quality::Ultra: return {2500, 48, 768, 8192, 8, true};
+    }
+    return {1200, 32, 512, 4096, 4, true};
+}
 
 struct Object {
     MeshKind mesh;
@@ -56,7 +76,7 @@ float terrainHeight(float x, float z) {
 }
 
 /// Builds the courtyard's objects (deterministic for a seed).
-std::vector<Object> buildObjects(Quality q, std::uint64_t seed) {
+std::vector<Object> buildObjects(const Detail& detail, std::uint64_t seed) {
     std::vector<Object> objs;
     auto add = [&](MeshKind mesh, Vec3 p, float rot, Vec3 scale, Vec3 color, Material m) {
         objs.push_back({mesh, {{p.x, p.y, p.z, rot}, {scale.x, scale.y, scale.z, float(m)}, {color.x, color.y, color.z, 1.0f}}});
@@ -71,7 +91,8 @@ std::vector<Object> buildObjects(Quality q, std::uint64_t seed) {
         for (int i = 0; i < 12; ++i) {
             const float along = -22.0f + float(i) * 4.0f;
             add(kBox, at(along, 20.0f, 0.2f), rot, {1.2f, 0.4f, 1.2f}, darkStone, kStone);
-            add(kCylinder, at(along, 20.0f, 0.4f), rot, {0.42f, 4.6f, 0.42f}, stone, kStone);
+            add(detail.flutedColumns ? kFluted : kCylinder, at(along, 20.0f, 0.4f), rot, {0.42f, 4.6f, 0.42f}, stone,
+                kStone);
             add(kBox, at(along, 20.0f, 5.15f), rot, {1.1f, 0.35f, 1.1f}, darkStone, kStone);
         }
         add(kBox, at(0, 20.0f, 5.75f), rot, {48.0f, 0.9f, 1.2f}, stone, kStone);              // lintel
@@ -100,9 +121,9 @@ std::vector<Object> buildObjects(Quality q, std::uint64_t seed) {
                 kBark);
     }
     // Trees and rocks on the terrain around the plaza.
-    std::mt19937 rng(static_cast<std::uint32_t>(seed));
-    std::uniform_real_distribution<float> uni(0.0f, 1.0f);
-    const int trees = q == Quality::Low ? 150 : q == Quality::Medium ? 300 : q == Quality::High ? 600 : 1000;
+    Random rng(seed);
+    auto uni = [](Random& r) { return r.uniform(); };
+    const int trees = detail.trees;
     for (int i = 0; i < trees; ++i) {
         const float a = uni(rng) * 2.0f * kPi, r = 38.0f + uni(rng) * 38.0f;
         const float x = std::cos(a) * r, z = std::sin(a) * r, y = terrainHeight(x, z) - 0.2f;
@@ -152,21 +173,24 @@ public:
         rhi::Device& dev = ctx.device();
         const RunSettings& s = ctx.settings();
         const auto& f = dev.features();
-        const bool software = dev.adapter().isSoftware();
+        // Software renderers get less content (--param scene.full_detail=1 keeps all of it).
+        const bool software = dev.adapter().isSoftware() && s.param("scene.full_detail") != "1";
+        const Detail detail = detailFor(s.quality, software);
 
         // --- content -----------------------------------------------------------------------------
         MeshPool pool;
         std::uint32_t meshIds[kMeshKinds];
         meshIds[kBox] = pool.add(box(1, 1, 1));
-        meshIds[kCylinder] = pool.add(cylinder(software ? 10 : 20, true));
-        meshIds[kSphere] = pool.add(sphere(software ? 10 : 20, software ? 6 : 12));
-        meshIds[kCone] = pool.add(cone(software ? 10 : 18));
-        meshIds[kTorus] = pool.add(torus(software ? 16 : 40, software ? 8 : 14, 0.25f));
-        const std::uint32_t cells = software ? 48 : s.quality == Quality::Low ? 128 : s.quality == Quality::Medium ? 192
-                                                    : s.quality == Quality::High ? 256 : 384;
+        const std::uint32_t round = detail.round;
+        meshIds[kCylinder] = pool.add(cylinder(round, true));
+        meshIds[kSphere] = pool.add(sphere(round, round * 3 / 5));
+        meshIds[kCone] = pool.add(cone(round * 9 / 10));
+        meshIds[kTorus] = pool.add(torus(round * 2, round * 7 / 10, 0.25f));
+        meshIds[kFluted] = pool.add(flutedColumn(round * 4, round / 2, 16, 0.06f));
+        const std::uint32_t cells = detail.cells;
         const std::uint32_t terrain = pool.add(heightfield(cells, 170.0f, terrainHeight));
         pool.upload(dev);
-        std::vector<Object> objects = buildObjects(software ? Quality::Low : s.quality, s.seed);
+        std::vector<Object> objects = buildObjects(detail, s.seed);
         // Group by mesh for instancing (the engine-like variant draws them in the same order).
         std::stable_sort(objects.begin(), objects.end(), [](const Object& a, const Object& b) { return a.mesh < b.mesh; });
         std::vector<ObjectData> instanceData;
@@ -180,11 +204,11 @@ public:
                                           instanceData.data());
 
         // --- targets -----------------------------------------------------------------------------
-        std::uint32_t samples = s.quality == Quality::Low ? 1 : s.quality == Quality::Medium ? 2 : 4;
+        std::uint32_t samples = detail.msaa;
         const std::uint32_t msaaMask =
             dev.renderTargetSampleCounts(rhi::Format::RGBA8_UNORM) & dev.renderTargetSampleCounts(rhi::Format::D32_FLOAT);
         while (samples > 1 && !(msaaMask & samples)) samples /= 2;
-        const std::uint32_t shadowSize = software ? 1024 : s.quality == Quality::Ultra ? 4096 : s.quality == Quality::Low ? 1024 : 2048;
+        const std::uint32_t shadowSize = detail.shadowSize;
         rhi::TextureDesc od;
         od.format = rhi::Format::RGBA8_UNORM;
         od.width = s.width;

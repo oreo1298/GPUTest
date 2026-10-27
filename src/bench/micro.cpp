@@ -17,6 +17,16 @@ std::uint32_t microSamples(const RunSettings& s) {
     return 5;
 }
 
+double microSeconds(const RunSettings& s) {
+    switch (s.duration) {
+    case DurationPreset::Smoke: return 0.0;
+    case DurationPreset::Quick: return 1.0;
+    case DurationPreset::Standard: return 3.0;
+    case DurationPreset::Extreme: return 8.0;
+    }
+    return 1.0;
+}
+
 MicroResult measureMicro(TestContext& ctx, const std::function<void(rhi::CommandList&, std::uint32_t)>& record,
                          double targetMs, rhi::QueueType queue, std::uint32_t maxReps) {
     const RunSettings& s = ctx.settings();
@@ -56,9 +66,12 @@ MicroResult measureMicro(TestContext& ctx, const std::function<void(rhi::Command
     r.reps = reps;
     std::vector<double> t;
     const std::uint32_t n = microSamples(s);
-    for (std::uint32_t i = 0; i < n; ++i) t.push_back(submit(reps) / reps);
+    const double minS = microSeconds(s);
+    const auto start = std::chrono::steady_clock::now();
+    auto elapsed = [&] { return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(); };
+    while (t.size() < n || (elapsed() < minS && t.size() < 100000)) t.push_back(submit(reps) / reps);
     std::sort(t.begin(), t.end());
-    r.samples = n;
+    r.samples = static_cast<std::uint32_t>(t.size());
     r.msPerRep = t[t.size() / 2];
     r.spreadPct = r.msPerRep > 0 ? (t.back() - t.front()) / r.msPerRep * 100.0 : 0.0;
     return r;

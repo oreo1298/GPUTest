@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <random>
 
 namespace gt::bench {
 namespace {
@@ -55,14 +54,34 @@ struct PostParams {
     std::uint32_t size[2];
     float invSrc[2];
     float threshold, strength;
-    std::uint32_t frameIndex, pad;
+    std::uint32_t frameIndex, aoSamples;
 };
 
+/// What there is to draw at each quality.
+struct Detail {
+    int side;                 ///< city blocks per side
+    int ledgeStep;            ///< a ledge around the buildings every n floors (0: none)
+    std::uint32_t round;      ///< segments of cylinders, spheres, cones
+    std::uint32_t tile;       ///< shadow cascade tile size (the atlas holds 2 x 2)
+    std::uint32_t aoSamples;
+};
+
+Detail detailFor(Quality q, bool software) {
+    if (software) return {6, 0, 8, 512, 8};
+    switch (q) {
+    case Quality::Low: return {16, 0, 12, 1024, 4};
+    case Quality::Medium: return {24, 3, 16, 1536, 8};
+    case Quality::High: return {40, 2, 24, 2048, 16};
+    case Quality::Ultra: return {60, 1, 32, 4096, 32};
+    }
+    return {40, 2, 24, 2048, 16};
+}
+
 /// The city: blocks of buildings with rooftop details, streets with cars and lamps, parks.
-std::vector<Instance> buildCity(int side, std::uint64_t seed) {
+std::vector<Instance> buildCity(int side, int ledgeStep, std::uint64_t seed) {
     std::vector<Instance> out;
-    std::mt19937 rng(static_cast<std::uint32_t>(seed) ^ 0x51C7u);
-    std::uniform_real_distribution<float> uni(0.0f, 1.0f);
+    Random rng(seed ^ 0x51C7u);
+    auto uni = [](Random& r) { return r.uniform(); };
     auto add = [&](MeshKind mesh, Vec3 p, float rot, Vec3 s, Vec3 c, Material m) {
         out.push_back({{p.x, p.y, p.z, rot}, {s.x, s.y, s.z, float(mesh)}, {c.x, c.y, c.z, float(m)}});
     };
@@ -97,6 +116,10 @@ std::vector<Instance> buildCity(int side, std::uint64_t seed) {
                                                                                               : concrete[int(uni(rng) * 3.99f)];
                 const Vec3 p{cx + ox, 0, cz + oz};
                 add(kBox, {p.x, tall / 2, p.z}, 0, {w, tall, dpt}, c, m);
+                // Ledges at the floor lines (3.4 m, as the shader's window grid).
+                if (ledgeStep > 0 && m != kGlassTower)
+                    for (float y = 3.4f * float(ledgeStep); y < tall - 1.0f; y += 3.4f * float(ledgeStep))
+                        add(kBox, {p.x, y, p.z}, 0, {w + 0.5f, 0.22f, dpt + 0.5f}, c * 0.85f, m);
                 float top = tall;
                 if (tall > 60.0f && uni(rng) < 0.6f) { // setback
                     const float t2 = tall * (0.15f + uni(rng) * 0.3f);
@@ -160,20 +183,21 @@ public:
     void run(TestContext& ctx) override {
         rhi::Device& dev = ctx.device();
         const RunSettings& s = ctx.settings();
-        const bool software = dev.adapter().isSoftware();
+        // Software renderers get less content (--param scene.full_detail=1 keeps all of it).
+        const bool software = dev.adapter().isSoftware() && s.param("scene.full_detail") != "1";
+        const Detail detail = detailFor(s.quality, software);
         using U = rhi::BufferUsage;
         using TU = rhi::TextureUsage;
         using BT = rhi::BindingType;
 
         // --- content -----------------------------------------------------------------------------
         MeshPool pool;
-        const std::uint32_t meshIds[kMeshes] = {pool.add(box(1, 1, 1)), pool.add(cylinder(software ? 8 : 16, true)),
-                                                pool.add(sphere(software ? 10 : 16, software ? 6 : 10)),
-                                                pool.add(cone(software ? 8 : 16))};
+        const std::uint32_t round = detail.round;
+        const std::uint32_t meshIds[kMeshes] = {pool.add(box(1, 1, 1)), pool.add(cylinder(round, true)),
+                                                pool.add(sphere(round, round * 5 / 8)), pool.add(cone(round))};
         pool.upload(dev);
-        const int side = software ? 6 : s.quality == Quality::Low ? 16 : s.quality == Quality::Medium ? 24
-                                                       : s.quality == Quality::High ? 32 : 48;
-        std::vector<Instance> city = buildCity(side, s.seed);
+        const int side = detail.side;
+        std::vector<Instance> city = buildCity(side, detail.ledgeStep, s.seed);
         const auto count = static_cast<std::uint32_t>(city.size());
         std::uint32_t perMesh[kMeshes] = {};
         for (const Instance& i : city) ++perMesh[static_cast<int>(i.scaleMesh[3])];
@@ -225,7 +249,7 @@ public:
         od.usage = TU::RenderTarget | TU::Sampled | TU::CopySrc;
         od.name = "skyline-output";
         auto output = dev.createTexture(od);
-        const std::uint32_t tile = software ? 512 : s.quality == Quality::Ultra ? 2048 : s.quality == Quality::Low ? 1024 : 1536;
+        const std::uint32_t tile = detail.tile;
         rhi::TextureDesc sd;
         sd.format = rhi::Format::D32_FLOAT;
         sd.width = sd.height = tile * 2;
@@ -318,6 +342,7 @@ public:
         }();
         d["shadow_cascades"] = kCascades;
         d["shadow_tile"] = tile;
+        d["ao_samples"] = detail.aoSamples;
         d["async_compute_queue"] = dev.features().asyncComputeQueue;
         if (software) d["note"] = "software renderer: smaller city";
 
@@ -469,7 +494,7 @@ public:
             cmd.transition(sl.bloom.get(), rhi::ResourceState::UnorderedAccess);
             cmd.setUniformData(0, &sl.frame, sizeof(FrameData));
             // Ambient occlusion.
-            PostParams pp{{w, h}, {1.0f / float(w), 1.0f / float(h)}, 0.0f, 0.0f, frameCounter++, 0};
+            PostParams pp{{w, h}, {1.0f / float(w), 1.0f / float(h)}, 0.0f, 0.0f, frameCounter++, detail.aoSamples};
             cmd.setPipeline(aoPipe.get());
             cmd.setTexture(4, sl.depth.get());
             cmd.setTexture(5, sl.normal.get());
