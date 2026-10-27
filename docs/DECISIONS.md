@@ -317,7 +317,10 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   takes that). Decoders that require reference-only allocations get a second set written through the output
   conversion. Each frame's picture is in VIDEO_DECODE_WRITE and every other in VIDEO_DECODE_READ while it
   decodes, everything else in COMMON; the bitstream is copied once into a default-heap buffer (frames at
-  256-byte offsets, zero-padded to 128 bytes), so throughput does not include uploads. Reference resolution
+  256-byte offsets, zero-padded to 128 bytes), so throughput does not include uploads. The pictures that are
+  read back are filled with 0xA5 before decoding, so a frame the decoder never writes is reported as such
+  (`decode_unwritten`) instead of as a wrong checksum: WARP returned all-zero frames with a status of "ok", and
+  the fill shows whether nothing was written or zeros were. Reference resolution
   (H.264 sliding window, H.265 RPS, AV1 slot map) moved into the parsers so both APIs use the same code.
   AV1 streams with rotation / affine global motion are refused on D3D12 (DXVA wants each model's validity,
   AV1 7.11.3.6, which is not derived); the reference stream has none.

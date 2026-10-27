@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstring>
 #include <format>
+#include <span>
 #include <stdexcept>
 #include <utility>
 
@@ -66,10 +67,21 @@ void execute(ID3D12CommandQueue* q, ID3D12CommandList* list) {
 
 namespace {
 
-constexpr std::uint32_t kRepeats = 8;   ///< GOPs per timed submission
-constexpr UINT64 kBitstreamAlign = 256; ///< frame offsets in the bitstream buffer (DXVA wants 128)
-constexpr UINT64 kStatsStride = 32;     ///< resolved D3D12_QUERY_DATA_VIDEO_DECODE_STATISTICS per frame
-constexpr std::uint32_t kPlanes = 2;    ///< NV12: luma, interleaved chroma
+constexpr std::uint32_t kRepeats = 8;     ///< GOPs per timed submission
+constexpr UINT64 kBitstreamAlign = 256;   ///< frame offsets in the bitstream buffer (DXVA wants 128)
+constexpr UINT64 kStatsStride = 32;       ///< resolved D3D12_QUERY_DATA_VIDEO_DECODE_STATISTICS per frame
+constexpr std::uint32_t kPlanes = 2;      ///< NV12: luma, interleaved chroma
+constexpr std::uint8_t kUnwritten = 0xA5; ///< what the output pictures hold before anything is decoded
+
+/// The frames (NV12, video::kFrameBytes each) that still hold nothing but kUnwritten.
+std::vector<std::uint32_t> unwritten(const std::vector<std::uint8_t>& frames, std::uint32_t count) {
+    std::vector<std::uint32_t> out;
+    for (std::uint32_t f = 0; f < count; ++f) {
+        const auto frame = std::span(frames).subspan(f * video::kFrameBytes, video::kFrameBytes);
+        if (std::ranges::all_of(frame, [](std::uint8_t b) { return b == kUnwritten; })) out.push_back(f);
+    }
+    return out;
+}
 
 D3D12_VIDEO_DECODE_CONFIGURATION configuration(const GUID& profile) {
     D3D12_VIDEO_DECODE_CONFIGURATION c{};
@@ -226,6 +238,7 @@ public:
             m_statsHeap.reset();
         check(makeQueue(m_dev, D3D12_COMMAND_LIST_TYPE_COPY, m_copy), "copy queue");
         uploadBitstream();
+        fill();
 
         // The DXVA reference list: every picture of the DPB, picture index = frame.
         for (std::uint32_t i = 0; i < video::kGop; ++i) {
@@ -281,15 +294,8 @@ public:
     /// The decoded frames, NV12 at 1920x1080 each (call after decodeOnce or time).
     std::vector<std::uint8_t> readback() {
         const std::uint32_t count = static_cast<std::uint32_t>(m_s.frames.size());
-        std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> fp(count * kPlanes);
-        UINT64 total = 0;
-        for (std::uint32_t f = 0; f < count; ++f)
-            for (std::uint32_t p = 0; p < kPlanes; ++p) {
-                UINT64 size = 0;
-                m_dev->GetCopyableFootprints(&m_texDesc, subresource(f, p), 1, total, &fp[f * kPlanes + p],
-                                             nullptr, nullptr, &size);
-                total = alignUp(total + size, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
-            }
+        std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> fp;
+        const UINT64 total = footprints(fp);
         const UINT64 statsAt = total, statsBytes = m_statsHeap ? kStatsStride * count : 0;
         Com<ID3D12Resource> rb;
         check(committed(m_dev, D3D12_HEAP_TYPE_READBACK, bufferDesc(total + statsBytes),
@@ -362,6 +368,57 @@ public:
     }
 
 private:
+    /// The buffer layout of every frame's planes (frame f, plane p at f * kPlanes + p); returns its size.
+    UINT64 footprints(std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT>& fp) const {
+        const std::uint32_t count = static_cast<std::uint32_t>(m_s.frames.size());
+        fp.assign(count * kPlanes, {});
+        UINT64 total = 0;
+        for (std::uint32_t f = 0; f < count; ++f)
+            for (std::uint32_t p = 0; p < kPlanes; ++p) {
+                UINT64 size = 0;
+                m_dev->GetCopyableFootprints(&m_texDesc, subresource(f, p), 1, total, &fp[f * kPlanes + p],
+                                             nullptr, nullptr, &size);
+                total = alignUp(total + size, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
+            }
+        return total;
+    }
+
+    /// Fills every frame's output picture with kUnwritten, so a frame the decoder never writes stands out.
+    void fill() {
+        std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> fp;
+        const UINT64 total = footprints(fp);
+        Com<ID3D12Resource> upload;
+        check(committed(m_dev, D3D12_HEAP_TYPE_UPLOAD, bufferDesc(total), D3D12_RESOURCE_STATE_GENERIC_READ,
+                        upload),
+              "fill buffer");
+        void* mapped = nullptr;
+        D3D12_RANGE none{0, 0};
+        check(upload->Map(0, &none, &mapped), "Map (fill)");
+        std::memset(mapped, kUnwritten, static_cast<std::size_t>(total));
+        upload->Unmap(0, nullptr);
+        Com<ID3D12GraphicsCommandList> cl;
+        check(m_copy.allocator->Reset(), "ID3D12CommandAllocator::Reset");
+        check(m_dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, m_copy.allocator.get(), nullptr,
+                                       __uuidof(ID3D12GraphicsCommandList), cl.putVoid()),
+              "CreateCommandList (copy)");
+        for (std::uint32_t f = 0; f < m_s.frames.size(); ++f)
+            for (std::uint32_t p = 0; p < kPlanes; ++p) {
+                // COMMON promotes to COPY_DEST and decays back once the copy queue is done.
+                D3D12_TEXTURE_COPY_LOCATION src{}, dst{};
+                src.pResource = upload.get();
+                src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+                src.PlacedFootprint = fp[f * kPlanes + p];
+                dst.pResource = shown(f);
+                dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+                dst.SubresourceIndex = subresource(f, p);
+                cl->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+            }
+        check(cl->Close(), "Close (copy)");
+        execute(m_copy.queue.get(), cl.get());
+        m_sync.signal(m_copy.queue.get());
+        m_sync.wait(m_dev);
+    }
+
     /// Frame f's picture in the DPB, and the picture that is read back (the output conversion's target when
     /// the DPB is reference-only).
     ID3D12Resource* picture(std::uint32_t f) const { return m_dpb[m_separate ? f : 0].get(); }
@@ -588,6 +645,12 @@ void decodeReference(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hook
     if (std::from_chars(limit.data(), limit.data() + limit.size(), n).ec == std::errc{} && n >= 1 &&
         n < stream->frames.size())
         stream->frames.resize(n);
+    const std::string headersMode = ctx.settings().param("feature.video.inline_headers");
+    if (headersMode == "1" || headersMode == "2") {
+        inlineHeaders(*stream, headersMode[0] - '0');
+        res.details["decode_inline_headers"] =
+            headersMode == "1" ? "ahead of the first slice entry" : "inside the first slice entry";
+    }
     const std::unique_ptr<Decoder, KeepIfHung> dec(new Decoder(dev, *stream));
     if (std::string why = dec->prepare(); !why.empty()) {
         res.decodeNote = why;
@@ -606,8 +669,19 @@ void decodeReference(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hook
     // The pictures are checked before the throughput is measured, so a decoder that fails under load still
     // gets its correctness verdict.
     progress(0.3, std::format("{}: checking the decoded frames", hooks.label));
-    video::checkReference(*ref, dec->readback(), static_cast<std::uint32_t>(stream->frames.size()), res);
+    const auto count = static_cast<std::uint32_t>(stream->frames.size());
+    const std::vector<std::uint8_t> frames = dec->readback();
+    video::checkReference(*ref, frames, count, res);
     if (!dec->status().empty()) res.details["decode_status"] = dec->status();
+    if (const std::vector<std::uint32_t> idle = unwritten(frames, count); !idle.empty()) {
+        std::string list;
+        for (const std::uint32_t f : idle)
+            list += (list.empty() ? "" : ", ") + std::to_string(f);
+        res.details["decode_unwritten"] = idle;
+        res.failure = std::format("the {} decoder wrote nothing to frame(s) {} (they still hold the pattern "
+                                  "they were filled with)",
+                                  hooks.label, list);
+    }
     progress(0.35, std::format("{}: measuring decode throughput", hooks.label));
     res.decodeFps = dec->time(ctx, seconds);
     ctx.log(std::format("{}: {:.1f} fps decode", hooks.label, *res.decodeFps));
