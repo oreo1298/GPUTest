@@ -4,7 +4,8 @@
 # outcome is reported (annotations) without failing the job until every test is ported.
 param(
     [Parameter(Mandatory = $true)][string]$BuildDir,
-    [switch]$StrictStandard
+    [switch]$StrictStandard,
+    [int]$StandardTimeoutMinutes = 25
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -60,10 +61,20 @@ python "$root/scripts/check-results.py" "$out\scenes-d3d12.json" --require-compl
 if ($LASTEXITCODE -ne 0) { throw "D3D12 scene results check failed" }
 
 # Broad: every other test at smoke size (report only unless -StrictStandard).
+# Bounded: a hang on WARP must not hold the job until GitHub's six-hour limit.
 Write-Host "== D3D12 standard suite (smoke size)"
-& $runner.FullName @common --suite standard --duration smoke --quality low --out "$out\standard-d3d12.json" `
-    --log-file "$out\standard-d3d12.log"
-$code = $LASTEXITCODE
+$standardArgs = $common + @("--suite", "standard", "--duration", "smoke", "--quality", "low",
+                            "--out", "$out\standard-d3d12.json", "--log-file", "$out\standard-d3d12.log")
+$proc = Start-Process -FilePath $runner.FullName -ArgumentList $standardArgs -NoNewWindow -PassThru
+$null = $proc.Handle # keeps the exit code readable after WaitForExit(timeout)
+if ($proc.WaitForExit($StandardTimeoutMinutes * 60 * 1000)) {
+    $code = $proc.ExitCode
+} else {
+    $proc.Kill()
+    $code = 124
+    Write-Host "::warning title=D3D12 standard suite::timed out after $StandardTimeoutMinutes min; last log lines follow"
+    if (Test-Path "$out\standard-d3d12.log") { Get-Content "$out\standard-d3d12.log" -Tail 25 | Out-Host }
+}
 if (Test-Path "$out\standard-d3d12.json") {
     $r = Get-Content "$out\standard-d3d12.json" -Raw | ConvertFrom-Json
     foreach ($t in $r.tests) {
