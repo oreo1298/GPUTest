@@ -139,3 +139,9 @@ scenes/gallery.slang           csPathTrace    compute         vk,d3d12   vk=spir
 scenes/gallery.slang           csFilter       compute         vk,d3d12
 scenes/gallery.slang           vsFullscreen   vertex          vk,d3d12
 scenes/gallery.slang           psComposite    fragment        vk,d3d12
+
+# --- upscaling ----------------------------------------------------------------
+upscale/fsr1.slang             csEasu         compute         vk,d3d12,d3d11,gl glsl=430
+upscale/fsr1.slang             csRcas         compute         vk,d3d12,d3d11,gl glsl=430
+upscale/fsr1.slang             csBilinear     compute         vk,d3d12,d3d11,gl glsl=430
+features/upscale.slang         csPattern      compute         vk,d3d12,d3d11,gl glsl=430

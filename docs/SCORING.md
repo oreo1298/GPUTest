@@ -80,4 +80,6 @@ older games stress; the standard, extreme and legacy suites run both (quick runs
 
 Unscored (reported only): `synth.mem.latency` (latency curve and cache levels), `synth.msaa` (relative cost),
 all diagnostics (PASS/WARN/FAIL verdicts), and the ratio / CPU-bound feature tests: `feature.rt.ser`,
-`feature.rt.omm`, `feature.vrs`, `feature.async`, `feature.pipelines`, `feature.drawcalls`.
+`feature.rt.omm`, `feature.vrs`, `feature.async`, `feature.pipelines`, `feature.drawcalls`, `feature.upscale`
+(FSR 1 cost and PSNR). Runs with `--upscale` are scored like native runs but form their own comparable group: the
+upscaler and mode are part of the comparable key.

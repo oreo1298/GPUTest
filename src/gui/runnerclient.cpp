@@ -20,6 +20,10 @@ QStringList RunRequest::toArguments() const {
     if (!resolution.isEmpty()) a << QStringLiteral("--resolution") << resolution;
     if (!quality.isEmpty()) a << QStringLiteral("--quality") << quality;
     if (!duration.isEmpty()) a << QStringLiteral("--duration") << duration;
+    if (!upscale.isEmpty()) {
+        a << QStringLiteral("--upscale") << upscale;
+        if (!upscaleMode.isEmpty()) a << QStringLiteral("--upscale-mode") << upscaleMode;
+    }
     if (!loop.isEmpty()) a << QStringLiteral("--loop") << loop;
     if (offscreen) a << QStringLiteral("--offscreen");
     if (fullscreen) a << QStringLiteral("--fullscreen");

@@ -408,6 +408,10 @@ int Runner::run() {
     c.width = static_cast<int>(m_opt.settings.width);
     c.height = static_cast<int>(m_opt.settings.height);
     c.quality = bench::qualityName(m_opt.settings.quality);
+    c.upscale = m_opt.settings.upscaler == bench::Upscaler::Off
+                    ? "off"
+                    : std::format("{}-{}", bench::upscalerName(m_opt.settings.upscaler),
+                                  bench::upscaleModeName(m_opt.settings.upscaleMode));
     c.duration = bench::durationName(m_opt.settings.duration);
     c.loop = m_opt.loop.toString();
     c.fullscreen = m_opt.fullscreen;

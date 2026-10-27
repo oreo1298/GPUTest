@@ -59,6 +59,15 @@ TestsPage::TestsPage(AppState* state, QWidget* parent)
     m_duration = new QComboBox;
     m_duration->addItem(tr("Suite default"), QString());
     for (const char* d : {"quick", "standard", "extreme"}) m_duration->addItem(QString::fromLatin1(d), QString::fromLatin1(d));
+    m_upscale = new QComboBox;
+    m_upscale->addItem(tr("Off (native resolution)"), QString());
+    m_upscale->addItem(tr("FSR 1 ultra quality (1.3x)"), QStringLiteral("fsr1:ultra-quality"));
+    m_upscale->addItem(tr("FSR 1 quality (1.5x)"), QStringLiteral("fsr1:quality"));
+    m_upscale->addItem(tr("FSR 1 balanced (1.7x)"), QStringLiteral("fsr1:balanced"));
+    m_upscale->addItem(tr("FSR 1 performance (2x)"), QStringLiteral("fsr1:performance"));
+    m_upscale->addItem(tr("Bilinear quality (1.5x)"), QStringLiteral("bilinear:quality"));
+    m_upscale->setToolTip(tr("Scenes render below the selected resolution and are upscaled to it (AMD FidelityFX "
+                             "Super Resolution 1, or plain bilinear filtering for comparison)."));
     m_loopMode = new QComboBox;
     m_loopMode->addItem(tr("Single run"), QStringLiteral("single"));
     m_loopMode->addItem(tr("Repeat N times"), QStringLiteral("count"));
@@ -88,11 +97,12 @@ TestsPage::TestsPage(AppState* state, QWidget* parent)
     addRow(0, 1, tr("&Resolution:"), m_resolution);
     addRow(1, 0, tr("&Quality:"), m_quality);
     addRow(1, 1, tr("&Duration:"), m_duration);
+    addRow(2, 0, tr("&Upscaling:"), m_upscale);
     auto* loopLabel = new QLabel(tr("&Loop:"));
     loopLabel->setBuddy(m_loopMode);
     m_loopMode->setAccessibleName(tr("Loop mode"));
-    form->addWidget(loopLabel, 2, 0);
-    form->addWidget(loopRow, 2, 1, 1, 3);
+    form->addWidget(loopLabel, 3, 0);
+    form->addWidget(loopRow, 3, 1, 1, 3);
     form->setColumnStretch(1, 1);
     form->setColumnStretch(3, 1);
     sl->addLayout(form);
@@ -288,6 +298,10 @@ RunRequest TestsPage::request() const {
     r.resolution = m_resolution->currentText().trimmed();
     r.quality = m_quality->currentData().toString();
     r.duration = m_duration->currentData().toString();
+    if (const QString up = m_upscale->currentData().toString(); !up.isEmpty()) {
+        r.upscale = up.section(QLatin1Char(':'), 0, 0);
+        r.upscaleMode = up.section(QLatin1Char(':'), 1, 1);
+    }
     const QString mode = m_loopMode->currentData().toString();
     r.loop = mode == QLatin1String("count")    ? QString::number(m_loopCount->value())
              : mode == QLatin1String("timed")  ? m_loopTime->text().trimmed()

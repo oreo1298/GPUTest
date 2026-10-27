@@ -236,6 +236,18 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   structured buffer. Resources a draw or dispatch writes are unbound from inputs first, so the runtime never
   silently nulls a binding.
 
+- **FSR 1 is ported, not linked**: the 32-bit EASU and RCAS paths of AMD's MIT `ffx_fsr1.h` live in Slang
+  (`shaders/src/upscale/fsr1.slang`), one thread per output pixel, so they build for every API from the same source
+  (GLSL needs 4.30 for gathers and images). The packed FP16 paths are left out: they need FP16 support everywhere.
+  RCAS's divisions are guarded for black and white neighbourhoods (GLSL min/max do not promise to drop NaNs).
+- **Upscaling is a run setting for scenes**: with `--upscale fsr1|bilinear`, scene tests see a `RunSettings` whose
+  width/height are the render size (output / 1.3, 1.5, 1.7 or 2.0) and the frame loop upscales their output before
+  presenting, hashing or dumping it; the upscale pass is inside the frame's GPU time. No scene code changes. The
+  upscaler and mode join the comparable key (only when not off, so native keys are unchanged).
+- **feature.upscale judges FSR against bilinear on supersampled content**: comparing with a native render that is
+  itself aliased rewards blur (FSR's sharpening loses PSNR there), so the test renders an analytic image with 4x4
+  supersampling at every size and requires EASU's PSNR to be at least bilinear's minus 0.5 dB.
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.

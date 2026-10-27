@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gt/bench/test.h"
+#include "gt/bench/upscale.h"
 #include "gt/results.h"
 #include "gt/rhi/rhi.h"
 
@@ -30,6 +31,9 @@ struct RunSettings {
     Quality quality = Quality::High;
     DurationPreset duration = DurationPreset::Standard;
     std::uint64_t seed = 0x5EEDu;
+    Upscaler upscaler = Upscaler::Off; ///< scenes render at a lower resolution and are upscaled to width x height
+    UpscaleMode upscaleMode = UpscaleMode::Quality;
+    float sharpness = 0.2f;      ///< FSR 1 RCAS: 0 is the sharpest, each stop halves the sharpening
     bool dumpFrames = false;     ///< write golden frames as PNG
     std::string dumpDir;
     std::map<std::string, std::string> params; ///< free-form per-test overrides (--param key=value)
@@ -98,7 +102,12 @@ public:
 
     rhi::Device& device() { return m_device; }
     rhi::Api api() const { return m_device.api(); }
+    /// The run's settings as this test sees them: when scenes are upscaled, width and height are the
+    /// render resolution and the frame loop upscales its output to outputWidth() x outputHeight().
     const RunSettings& settings() const { return m_settings; }
+    bool upscaling() const { return m_upscaling; }
+    std::uint32_t outputWidth() const { return m_outputWidth; }
+    std::uint32_t outputHeight() const { return m_outputHeight; }
     const TestInfo& info() const { return m_info; }
     std::mt19937_64 rng() const { return std::mt19937_64(m_settings.seed); }
 
@@ -139,7 +148,9 @@ public:
 
 private:
     rhi::Device& m_device;
-    const RunSettings& m_settings;
+    RunSettings m_settings; ///< width/height are the render size when the test is upscaled
+    bool m_upscaling = false;
+    std::uint32_t m_outputWidth = 0, m_outputHeight = 0;
     const TestInfo& m_info;
     EventSink* m_events;
     Presenter* m_presenter;

@@ -87,6 +87,7 @@ private:
     QComboBox* m_api;
     QComboBox* m_resolution;
     QComboBox* m_quality;
+    QComboBox* m_upscale;
     QComboBox* m_duration;
     QComboBox* m_loopMode;
     QSpinBox* m_loopCount;

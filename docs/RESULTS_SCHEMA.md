@@ -11,7 +11,7 @@ the same code). Units are in the key names. Unknown keys must be ignored by read
   "app": {"name": "...", "version": "0.1.0", "revision": "git sha"},
   "created_utc": "2026-10-26T20:00:00Z",
   "command_line": "...",
-  "config": {"suite", "api", "gpu_index", "width", "height", "quality", "duration", "loop",
+  "config": {"suite", "api", "gpu_index", "width", "height", "quality", "upscale", "duration", "loop",
              "offscreen", "fullscreen", "vsync", "seed", "validation", "safety": {...}, "tests": ["id", ...]},
   "system": {
     "host": {"cpu", "cpu_cores", "cpu_threads", "ram_bytes", "os", "kernel", "display_server", "desktop", "hostname"},

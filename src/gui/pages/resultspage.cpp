@@ -552,6 +552,7 @@ void ResultsPage::showSystem() {
     add(r, tr("Resolution"), QStringLiteral("%1 × %2%3").arg(m_run.config.width).arg(m_run.config.height)
                                  .arg(m_run.config.offscreen ? tr(" (offscreen)") : (m_run.config.fullscreen ? tr(" (fullscreen)") : QString())));
     add(r, tr("Quality / duration"), QStringLiteral("%1 / %2").arg(s(m_run.config.quality), s(m_run.config.duration)));
+    add(r, tr("Upscaling"), m_run.config.upscale == "off" ? tr("off (native)") : s(m_run.config.upscale));
     add(r, tr("Looping"), s(m_run.config.loop));
     add(r, tr("Seed"), QString::number(m_run.config.seed));
     add(r, tr("Telemetry"), s(m_run.telemetry.provider));

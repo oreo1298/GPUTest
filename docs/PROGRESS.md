@@ -63,25 +63,24 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   owner's other projects (`cd GPUTest/packaging/arch && makepkg -si`); CI job "Arch Linux package" runs makepkg in
   an `archlinux:base-devel` container, installs the package, runs a smoke suite and GUI screenshots from it, and
   uploads the `.pkg.tar.zst`. README has the install section.
-- **Milestone 10 (D3D12): in progress.** Backend complete under `src/rhi/d3d12` (device/adapters, descriptor heaps,
-  root signatures, resources and state tracking, graphics/compute/mesh/ray-tracing pipelines, command lists,
-  swapchain, acceleration structures; Agility SDK side-by-side when present), compile-checked locally with
-  `scripts/check-d3d12.sh` (mingw-w64) and built with MSVC /W4 /WX in CI. On WARP with the debug layer, the smoke
-  suite and the scenes run (Skyline's compute hand-over fixed after the first run). D3D12-only features: VRS tier 2
-  shading-rate images (`feature.vrs`), `feature.sampler_feedback`, `feature.work_graphs` (HLSL via DXC), SER on
-  DXR 1.2 (shared Slang shader, lib_6_9).
-- Next for M10: the D3D12 standard suite on WARP hangs in `feature.rt.bvh` (first 13 tests pass); the Windows job
-  now runs each standard test in its own bounded process with debug logs (long fence waits and test stages are
-  logged), so the next run shows where it hangs and how the 20 tests after it fare. Then make it strict.
-- **Milestone 11 (legacy backends): in progress.** OpenGL backend (`src/rhi/gl`, GL 3.3 core + buffer storage,
-  newer features when present) renders Lattice, Courtyard and Atrium (+ lite) on llvmpipe identically to Vulkan
-  (golden frames); windowed presentation and the HUD work (HUD needs GLSL 4.30). The synthetic tests,
-  diagnostics, draw-call and async tests also run on GL (compute needs 4.3); CI runs the whole standard suite
-  on llvmpipe GL with debug output as errors.
-  Direct3D 11 backend (`src/rhi/d3d11`, FL 11_0+) written: record/replay like GL, CPU-side upload/readback
-  memory, buffer layouts from DXBC reflection (docs/DECISIONS.md); compile-checked with mingw. Windows CI runs
-  the D3D11 smoke suite, the legacy scenes against the D3D12 frames and the legacy suite (now also Lattice, the
-  fill/texel/geometry/MSAA tests, fp32 ALU, memory bandwidth and draw calls) on WARP. Next: get that green.
+- **Milestone 10 (D3D12): done.** Backend under `src/rhi/d3d12` (device/adapters, descriptor heaps, root
+  signatures, resources and state tracking, graphics/compute/mesh/ray-tracing pipelines, command lists, swapchain,
+  acceleration structures; Agility SDK side-by-side when present), compile-checked locally with
+  `scripts/check-d3d12.sh` (mingw-w64), built with MSVC /W4 /WX in CI. D3D12-only features: VRS tier 2
+  shading-rate images, `feature.sampler_feedback`, `feature.work_graphs` (HLSL via DXC), SER on DXR 1.2, OMM.
+  On WARP with the debug layer the smoke suite, every scene and the whole standard suite pass (one bounded process
+  per test; strict in CI). WARP shades every tile of a shading-rate image coarsely (`feature.vrs` warns and logs
+  the expected and observed tile maps) — to confirm on hardware.
+- **Milestone 11 (legacy backends): done.** OpenGL backend (`src/rhi/gl`, GL 3.3 core + buffer storage; compute,
+  storage, multi-draw from 4.2/4.3) runs the scenes identically to Vulkan on llvmpipe and the standard suite with
+  debug output as errors. Direct3D 11 backend (`src/rhi/d3d11`, FL 11_0+): record/replay like GL, CPU-side
+  upload/readback memory, buffer layouts from DXBC reflection; on WARP its legacy scenes match the D3D12 frames
+  (max cell difference 0–1) and the legacy suite passes with the debug layer. Legacy suite: Lattice, Courtyard,
+  Atrium (+ lite), fill/texel/geometry/MSAA, fp32 ALU, memory bandwidth, draw calls.
+- **Milestone 12 (upscalers & video): in progress.** FSR 1 (EASU + RCAS ported to Slang): `--upscale fsr1|bilinear`
+  and `--upscale-mode` for scenes (GUI: Tests page), `feature.upscale` (cost per mode, PSNR against a supersampled
+  reference; EASU beats bilinear on Vulkan and GL). Next: DLSS/XeSS plugin interface, video decode/encode
+  throughput (Vulkan Video, D3D12 Video), HDR output check.
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
@@ -103,6 +102,8 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
 ## Known issues / follow-ups
 - Windows CI has no Vulkan driver, so Vulkan on Windows is only exercised on real hardware. Option: install the
   LunarG SDK + mesa-dist-win lavapipe on the Windows runner.
+- On WARP, D3D12 shading-rate images shade every tile coarsely (`feature.vrs` warn, tile maps in the log); check
+  on hardware whether that is WARP or us (docs/HARDWARE_TESTING.md, M10 item).
 - Vulkan shading-rate attachments (image-based VRS) and cooperative vectors (VK_NV_cooperative_vector, Slang
   CoopVec) are not implemented: no driver here or in CI supports them (docs/DECISIONS.md).
 - Telemetry on Windows for AMD (ADL/D3DKMT) and Intel (Level Zero) is still to do (planned alongside M5/M10).
@@ -111,6 +112,14 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   the Qt repository changes — the workflow picks 6.12 automatically once it installs.
 
 ## Log
+### 2026-10-27
+- M10 closed: the D3D12 `feature.rt.bvh` hang on WARP was repeated BLAS builds without a barrier between them;
+  standard suite now one bounded process per test, debug logs, strict; long fence waits logged; batched
+  transitions of one resource chained. `feature.mesh` vertex semantic fixed.
+- M11 closed: Direct3D 11 backend (record/replay, DXBC reflection for views); CI runs D3D11 smoke, legacy scenes
+  against the D3D12 frames and the legacy suite on WARP. Draw-call CPU cost now includes submit (GL/D3D11 replay).
+- M12: FSR 1 port, `--upscale`, GUI setting, `feature.upscale`.
+
 ### 2026-10-26
 - Saved brief to docs/SPEC.md; research pass recorded in docs/RESEARCH.md (two research subagents).
 - M1: repo skeleton, CMake presets, deps, cloud setup + hook, CI, docs, unit-test scaffold. CI green on first push.

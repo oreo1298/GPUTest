@@ -83,7 +83,8 @@ int main(int argc, char** argv) {
     bool listDevices = false, listTests = false, listSuites = false, showCaps = false, showSys = false,
          checkSupport = false, json = false, noSafety = false;
     std::string apiText, qualityText, durationText, progressText = "text", logLevel = "info", logFile, dumpDir,
-                                                    deviceLost = "abort";
+                                                    deviceLost = "abort", upscaleText = "off",
+                                                    upscaleModeText = "quality";
     std::vector<std::string> params, testIds;
 
     auto* info = app.add_option_group("Information");
@@ -112,6 +113,10 @@ int main(int argc, char** argv) {
     set->add_option("--quality,-q", qualityText, "low, medium, high or ultra");
     set->add_option("--duration,-d", durationText, "smoke, quick, standard or extreme");
     set->add_option("--loop,-l", opt.loopText, "1 (default), N loops (\"5\"), a duration (\"20m\") or \"inf\"");
+    set->add_option("--upscale", upscaleText, "Scene upscaler: off (default), fsr1 or bilinear");
+    set->add_option("--upscale-mode", upscaleModeText,
+                    "Upscaling ratio: ultra-quality (1.3x), quality (1.5x), balanced (1.7x) or performance (2x)");
+    set->add_option("--sharpness", opt.settings.sharpness, "FSR 1 sharpening in stops: 0 sharpest (default 0.2)");
     set->add_flag("--offscreen", opt.offscreen, "Render without a window (no present)");
     set->add_flag("--fullscreen", opt.fullscreen, "Fullscreen window");
     set->add_flag("--vsync", opt.vsync, "Enable vsync (off by default)");
@@ -311,6 +316,18 @@ int main(int argc, char** argv) {
     if (app.count("--resolution") == 0 && !suite.resolution.empty()) opt.resolutionText = suite.resolution;
     if (!bench::parseQuality(qualityText, opt.settings.quality)) {
         std::fprintf(stderr, "invalid --quality '%s'\n", qualityText.c_str());
+        return runner::kExitUsage;
+    }
+    if (auto u = bench::parseUpscaler(upscaleText)) {
+        opt.settings.upscaler = *u;
+    } else {
+        std::fprintf(stderr, "invalid --upscale '%s' (off, fsr1 or bilinear)\n", upscaleText.c_str());
+        return runner::kExitUsage;
+    }
+    if (auto m = bench::parseUpscaleMode(upscaleModeText)) {
+        opt.settings.upscaleMode = *m;
+    } else {
+        std::fprintf(stderr, "invalid --upscale-mode '%s'\n", upscaleModeText.c_str());
         return runner::kExitUsage;
     }
     if (!bench::parseDuration(durationText, opt.settings.duration)) {

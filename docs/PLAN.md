@@ -66,18 +66,19 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 - [x] CPU-light variants; scoring (provisional references), golden frames for every scene in CI
 
 ## 10. D3D12
-- [ ] Backend, scenes, synthetic tests on D3D12
-- [ ] DXR 1.1/1.2 (SER, OMM), mesh shaders, VRS tiers 1+2 (also Vulkan attachment rate), sampler feedback, work
-      graphs, cooperative vectors (SM 6.9; also VK_NV_cooperative_vector)
-- [ ] WARP smoke tests in CI, debug layer clean
+- [x] Backend, scenes, synthetic tests on D3D12
+- [x] DXR 1.1/1.2 (SER, OMM), mesh shaders, VRS tiers 1+2, sampler feedback, work graphs (cooperative vectors:
+      preview-only on D3D12, reported in caps; Vulkan attachment rate deferred — docs/DECISIONS.md)
+- [x] WARP smoke tests in CI, debug layer clean (standard suite strict on WARP)
 
 ## 11. Legacy backends
 - [x] OpenGL 3.3–4.6 backend (scenes, synthetic, diagnostics, feature tests where GL has them)
-- [ ] D3D11 backend (written; first WARP runs in CI)
-- [ ] Legacy suite
+- [x] D3D11 backend (FL 11_0+; scenes match D3D12 on WARP)
+- [x] Legacy suite (scenes, raster, fp32, bandwidth, draw calls)
 
 ## 12. Upscalers & video
-- [ ] FSR (open-source) built in; DLSS/XeSS optional runtime plugins (license permitting)
+- [x] FSR 1 (open-source) built in: `--upscale`, GUI setting, `feature.upscale`
+- [ ] DLSS/XeSS optional runtime plugins (license permitting)
 - [ ] Vulkan Video / D3D12 Video decode/encode throughput (H.264, H.265, AV1)
 - [ ] HDR output check
 

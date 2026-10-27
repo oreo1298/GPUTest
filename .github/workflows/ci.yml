@@ -328,7 +328,7 @@ jobs:
 
       - name: Runner smoke test (WARP)
         shell: pwsh
-        run: pwsh scripts/ci-smoke.ps1 -BuildDir build/ci-windows
+        run: pwsh scripts/ci-smoke.ps1 -BuildDir build/ci-windows -StrictStandard
 
       - name: Upload smoke-test output
         if: always()

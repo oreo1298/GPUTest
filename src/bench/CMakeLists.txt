@@ -3,6 +3,7 @@ add_library(gt_bench STATIC
   context.cpp
   micro.cpp
   presenter.cpp
+  upscale.cpp
   suites.cpp
   scene.cpp
   stb_impl.cpp
@@ -40,6 +41,7 @@ add_library(gt_bench_tests OBJECT
   tests/features/rt_omm.cpp
   tests/features/mesh_shaders.cpp
   tests/features/vrs.cpp
+  tests/features/upscale.cpp
   tests/features/sampler_feedback.cpp
   tests/features/work_graphs.cpp
   tests/features/async_queues.cpp

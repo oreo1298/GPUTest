@@ -109,6 +109,11 @@ check_json "$out/standard.json" 'all(t.get("verdict") == "pass" for t in r["test
 expect_exit 7 "$runner" --test feature.rt.bvh --duration smoke --param feature.rt.bvh.inject=1 "${common[@]}" \
     --out "$out/bvh-bad.json"
 check_json "$out/bvh-bad.json" 'r["tests"][0]["verdict"] == "fail"'
+# Upscaled scenes render below the output size; FSR 1's passes must validate too.
+"$runner" --test scene.lattice,scene.courtyard --duration smoke --quality low --upscale fsr1 --validation \
+    --fail-on-validation "${common[@]}" --out "$out/upscaled.json"
+python3 "$root/scripts/check-results.py" "$out/upscaled.json" --require-completed
+check_json "$out/upscaled.json" 'r["config"]["upscale"] == "fsr1-quality" and all(t["details"].get("upscaler") == "fsr1 quality" for t in r["tests"])'
 end
 
 step "diagnostics: clean run with validation, and injected faults must be detected"

@@ -139,6 +139,14 @@ TestContext::TestContext(rhi::Device& device, const RunSettings& settings, const
                          Presenter* presenter, std::atomic<bool>* stopFlag, std::string* stopReason)
     : m_device(device), m_settings(settings), m_info(info), m_events(events), m_presenter(presenter),
       m_stopFlag(stopFlag), m_stopReason(stopReason) {
+    m_outputWidth = settings.width;
+    m_outputHeight = settings.height;
+    if (settings.upscaler != Upscaler::Off && info.category == Category::Scene && info.frameBased) {
+        const double ratio = upscaleRatio(settings.upscaleMode);
+        m_settings.width = renderExtent(settings.width, ratio);
+        m_settings.height = renderExtent(settings.height, ratio);
+        m_upscaling = true;
+    }
     m_result.id = info.id;
     m_result.name = info.name;
     m_result.category = categoryName(info.category);
@@ -249,10 +257,23 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
     std::size_t lastEventFrame = 0;
     std::vector<std::string> hud;
     bool stop = false;
+    // Upscaled scenes: the output (render size) goes through the upscaler; its result is what the
+    // window shows and the golden frames hash.
+    std::unique_ptr<UpscalePass> upscale;
+    if (m_upscaling && d.output) {
+        upscale = std::make_unique<UpscalePass>(m_device, m_settings.upscaler, d.output->desc().width,
+                                                d.output->desc().height, m_outputWidth, m_outputHeight,
+                                                m_settings.sharpness);
+        m_result.details["upscaler"] = std::format("{} {}", upscalerName(m_settings.upscaler),
+                                                   upscaleModeName(m_settings.upscaleMode));
+        m_result.details["render_resolution"] = std::format("{}x{}", m_settings.width, m_settings.height);
+    }
+    rhi::Texture* shown = upscale ? upscale->output() : d.output;
 
     // Records the end of a frame (timestamp, HUD, presentation) into `fin` and submits it.
     auto finish = [&](rhi::CommandList& fin, std::uint32_t pair, std::uint32_t index, std::uint32_t pass, bool isWarmup,
                       std::span<const rhi::QueueWait> waits) {
+        if (upscale) upscale->record(fin, d.output); // part of the frame's GPU time
         if (qp && !isWarmup) {
             fin.writeTimestamp(qp.get(), pair * 2 + 1);
             fin.resolveQueries(qp.get(), pair * 2, 2); // D3D12 copies results to readable memory here
@@ -272,7 +293,7 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
             } else if (isWarmup) {
                 hud = {std::format("{}  warming up...", m_info.name)};
             }
-            presented = m_presenter->record(fin, d.output, hud);
+            presented = m_presenter->record(fin, shown, hud);
         }
         fin.end();
         rhi::CommandList* l[] = {&fin};
@@ -343,7 +364,7 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
             if (pass == 0 && m_settings.dumpFrames &&
                 std::find(d.goldenFrames.begin(), d.goldenFrames.end(), index) != d.goldenFrames.end() && d.output) {
                 m_device.waitIdle();
-                dumpTexture(d.output, std::format("frame{:04}", index));
+                dumpTexture(shown, std::format("frame{:04}", index));
             }
         }
         lastFrameEnd = clock::now();

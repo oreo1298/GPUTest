@@ -453,7 +453,8 @@ json toJson(const RunResult& r) {
     const auto& c = r.config;
     j["config"] = {{"suite", c.suite},       {"api", c.api},           {"gpu_index", c.gpuIndex},
                    {"width", c.width},       {"height", c.height},     {"quality", c.quality},
-                   {"duration", c.duration}, {"loop", c.loop},         {"offscreen", c.offscreen},
+                   {"upscale", c.upscale},   {"duration", c.duration}, {"loop", c.loop},
+                   {"offscreen", c.offscreen},
                    {"fullscreen", c.fullscreen}, {"vsync", c.vsync},   {"seed", c.seed},
                    {"validation", c.validation}, {"safety", c.safety}, {"tests", c.tests}};
     j["system"] = toJson(r.system);
@@ -531,6 +532,7 @@ RunResult fromJson(const json& j) {
         r.config.width = getInt<int>(c, "width", 1920);
         r.config.height = getInt<int>(c, "height", 1080);
         r.config.quality = getStr(c, "quality");
+        r.config.upscale = c.contains("upscale") ? getStr(c, "upscale") : std::string("off");
         r.config.duration = getStr(c, "duration");
         r.config.loop = getStr(c, "loop");
         r.config.offscreen = getBool(c, "offscreen");

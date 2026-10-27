@@ -308,10 +308,13 @@ void ComparePage::rebuild() {
     const auto& A = *m_runA;
     const auto& B = *m_runB;
 
-    // Comparability: which of suite / API / resolution / quality / duration differ.
-    const QStringList ka = QString::fromStdString(A.scores.comparableKey).split(QLatin1Char('|'));
-    const QStringList kb = QString::fromStdString(B.scores.comparableKey).split(QLatin1Char('|'));
-    const QStringList names{tr("suite"), tr("API"), tr("resolution"), tr("quality"), tr("duration")};
+    // Comparability: which of suite / API / resolution / quality / duration / upscaling differ (native runs
+    // have no upscaling part in their key).
+    QStringList ka = QString::fromStdString(A.scores.comparableKey).split(QLatin1Char('|'));
+    QStringList kb = QString::fromStdString(B.scores.comparableKey).split(QLatin1Char('|'));
+    if (ka.size() == 5) ka << QStringLiteral("off");
+    if (kb.size() == 5) kb << QStringLiteral("off");
+    const QStringList names{tr("suite"), tr("API"), tr("resolution"), tr("quality"), tr("duration"), tr("upscaling")};
     QStringList diffs;
     for (int i = 0; i < names.size(); ++i) {
         const QString va = i < ka.size() ? ka[i] : QString(), vb = i < kb.size() ? kb[i] : QString();

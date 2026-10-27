@@ -24,6 +24,8 @@ struct RunRequest {
     int gpu = -1;
     QString resolution = QStringLiteral("1080p");
     QString quality;        ///< empty = suite default
+    QString upscale;        ///< empty = native; "fsr1" or "bilinear"
+    QString upscaleMode;    ///< "ultra-quality", "quality", "balanced" or "performance"
     QString duration;       ///< empty = suite default
     QString loop = QStringLiteral("1");
     bool offscreen = false;

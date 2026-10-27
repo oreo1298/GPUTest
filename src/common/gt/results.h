@@ -200,6 +200,7 @@ struct RunConfig {
     int gpuIndex = 0;
     int width = 1920, height = 1080;
     std::string quality = "high";
+    std::string upscale = "off"; ///< scene upscaler and mode, e.g. "fsr1-quality"
     std::string duration = "standard";
     std::string loop = "single";
     bool offscreen = false;
