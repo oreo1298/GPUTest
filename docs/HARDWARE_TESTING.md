@@ -63,7 +63,7 @@ and the iGPU, and that `kiln-hw-report` finds the runner by itself. Tell me if m
 6. **Video engines on Direct3D 12** (`feature.video`, Windows, the 4090 and the iGPU):
    `kiln-run --api d3d12 --test feature.video --duration quick --validation`. Decode (DXVA buffers built from
    the same parsers) and H.264 / H.265 / AV1 encode (parameter sets and AV1 headers written by Kiln); never
-   run on real hardware (WARP's video path never completes its first decode, see PROGRESS.md).
+   run on real hardware (WARP's video path stalls after three decoded frames, see PROGRESS.md).
    Send the result JSON (the `decode_profiles` list, each codec's `decode_output` line with the decode tier and
    whether reference-only pictures were required, the CRCs, the `encode` block with the chosen profile, level
    and tools, round-trip PSNR and any notes) and the log with D3D12 debug-layer messages. A CRC mismatch on

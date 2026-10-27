@@ -168,10 +168,12 @@ them as a GitHub release. About 40 000 lines of C++, 52 unit-test cases, and smo
   CoopVec) are not implemented: no driver here or in CI supports them (docs/DECISIONS.md).
 - Telemetry on Windows for AMD (ADL/D3DKMT) and Intel (Level Zero) is still to do (planned alongside M5/M10).
 - Score references are provisional (docs/SCORING.md) until real hardware reports arrive.
-- WARP's Direct3D 12 video path (Media Foundation on the CPU) never completes the first H.264 DecodeFrame,
-  with one command list per frame and the debug layer silent about the arguments (CI now also tries it without
-  the debug layer); `feature.video` skips software adapters unless `--param feature.video.software=1`, and CI
-  runs it report-only. A stuck decode or encode now fails that codec after 20 s instead of hanging the run. All Direct3D 12
+- WARP's Direct3D 12 video path (Media Foundation on the CPU) decodes the H.264 reference stream's frames 0-2
+  and then never completes frame 3, with or without the debug layer (the stream has one reference and no
+  B-frames, so it looks like the CPU decoder's output latency, not our reference setup); WARP lists H.264
+  decode only (no H.265 / AV1 decoder, no H.265 / AV1 encoder). `feature.video` skips software adapters unless
+  `--param feature.video.software=1`, and CI runs it report-only (about 20 s now: a stuck decode or encode
+  fails that codec after 20 s instead of hanging the run, and a decode failure no longer skips the encode). All Direct3D 12
   video results therefore wait for real hardware (docs/HARDWARE_TESTING.md, M12 item 6).
 - Windows CI uses Qt 6.10.3 instead of 6.12.0 (aqt cannot fetch 6.12.0's Windows metadata); revisit when aqt or
   the Qt repository changes — the workflow picks 6.12 automatically once it installs.

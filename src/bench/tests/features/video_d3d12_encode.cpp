@@ -1662,7 +1662,13 @@ void encodeAndCheck(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hooks
     }
     progress(0.8, std::format("{}: decoding the encoded stream", hooks.label));
     std::vector<std::uint8_t> frames;
-    if (std::string why = decodeFrames(dev, *rt, frames); !why.empty()) {
+    std::string why;
+    try {
+        why = decodeFrames(dev, *rt, frames);
+    } catch (const std::exception& e) { // the decoder's failure is not the encoder's
+        why = e.what();
+    }
+    if (!why.empty()) {
         res.encodeNote = "the encoded stream was not decoded: " + why;
         return;
     }

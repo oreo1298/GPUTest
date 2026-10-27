@@ -9,6 +9,7 @@
 #include <cstring>
 #include <format>
 #include <stdexcept>
+#include <utility>
 
 namespace gt::bench::d3d12video {
 
@@ -555,16 +556,19 @@ video::CodecResult runCodec(TestContext& ctx, ID3D12Device* dev, const CodecHook
         res.failure = std::format("{} decode: {}", hooks.label, e.what());
     }
     ctx.checkStop();
-    if (!res.failure.empty()) return res;
+    // Decoding and encoding run on separate engines: a decode failure does not hide the encode measurement.
+    const std::string decodeFailure = std::exchange(res.failure, {});
     if (!hooks.encoder) {
         res.encodeNote = std::format("{} encoding is measured through Vulkan Video only", hooks.label);
-        return res;
+    } else {
+        try {
+            encodeAndCheck(ctx, dev, hooks, source, seconds, progress, res);
+        } catch (const std::exception& e) {
+            res.failure = std::format("{} encode: {}", hooks.label, e.what());
+        }
     }
-    try {
-        encodeAndCheck(ctx, dev, hooks, source, seconds, progress, res);
-    } catch (const std::exception& e) {
-        res.failure = std::format("{} encode: {}", hooks.label, e.what());
-    }
+    if (!decodeFailure.empty())
+        res.failure = res.failure.empty() ? decodeFailure : decodeFailure + "; " + res.failure;
     return res;
 }
 
