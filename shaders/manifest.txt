@@ -97,3 +97,14 @@ scenes/courtyard.slang         psSky          fragment        vk,d3d12,d3d11,gl 
 scenes/courtyard.slang         vsTerrainTess  vertex          vk,d3d12,d3d11,gl   glsl=410
 scenes/courtyard.slang         hsTerrain      hull            vk,d3d12,d3d11,gl   glsl=410
 scenes/courtyard.slang         dsTerrain      domain          vk,d3d12,d3d11,gl   glsl=410
+scenes/atrium.slang            vsObject         vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
+scenes/atrium.slang            vsInstanced      vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
+scenes/atrium.slang            vsShadowObject   vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
+scenes/atrium.slang            vsShadowInstanced vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
+scenes/atrium.slang            psGBuffer        fragment        vk,d3d12,d3d11,gl   d3d11=sm_4_0
+scenes/atrium.slang            vsFullscreen     vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
+scenes/atrium.slang            psSunAmbient     fragment        vk,d3d12,d3d11,gl   d3d11=sm_4_0
+scenes/atrium.slang            vsLight          vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
+scenes/atrium.slang            vsLightInstanced vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
+scenes/atrium.slang            psLight          fragment        vk,d3d12,d3d11,gl   d3d11=sm_4_0
+scenes/atrium.slang            psTonemap        fragment        vk,d3d12,d3d11,gl   d3d11=sm_4_0

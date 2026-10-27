@@ -17,6 +17,7 @@ gt_set_warnings(gt_bench)
 add_library(gt_bench_tests OBJECT
   tests/scenes/lattice.cpp
   tests/scenes/courtyard.cpp
+  tests/scenes/atrium.cpp
   tests/debug/device_lost.cpp
   tests/diagnostics/vram.cpp
   tests/diagnostics/stress_common.cpp

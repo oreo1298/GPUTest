@@ -279,6 +279,7 @@ public:
         skyDesc.depthFormat = rhi::Format::D32_FLOAT;
         skyDesc.sampleCount = samples;
         skyDesc.depth.write = false;
+        skyDesc.raster.cull = rhi::CullMode::None; // full-screen triangle
         skyDesc.depth.compare = rhi::CompareOp::LessEqual;
         skyDesc.layout.bindings = {{BT::UniformBuffer, 0}, {BT::UniformBuffer, 2}};
         auto skyPipe = dev.createGraphicsPipeline(skyDesc);
