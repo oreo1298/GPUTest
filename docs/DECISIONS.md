@@ -350,6 +350,10 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   Foundation on the CPU, so `feature.video` skips software adapters unless `--param feature.video.software=1`
   is given: it is not a GPU measurement and it hung the first CI run. CI runs it in a separate, bounded,
   report-only step, which exercises the DXVA and encoder paths that no GPU runs there.
+- **A stuck video engine fails its codec instead of hanging the run.** Every Direct3D 12 video wait gives up
+  after 20 s; the codec then reports the failure and the next codec runs. The decoder or encoder whose work
+  never finished is deliberately not released (nor the encode configuration its commands came from): releasing
+  objects the GPU still uses hung WARP, so they stay allocated until the runner exits.
 
 ## Packaging and releases
 - **Flatpak on the KDE runtime, built offline.** `packaging/flatpak/<APP_RDNN>.yml` uses org.kde.Platform 6.11

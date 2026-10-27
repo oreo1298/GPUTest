@@ -137,6 +137,11 @@ class Decoder {
 public:
     Decoder(ID3D12Device* dev, const DxvaStream& s) : m_dev(dev), m_s(s), m_sync(dev) {}
     ~Decoder() { m_sync.drain(m_dev); }
+    /// Waits for the GPU work; false if the GPU never finished it.
+    bool settle() noexcept {
+        m_sync.drain(m_dev);
+        return !m_sync.timedOut();
+    }
     Decoder(const Decoder&) = delete;
     Decoder& operator=(const Decoder&) = delete;
 
@@ -454,10 +459,10 @@ std::vector<CodecHooks> codecs() {
 }
 
 std::string decodeFrames(ID3D12Device* dev, const DxvaStream& s, std::vector<std::uint8_t>& frames) {
-    Decoder dec(dev, s);
-    if (std::string why = dec.prepare(); !why.empty()) return why;
-    if (std::string failure = dec.decodeOnce(); !failure.empty()) return failure;
-    frames = dec.readback();
+    const std::unique_ptr<Decoder, KeepIfHung> dec(new Decoder(dev, s));
+    if (std::string why = dec->prepare(); !why.empty()) return why;
+    if (std::string failure = dec->decodeOnce(); !failure.empty()) return failure;
+    frames = dec->readback();
     return {};
 }
 
@@ -513,26 +518,26 @@ void decodeReference(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hook
         res.failure = std::format("the {} reference stream could not be read: {}", hooks.label, error);
         return;
     }
-    Decoder dec(dev, *stream);
-    if (std::string why = dec.prepare(); !why.empty()) {
+    const std::unique_ptr<Decoder, KeepIfHung> dec(new Decoder(dev, *stream));
+    if (std::string why = dec->prepare(); !why.empty()) {
         res.decodeNote = why;
         return;
     }
     res.details["decode_stream"] = std::format("{} ({} frames, {} KiB, from {})", stream->name,
                                                stream->frames.size(), ref->data.size() / 1024, "data/video");
-    res.details["decode_output"] = dec.outputMode();
-    ctx.log(std::format("{}: {} ready ({})", hooks.label, stream->name, dec.outputMode()));
+    res.details["decode_output"] = dec->outputMode();
+    ctx.log(std::format("{}: {} ready ({})", hooks.label, stream->name, dec->outputMode()));
     progress(0.0, std::format("{}: decoding the reference stream", hooks.label));
-    if (std::string failure = dec.decodeOnce(); !failure.empty()) {
+    if (std::string failure = dec->decodeOnce(); !failure.empty()) {
         res.failure = failure;
         return;
     }
     ctx.log(std::format("{}: decoded the reference stream once", hooks.label));
     progress(0.3, std::format("{}: measuring decode throughput", hooks.label));
-    res.decodeFps = dec.time(ctx, seconds);
+    res.decodeFps = dec->time(ctx, seconds);
     ctx.log(std::format("{}: {:.1f} fps decode", hooks.label, *res.decodeFps));
     progress(0.4, std::format("{}: checking the decoded frames", hooks.label));
-    video::checkReference(*ref, dec.readback(), static_cast<std::uint32_t>(stream->frames.size()), res);
+    video::checkReference(*ref, dec->readback(), static_cast<std::uint32_t>(stream->frames.size()), res);
 }
 
 } // namespace
@@ -543,13 +548,23 @@ video::CodecResult runCodec(TestContext& ctx, ID3D12Device* dev, const CodecHook
     video::CodecResult res;
     res.key = hooks.key;
     res.label = hooks.label;
-    decodeReference(ctx, dev, hooks, seconds, progress, res);
+    // A codec whose GPU work fails or never finishes is that codec's failure; the others still run.
+    try {
+        decodeReference(ctx, dev, hooks, seconds, progress, res);
+    } catch (const std::exception& e) { // a stop request is not a std::exception and passes
+        res.failure = std::format("{} decode: {}", hooks.label, e.what());
+    }
     ctx.checkStop();
     if (!res.failure.empty()) return res;
-    if (!hooks.encoder)
+    if (!hooks.encoder) {
         res.encodeNote = std::format("{} encoding is measured through Vulkan Video only", hooks.label);
-    else
+        return res;
+    }
+    try {
         encodeAndCheck(ctx, dev, hooks, source, seconds, progress, res);
+    } catch (const std::exception& e) {
+        res.failure = std::format("{} encode: {}", hooks.label, e.what());
+    }
     return res;
 }
 

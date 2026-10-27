@@ -1203,6 +1203,11 @@ class Encoder {
 public:
     Encoder(ID3D12Device* dev, EncodeCodec& c) : m_dev(dev), m_c(c), m_sync(dev) {}
     ~Encoder() { m_sync.drain(m_dev); }
+    /// Waits for the GPU work; false if the GPU never finished it.
+    bool settle() noexcept {
+        m_sync.drain(m_dev);
+        return !m_sync.timedOut();
+    }
     Encoder(const Encoder&) = delete;
     Encoder& operator=(const Encoder&) = delete;
 
@@ -1603,27 +1608,35 @@ void encodeAndCheck(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hooks
                     const std::vector<std::uint8_t>& source, double seconds, const video::Progress& progress,
                     video::CodecResult& res) {
     std::unique_ptr<EncodeCodec> codec = hooks.encoder();
-    Encoder enc(dev, *codec);
-    if (std::string why = enc.prepare(); !why.empty()) {
+    const std::unique_ptr<Encoder, KeepIfHung> enc(new Encoder(dev, *codec));
+    // If the GPU never finishes, the encoder is kept (KeepIfHung) and so is the codec its commands came from.
+    struct KeepCodecIfHung {
+        std::unique_ptr<EncodeCodec>& codec;
+        Encoder& enc;
+        ~KeepCodecIfHung() {
+            if (!enc.settle()) (void)codec.release();
+        }
+    } keepCodec{codec, *enc};
+    if (std::string why = enc->prepare(); !why.empty()) {
         res.encodeNote = why;
         return;
     }
     res.details["encode"] = codec->describe();
     ctx.log(std::format("{}: encoder ready ({})", hooks.label, codec->describe().dump()));
     progress(0.45, std::format("{}: encoding the source frames", hooks.label));
-    enc.upload(source);
-    if (std::string failure = enc.encodeOnce(); !failure.empty()) {
+    enc->upload(source);
+    if (std::string failure = enc->encodeOnce(); !failure.empty()) {
         res.failure = failure;
         return;
     }
     std::vector<std::uint8_t> stream = codec->headers();
     std::size_t total = 0;
-    for (const auto& f : enc.output()) {
+    for (const auto& f : enc->output()) {
         stream.insert(stream.end(), f.begin(), f.end());
         total += f.size();
     }
     nlohmann::json sizes = nlohmann::json::array();
-    for (const auto& f : enc.output())
+    for (const auto& f : enc->output())
         sizes.push_back(f.size());
     res.details["encode_frame_bytes"] = sizes;
     ctx.log(std::format("{}: encoded the GOP once ({} bytes)", hooks.label, total));
@@ -1634,7 +1647,7 @@ void encodeAndCheck(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hooks
     res.details["encode_gop_bytes"] = total;
     res.details["encode_mbit_per_s_at_60fps"] = double(total) * 8.0 / video::kGop * 60.0 / 1e6;
     progress(0.55, std::format("{}: measuring encode throughput", hooks.label));
-    res.encodeFps = enc.time(ctx, seconds);
+    res.encodeFps = enc->time(ctx, seconds);
     ctx.log(std::format("{}: {:.1f} fps encode", hooks.label, *res.encodeFps));
 
     if (!canDecode(dev, hooks)) {

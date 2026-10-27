@@ -47,7 +47,7 @@ public:
         if (!m_event) throw std::runtime_error("CreateEvent failed");
     }
     ~Sync() {
-        if (m_value && m_fence->GetCompletedValue() < m_value) {
+        if (!m_timedOut && m_value && m_fence->GetCompletedValue() < m_value) {
             m_fence->SetEventOnCompletion(m_value, m_event);
             WaitForSingleObject(m_event, kTimeoutMs);
         }
@@ -65,8 +65,10 @@ public:
     void gpuWait(ID3D12CommandQueue* q) {
         if (m_value) rhi::d3d12::check(q->Wait(m_fence.get(), m_value), "ID3D12CommandQueue::Wait");
     }
-    /// Waits for the last signal without throwing (before releasing what the GPU may still use).
+    /// Waits for the last signal without throwing (before releasing what the GPU may still use); returns at
+    /// once after a timeout.
     void drain(ID3D12Device* dev) noexcept {
+        if (m_timedOut) return;
         try {
             wait(dev);
         } catch (...) {
@@ -77,6 +79,7 @@ public:
         if (m_fence->GetCompletedValue() >= m_value) return;
         rhi::d3d12::check(m_fence->SetEventOnCompletion(m_value, m_event), "SetEventOnCompletion");
         if (WaitForSingleObject(m_event, kTimeoutMs) != WAIT_OBJECT_0) {
+            m_timedOut = true;
             const HRESULT removed = dev->GetDeviceRemovedReason();
             throw std::runtime_error(FAILED(removed)
                                          ? "the device was removed during video work (" +
@@ -85,10 +88,24 @@ public:
         }
     }
 
+    /// Whether a wait ran out of time: the GPU may still be using everything submitted.
+    bool timedOut() const { return m_timedOut; }
+
 private:
     rhi::d3d12::Com<ID3D12Fence> m_fence;
     HANDLE m_event = nullptr;
     UINT64 m_value = 0;
+    bool m_timedOut = false;
+};
+
+/// unique_ptr deleter for the decoder and encoder: waits for their GPU work (settle()) and, if the GPU never
+/// finishes it, keeps the object and everything the GPU may still use alive instead of releasing it, which
+/// hangs some drivers (WARP). A deliberate leak, for a device whose video engine is stuck anyway.
+struct KeepIfHung {
+    template <typename T>
+    void operator()(T* p) const noexcept {
+        if (p->settle()) delete p;
+    }
 };
 
 struct Queue {
