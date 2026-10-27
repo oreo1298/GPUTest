@@ -36,6 +36,7 @@ gt_declare(vulkan_headers https://github.com/KhronosGroup/Vulkan-Headers.git vul
 gt_declare(volk https://github.com/zeux/volk.git vulkan-sdk-1.4.363.0)
 gt_declare(vma https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git v3.5.0)
 gt_declare(sdl3 https://github.com/libsdl-org/SDL.git release-3.4.18)
+gt_declare(directx_headers https://github.com/microsoft/DirectX-Headers.git v1.619.5)
 set_property(GLOBAL PROPERTY GT_DEPENDENCIES "${GT_DEPENDENCIES}")
 
 # --- always needed ----------------------------------------------------------
@@ -92,6 +93,14 @@ if(GT_BUILD_RUNNER)
     add_library(gt_vma INTERFACE)
     target_include_directories(gt_vma SYSTEM INTERFACE "${vma_SOURCE_DIR}/include")
   endif()
+endif()
+
+# --- Direct3D 12 (Windows) ------------------------------------------------------
+if(GT_ENABLE_D3D12)
+  set(DXHEADERS_BUILD_TEST OFF CACHE INTERNAL "")
+  set(DXHEADERS_BUILD_GOOGLE_TEST OFF CACHE INTERNAL "")
+  set(DXHEADERS_INSTALL OFF CACHE INTERNAL "")
+  FetchContent_MakeAvailable(directx_headers)
 endif()
 
 # --- tests ------------------------------------------------------------------
