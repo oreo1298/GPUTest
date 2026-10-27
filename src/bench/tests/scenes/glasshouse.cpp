@@ -7,14 +7,14 @@
 // shades with one reflection ray (hits are shaded with a shadow ray of their own). A composite
 // pass tone-maps.
 
+#include "rt_scene.h"
+
 #include "gt/bench/context.h"
 #include "gt/bench/math.h"
 #include "gt/bench/scene.h"
 #include "gt/bench/test.h"
 
-#include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <vector>
 
 namespace gt::bench {
@@ -24,19 +24,6 @@ using namespace scene;
 
 enum MeshKind { kBox, kCylinder, kSphere, kTorus, kMeshKinds };
 enum Material { kGround, kSteel, kChrome, kWater, kLeaves, kBark, kSoil, kGrass, kStone };
-
-struct Instance {
-    float row[3][4];
-    float color[4];
-    float info[4];
-};
-static_assert(sizeof(Instance) == 80);
-
-struct MeshInfo {
-    std::uint32_t firstIndex, indexCount;
-    std::int32_t baseVertex;
-    std::uint32_t pad;
-};
 
 struct FrameData {
     Mat4 viewProj;
@@ -51,32 +38,15 @@ struct FrameData {
 };
 static_assert(sizeof(FrameData) == 128 + 6 * 16 + 128);
 
-/// Rows of R_y(yaw) * R_z(roll) * S + t.
-Instance makeInstance(MeshKind mesh, Vec3 t, Vec3 s, float yaw, float roll, Vec3 color, Material m) {
-    const float cy = std::cos(yaw), sy = std::sin(yaw), cr = std::cos(roll), sr = std::sin(roll);
-    // R = Ry * Rz
-    const float r[3][3] = {{cy * cr, -cy * sr, sy}, {sr, cr, 0}, {-sy * cr, sy * sr, cy}};
-    Instance in{};
-    for (int i = 0; i < 3; ++i) {
-        in.row[i][0] = r[i][0] * s.x;
-        in.row[i][1] = r[i][1] * s.y;
-        in.row[i][2] = r[i][2] * s.z;
-    }
-    in.row[0][3] = t.x, in.row[1][3] = t.y, in.row[2][3] = t.z;
-    in.color[0] = color.x, in.color[1] = color.y, in.color[2] = color.z, in.color[3] = float(m);
-    in.info[0] = float(mesh);
-    return in;
-}
-
 struct Bed {
     Vec3 centre;
     float half;
 };
 
-std::vector<Instance> buildGlasshouse(const std::vector<Bed>& beds) {
-    std::vector<Instance> v;
+std::vector<RtInstance> buildGlasshouse(const std::vector<Bed>& beds) {
+    std::vector<RtInstance> v;
     auto add = [&](MeshKind mesh, Vec3 t, Vec3 s, Vec3 c, Material m, float yaw = 0.0f, float roll = 0.0f) {
-        v.push_back(makeInstance(mesh, t, s, yaw, roll, c, m));
+        v.push_back(rtInstance(mesh, t, s, yaw, roll, c, float(m)));
     };
     const Vec3 steel{0.55f, 0.57f, 0.60f}, stone{0.58f, 0.55f, 0.50f};
     add(kBox, {0, -0.1f, 0}, {90, 0.2f, 110}, {1, 1, 1}, kGround);
@@ -157,63 +127,14 @@ public:
 
         // --- content -----------------------------------------------------------------------------
         MeshPool pool;
-        const std::uint32_t meshIds[kMeshKinds] = {pool.add(box(1, 1, 1)), pool.add(cylinder(software ? 10 : 20, true)),
-                                                   pool.add(sphere(software ? 12 : 28, software ? 8 : 16)),
-                                                   pool.add(torus(software ? 20 : 48, software ? 8 : 16, 0.12f))};
+        const std::vector<std::uint32_t> meshIds = {pool.add(box(1, 1, 1)), pool.add(cylinder(software ? 10 : 20, true)),
+                                                    pool.add(sphere(software ? 12 : 28, software ? 8 : 16)),
+                                                    pool.add(torus(software ? 20 : 48, software ? 8 : 16, 0.12f))};
         pool.upload(dev, U::AccelInput);
         const std::vector<Bed> beds = {{{-6.5f, 0.35f, 20.0f}, 4.0f}, {{6.5f, 0.35f, 20.0f}, 4.0f},
                                        {{-6.5f, 0.35f, -21.0f}, 4.0f}, {{6.5f, 0.35f, -21.0f}, 4.0f}};
-        std::vector<Instance> instances = buildGlasshouse(beds);
-        // Group by mesh for instanced drawing.
-        std::stable_sort(instances.begin(), instances.end(),
-                         [](const Instance& a, const Instance& b) { return a.info[0] < b.info[0]; });
-        std::uint32_t groupFirst[kMeshKinds] = {}, groupCount[kMeshKinds] = {};
-        for (std::uint32_t i = 0; i < instances.size(); ++i) {
-            const int m = int(instances[i].info[0]);
-            if (groupCount[m]++ == 0) groupFirst[m] = i;
-        }
-        MeshInfo meshes[kMeshKinds];
-        for (int m = 0; m < kMeshKinds; ++m) {
-            const SubMesh& sm = pool[meshIds[m]];
-            meshes[m] = {sm.firstIndex, sm.indexCount, sm.baseVertex, 0};
-        }
-        auto instanceBuf = dev.createBuffer({instances.size() * sizeof(Instance), U::Vertex | U::Storage | U::CopyDst,
-                                             rhi::MemoryType::Device, sizeof(Instance), "glasshouse-instances"},
-                                            instances.data());
-        auto meshBuf = dev.createBuffer({sizeof(meshes), U::Storage | U::CopyDst, rhi::MemoryType::Device, sizeof(MeshInfo),
-                                         "glasshouse-meshes"},
-                                        meshes);
-
-        // Acceleration structures: one BLAS per mesh kind, one TLAS over every instance.
-        std::vector<std::unique_ptr<rhi::AccelerationStructure>> blas;
-        std::vector<rhi::BlasDesc> blasDescs(kMeshKinds);
-        for (int m = 0; m < kMeshKinds; ++m) {
-            const SubMesh& sm = pool[meshIds[m]];
-            rhi::AccelTriangles t;
-            t.vertices = pool.vertexBuffer();
-            t.vertexOffset = std::uint64_t(sm.baseVertex) * sizeof(Vertex);
-            t.vertexStride = sizeof(Vertex);
-            t.vertexCount = static_cast<std::uint32_t>(pool.vertices().size() - std::size_t(sm.baseVertex));
-            t.indices = pool.indexBuffer();
-            t.indexOffset = std::uint64_t(sm.firstIndex) * 4;
-            t.indexCount = sm.indexCount;
-            blasDescs[m].geometries = {t};
-            blasDescs[m].name = "glasshouse-blas";
-            blas.push_back(dev.createBlas(blasDescs[m]));
-        }
-        std::vector<rhi::AccelInstance> tlasInstances(instances.size());
-        for (std::size_t i = 0; i < instances.size(); ++i) {
-            std::memcpy(tlasInstances[i].transform, instances[i].row, sizeof(tlasInstances[i].transform));
-            tlasInstances[i].id = static_cast<std::uint32_t>(i);
-            tlasInstances[i].blas = blas[std::size_t(instances[i].info[0])].get();
-        }
-        auto tlas = dev.createTlas(static_cast<std::uint32_t>(tlasInstances.size()));
-        ctx.timeGpu([&](rhi::CommandList& cmd) {
-            for (int m = 0; m < kMeshKinds; ++m) cmd.buildBlas(blas[std::size_t(m)].get(), blasDescs[std::size_t(m)]);
-            cmd.accelBarrier();
-            cmd.buildTlas(tlas.get(), tlasInstances);
-            cmd.accelBarrier();
-        });
+        std::vector<RtInstance> instances = buildGlasshouse(beds);
+        const RtScene rs = buildRtScene(ctx, pool, meshIds, instances);
 
         // --- targets -----------------------------------------------------------------------------
         const std::uint32_t w = s.width, h = s.height;
@@ -242,7 +163,7 @@ public:
         gd.vertex = {"scenes/glasshouse", "vsGeometry"};
         gd.fragment = {"scenes/glasshouse", "psGeometry"};
         vertexLayout(gd);
-        gd.vertexBindings.push_back({1, sizeof(Instance), true});
+        gd.vertexBindings.push_back({1, sizeof(RtInstance), true});
         for (std::uint32_t k = 0; k < 4; ++k) gd.attributes.push_back({3 + k, rhi::Format::RGBA32_FLOAT, 16 * k, 1});
         gd.colorFormats = {rhi::Format::RGBA8_UNORM, rhi::Format::RGBA16_FLOAT};
         gd.depthFormat = rhi::Format::D32_FLOAT;
@@ -349,9 +270,10 @@ public:
             cmd.setVertexBuffer(0, pool.vertexBuffer());
             cmd.setIndexBuffer(pool.indexBuffer(), rhi::IndexType::Uint32);
             for (int m = 0; m < kMeshKinds; ++m) {
-                const SubMesh& sm = pool[meshIds[m]];
-                cmd.setVertexBuffer(1, instanceBuf.get(), std::uint64_t(groupFirst[m]) * sizeof(Instance));
-                cmd.drawIndexed(sm.indexCount, groupCount[m], sm.firstIndex, sm.baseVertex);
+                const SubMesh& sm = pool[meshIds[std::size_t(m)]];
+                if (rs.groupCount[std::size_t(m)] == 0) continue;
+                cmd.setVertexBuffer(1, rs.instances.get(), std::uint64_t(rs.groupFirst[std::size_t(m)]) * sizeof(RtInstance));
+                cmd.drawIndexed(sm.indexCount, rs.groupCount[std::size_t(m)], sm.firstIndex, sm.baseVertex);
             }
             cmd.setPipeline(grassPipe.get());
             if (vrs) cmd.setShadingRate(2, 2);
@@ -362,7 +284,7 @@ public:
             for (rhi::Texture* t : {albedo.get(), normal.get(), depth.get()}) cmd.transition(t, rhi::ResourceState::ShaderRead);
             cmd.transition(vis.get(), rhi::ResourceState::UnorderedAccess);
             cmd.setPipeline(tracePipe.get());
-            cmd.setAccelerationStructure(0, tlas.get());
+            cmd.setAccelerationStructure(0, rs.tlas.get());
             cmd.setTexture(6, normal.get());
             cmd.setTexture(7, depth.get());
             cmd.setStorageTexture(1, vis.get());
@@ -371,9 +293,9 @@ public:
 
             cmd.transition(hdr.get(), rhi::ResourceState::UnorderedAccess);
             cmd.setPipeline(lightingPipe.get());
-            cmd.setAccelerationStructure(0, tlas.get());
-            cmd.setReadOnlyBuffer(1, instanceBuf.get());
-            cmd.setReadOnlyBuffer(2, meshBuf.get());
+            cmd.setAccelerationStructure(0, rs.tlas.get());
+            cmd.setReadOnlyBuffer(1, rs.instances.get());
+            cmd.setReadOnlyBuffer(2, rs.meshes.get());
             cmd.setReadOnlyBuffer(3, pool.vertexBuffer());
             cmd.setReadOnlyBuffer(4, pool.indexBuffer());
             cmd.setTexture(5, albedo.get());

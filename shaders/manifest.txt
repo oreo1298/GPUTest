@@ -128,3 +128,7 @@ scenes/glasshouse.slang        csTrace        compute         vk,d3d12   vk=spir
 scenes/glasshouse.slang        csLighting     compute         vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5
 scenes/glasshouse.slang        vsFullscreen   vertex          vk,d3d12
 scenes/glasshouse.slang        psComposite    fragment        vk,d3d12
+scenes/gallery.slang           csPathTrace    compute         vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5
+scenes/gallery.slang           csFilter       compute         vk,d3d12
+scenes/gallery.slang           vsFullscreen   vertex          vk,d3d12
+scenes/gallery.slang           psComposite    fragment        vk,d3d12
