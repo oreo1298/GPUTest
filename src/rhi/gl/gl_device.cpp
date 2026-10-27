@@ -281,7 +281,9 @@ void GLDevice::fillFeatures() {
         gl().glGetIntegerv(e, &v);
         return v;
     };
-    f.timestamps = gl().glQueryCounter != nullptr;
+    // Software GL (llvmpipe) runs compute and copies in the API thread but captures timestamps later
+    // in its rasterizer threads, so they bracket nothing there: time with the CPU clock instead.
+    f.timestamps = gl().glQueryCounter != nullptr && m_adapter.type != AdapterType::Cpu;
     f.timestampsOnComputeQueue = f.timestamps;
     f.timestampPeriodNs = 1.0;
     f.asyncComputeQueue = false;

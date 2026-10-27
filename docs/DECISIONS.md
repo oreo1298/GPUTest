@@ -214,7 +214,9 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   driver still in use has it. Compute, storage buffers/images, texture views, multi-draw indirect are used from
   4.2/4.3 when present. The context lives on a hidden window of its own and is made current on a swapchain's
   window only to present (blit + swap); headless Linux uses SDL's offscreen (EGL) driver. Entry points load
-  through SDL_GL_GetProcAddress — nothing links against libGL/opengl32.
+  through SDL_GL_GetProcAddress — nothing links against libGL/opengl32. Software GL (llvmpipe) reports no GPU
+  timestamps: it runs compute and copies in the API thread but captures timestamps later in its rasterizer
+  threads, so the harness times with the CPU clock there.
 
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).

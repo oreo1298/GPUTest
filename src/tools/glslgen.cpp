@@ -17,6 +17,7 @@
 
 #include <spirv_glsl.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -92,23 +93,37 @@ int main(int argc, char** argv) {
         c.build_combined_image_samplers();
         spirv_cross::ShaderResources res = c.get_shader_resources();
 
+        // Buffer blocks: GL identifies them by block (type) name. Several variables can share one
+        // SPIR-V block type (two RWStructuredBuffer<uint>), so the variables get our names too and
+        // the table is written after compile() from the block names SPIRV-Cross actually emitted.
+        struct BlockEntry {
+            spirv_cross::VariableID id;
+            std::string kind, args;
+        };
+        std::vector<BlockEntry> blocks;
+        std::vector<std::uint32_t> namedTypes;
+        auto nameBlock = [&](const spirv_cross::Resource& r, const std::string& name) {
+            c.set_name(r.id, name);
+            if (std::find(namedTypes.begin(), namedTypes.end(), r.base_type_id) == namedTypes.end()) {
+                c.set_name(r.base_type_id, name);
+                namedTypes.push_back(r.base_type_id);
+            }
+        };
         for (const auto& r : res.uniform_buffers) {
-            const std::uint32_t b = binding(r.id);
-            const std::string name = "gtb_b" + std::to_string(registerSlot(b));
-            c.set_name(r.base_type_id, name);
-            header << "// gt:ubo " << name << ' ' << registerSlot(b) << '\n';
+            const std::uint32_t slot = registerSlot(binding(r.id));
+            nameBlock(r, "gtb_b" + std::to_string(slot));
+            blocks.push_back({r.id, "ubo", std::to_string(slot)});
             strip(r.id);
         }
         for (const auto& r : res.push_constant_buffers) {
-            c.set_name(r.base_type_id, "gtb_push");
-            header << "// gt:push gtb_push\n";
+            nameBlock(r, "gtb_push");
+            blocks.push_back({r.id, "push", ""});
         }
         for (const auto& r : res.storage_buffers) {
             const std::uint32_t b = binding(r.id);
             const char cls = registerClass(b);
-            const std::string name = std::string("gts_") + cls + std::to_string(registerSlot(b));
-            c.set_name(r.base_type_id, name);
-            header << "// gt:ssbo " << name << ' ' << cls << registerSlot(b) << '\n';
+            nameBlock(r, std::string("gts_") + cls + std::to_string(registerSlot(b)));
+            blocks.push_back({r.id, "ssbo", cls + std::to_string(registerSlot(b))});
             strip(r.id);
         }
         for (const auto& r : res.storage_images) {
@@ -142,6 +157,11 @@ int main(int argc, char** argv) {
         }
 
         std::string glsl = c.compile();
+        for (const BlockEntry& b : blocks) {
+            header << "// gt:" << b.kind << ' ' << c.get_remapped_declared_block_name(b.id);
+            if (!b.args.empty()) header << ' ' << b.args;
+            header << '\n';
+        }
         if (model == spv::ExecutionModelTessellationControl) {
             // GLSL requires per-vertex outputs to be indexed with gl_InvocationID itself, not a copy.
             static const std::regex copy(R"((?:uint|int) (_\d+) = (?:uint\()?gl_InvocationID\)?;)");

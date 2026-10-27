@@ -63,12 +63,13 @@ print("ok:", sys.argv[2])
 PY
 }
 
-step "OpenGL (llvmpipe): legacy-tier scenes against the Vulkan golden frames"
-"$runner" --api opengl --test scene.lattice,scene.courtyard,scene.courtyard.lite,scene.atrium,scene.atrium.lite \
-    --duration smoke --quality low --offscreen --resolution 320x180 --validation --fail-on-validation \
-    --dump-frames "$out/gl-frames" --golden "$root/tests/golden/lavapipe" --out "$out/gl-scenes.json"
-python3 "$root/scripts/check-results.py" "$out/gl-scenes.json" --require-completed --require-golden-pass
-check_json "$out/gl-scenes.json" 'sum(1 for t in r["tests"] if "golden" in t["details"]) == 5'
+step "OpenGL (llvmpipe): standard suite; scenes against the Vulkan golden frames"
+"$runner" --api opengl --suite standard --duration smoke --quality low --offscreen --resolution 320x180 \
+    --validation --fail-on-validation --dump-frames "$out/gl-frames" --golden "$root/tests/golden/lavapipe" \
+    --out "$out/gl-standard.json" --log-file "$out/gl-standard.log"
+python3 "$root/scripts/check-results.py" "$out/gl-standard.json" --require-completed --require-golden-pass
+check_json "$out/gl-standard.json" 'sum(1 for t in r["tests"] if "golden" in t.get("details", {})) == 5'
+check_json "$out/gl-standard.json" 'all(t["status"] in ("completed", "skipped") for t in r["tests"])'
 end
 
 step "every scene: golden frames (offscreen, validation)"

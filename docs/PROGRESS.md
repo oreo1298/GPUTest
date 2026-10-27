@@ -74,8 +74,9 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   standard suite strict on D3D12.
 - **Milestone 11 (legacy backends): in progress.** OpenGL backend (`src/rhi/gl`, GL 3.3 core + buffer storage,
   newer features when present) renders Lattice, Courtyard and Atrium (+ lite) on llvmpipe identically to Vulkan
-  (golden frames, CI step); windowed presentation and the HUD work (HUD needs GLSL 4.30). Next: compute and
-  synthetic tests on GL, the D3D11 backend, the legacy suite.
+  (golden frames); windowed presentation and the HUD work (HUD needs GLSL 4.30). The synthetic tests,
+  diagnostics, draw-call and async tests also run on GL (compute needs 4.3); CI runs the whole standard suite
+  on llvmpipe GL with debug output as errors. Next: the D3D11 backend, the legacy suite.
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
