@@ -62,6 +62,11 @@ if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
   if(_rev_res EQUAL 0 AND _rev)
     set(GT_GIT_REVISION "${_rev}")
   endif()
+  # The reflog changes on every commit and checkout: reconfigure then, so the revision shown in the app and
+  # recorded in results never goes stale in an incremental build.
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git/logs/HEAD")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/.git/logs/HEAD")
+  endif()
 endif()
 configure_file(src/common/app_info.h.in "${CMAKE_BINARY_DIR}/generated/gt/app_info.h" @ONLY)
 

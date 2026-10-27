@@ -262,9 +262,9 @@ bool ThemeManager::readKdeGlobals() {
 void ThemeManager::detectSystem() {
     m_systemAccent = QColor();
     m_haveKde = false;
-    m_source = QStringLiteral("default");
+    m_source = tr("none found, using the light palette");
 #ifdef Q_OS_WIN
-    m_source = QStringLiteral("Windows");
+    m_source = tr("Windows settings");
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     m_systemDark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
 #else
@@ -282,14 +282,14 @@ void ThemeManager::detectSystem() {
     if (desktop.contains(QLatin1String("KDE"), Qt::CaseInsensitive) && readKdeGlobals()) {
         m_haveKde = true;
         m_systemDark = luminance(m_kdeWindow) < 0.25;
-        m_source = QStringLiteral("KDE Plasma colour scheme");
+        m_source = tr("KDE Plasma colour scheme");
     } else if (m_portalScheme >= 0) {
         m_systemDark = m_portalScheme == 1;
-        m_source = QStringLiteral("xdg-desktop-portal");
+        m_source = tr("desktop portal (light / dark preference)");
     } else {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
         m_systemDark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
-        m_source = QStringLiteral("Qt platform theme");
+        m_source = tr("Qt platform theme");
 #else
         m_systemDark = false;
 #endif

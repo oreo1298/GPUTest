@@ -32,8 +32,9 @@ SettingsPage::SettingsPage(QWidget* parent)
     theme->setAccessibleName(tr("Theme"));
     lf->addRow(tr("&Theme:"), theme);
     auto* source = makeHint(QString());
+    source->setWordWrap(false); // short; wrapping squeezed it into the combo box's width
     auto updateSource = [source] {
-        source->setText(tr("System colours come from: %1").arg(ThemeManager::instance().source()));
+        source->setText(tr("System colour scheme: %1").arg(ThemeManager::instance().source()));
     };
     updateSource();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, source, updateSource);
