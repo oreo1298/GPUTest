@@ -250,6 +250,7 @@ private:
     QLabel* m_infoB;
     QWidget* m_tiles;
     QTableWidget* m_table;
+    QWidget* m_frameCard; ///< the frame-time charts (hidden for tests without frames)
     LineChart* m_frames;
     HistogramChart* m_hist;
     QTableWidget* m_telemetry;

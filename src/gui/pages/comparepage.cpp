@@ -180,6 +180,7 @@ ComparePage::ComparePage(AppState* state, QWidget* parent)
     bl->addWidget(m_table);
 
     auto* detail = new Card;
+    m_frameCard = detail;
     auto* dl = static_cast<QVBoxLayout*>(detail->layout());
     auto* charts = new QHBoxLayout;
     charts->setSpacing(10);
@@ -211,6 +212,7 @@ ComparePage::ComparePage(AppState* state, QWidget* parent)
     m_telemetry->setAlternatingRowColors(true);
     m_telemetry->setAccessibleName(tr("Sensor comparison"));
     bl->addWidget(m_telemetry);
+    bl->addStretch(); // spare height goes below the tables, not into the headings
     m_content->addWidget(m_body);
     m_content->addStretch();
     m_body->hide();
@@ -370,6 +372,7 @@ void ComparePage::rebuild() {
     addTile(tr("Average board power"), summary(A, "power_w", false), summary(B, "power_w", false), 0, false,
             QStringLiteral("W"));
     addTile(tr("Points per watt"), A.scores.perWatt, B.scores.perWatt, 1, true, QString());
+    m_tiles->setVisible(tl->count() > 0); // runs without scores (unscored tests only) get no empty row
     tl->addStretch();
 
     // Tests matched by id; scores averaged over loops, frame data from the first loop.
@@ -505,6 +508,7 @@ void ComparePage::showTest(int row) {
     if (r.b) vb.assign(r.b->frameTimesMs.begin(), r.b->frameTimesMs.end());
     all = va;
     all.insert(all.end(), vb.begin(), vb.end());
+    m_frameCard->setVisible(!all.empty()); // as on the Results page: no charts for tests without frames
     if (all.empty()) return;
     const auto layout = frameTimeHistogram(all, 36);
     const auto bins = layout.counts.size();
