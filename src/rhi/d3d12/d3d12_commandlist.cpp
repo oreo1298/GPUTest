@@ -89,6 +89,8 @@ void D3D12CommandList::begin() {
     m_s = {};
     m_vbs = {};
     m_vbsDirty = false;
+    m_shadingRate = D3D12_SHADING_RATE_1X1;
+    m_rateImage = false;
     m_barriers.clear();
     m_local.clear();
     m_copyQueueTextures.clear();
@@ -111,6 +113,25 @@ void D3D12CommandList::end() {
     for (D3D12Texture* t : m_copyQueueTextures) t->d3dState = D3D12_RESOURCE_STATE_COMMON;
     m_dev.check(m_list->Close(), "ID3D12GraphicsCommandList::Close");
     m_recording = false;
+}
+
+ID3D12GraphicsCommandList* D3D12CommandList::beginNative() {
+    requireRecording("beginNative");
+    flushBarriers();
+    return m_list.get();
+}
+
+void D3D12CommandList::endNative() {
+    requireRecording("endNative");
+    m_pipeline = nullptr;
+    m_root = nullptr;
+    m_rootDirty = m_viewsDirty = m_samplersDirty = m_tableDirty = true;
+    m_pushDirty = m_pushBytes > 0;
+    m_vbsDirty = true;
+    if (m_queue != QueueType::Copy) {
+        ID3D12DescriptorHeap* heaps[] = {m_dev.viewHeap().heap(), m_dev.samplerHeap().heap()};
+        m_list->SetDescriptorHeaps(2, heaps);
+    }
 }
 
 // --- resource states -------------------------------------------------------------------------------------
@@ -138,6 +159,7 @@ D3D12_RESOURCE_STATES D3D12CommandList::stateFor(ResourceState s) const {
     case ResourceState::CopyDst:
     case ResourceState::HostRead: return D3D12_RESOURCE_STATE_COPY_DEST;
     case ResourceState::IndirectArgument: return D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
+    case ResourceState::ShadingRateSource: return D3D12_RESOURCE_STATE_SHADING_RATE_SOURCE;
     }
     return D3D12_RESOURCE_STATE_COMMON;
 }
@@ -158,7 +180,8 @@ void D3D12CommandList::barrier(ID3D12Resource* r, D3D12_RESOURCE_STATES& current
     if (current == want) return;
     if (m_queue == QueueType::Compute && (current & kGraphicsOnlyStates))
         throw Error(std::format("'{}' is in a graphics-only state and cannot be used on the compute queue; create it "
-                                "with TextureDesc::concurrentQueues",
+                                "with TextureDesc::concurrentQueues and transition it to ShaderRead on the graphics "
+                                "queue before the hand-over",
                                 name));
     // A combined read state that already includes the wanted reads stays as it is (e.g. a depth
     // buffer attached read-only and sampled at the same time).
@@ -196,7 +219,11 @@ void D3D12CommandList::flushBarriers() {
 void D3D12CommandList::transition(Texture* texture, ResourceState state) {
     requireRecording("transition");
     auto* t = static_cast<D3D12Texture*>(texture);
-    const D3D12_RESOURCE_STATES want = stateFor(state);
+    D3D12_RESOURCE_STATES want = stateFor(state);
+    // Cross-queue textures without simultaneous access (depth, MSAA) are handed to the compute queue
+    // in a read state it can use; pixel-shader binds add PIXEL_SHADER_RESOURCE when needed.
+    if (state == ResourceState::ShaderRead && isGraphics() && t->desc().concurrentQueues && !t->decays())
+        want = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     if (want == D3D12_RESOURCE_STATE_UNORDERED_ACCESS && trackedState(t) == want) {
         D3D12_RESOURCE_BARRIER b{};
         b.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
@@ -262,6 +289,13 @@ void D3D12CommandList::beginRenderPass(const RenderPassDesc& desc) {
         width = width ? width : depth->desc().width;
         height = height ? height : depth->desc().height;
     }
+    auto* rateImage = static_cast<D3D12Texture*>(desc.shadingRateImage);
+    if (rateImage) {
+        if (!m_dev.features().shadingRateImage || !m_list5)
+            throw Error("beginRenderPass: shading-rate images are not supported (D3D12 VRS tier 2)");
+        require(rateImage, D3D12_RESOURCE_STATE_SHADING_RATE_SOURCE);
+        rateImage->state = ResourceState::ShadingRateSource;
+    }
     flushBarriers();
     for (std::size_t i = 0; i < desc.colors.size(); ++i)
         if (desc.colors[i].load == LoadOp::Clear) m_list->ClearRenderTargetView(rtvs[i], desc.colors[i].clear.data(), 0, nullptr);
@@ -271,6 +305,11 @@ void D3D12CommandList::beginRenderPass(const RenderPassDesc& desc) {
         m_list->ClearDepthStencilView(dsv, flags, desc.depth.clearDepth, desc.depth.clearStencil, 0, nullptr);
     }
     m_list->OMSetRenderTargets(static_cast<UINT>(rtvs.size()), rtvs.data(), FALSE, depth ? &dsv : nullptr);
+    if (rateImage) {
+        m_list5->RSSetShadingRateImage(rateImage->resource());
+        m_rateImage = true;
+        applyShadingRate();
+    }
     m_inRenderPass = true;
     setViewport(0, 0, static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f);
     setScissor(0, 0, width, height);
@@ -280,6 +319,11 @@ void D3D12CommandList::endRenderPass() {
     requireRecording("endRenderPass");
     if (!m_inRenderPass) return;
     m_inRenderPass = false;
+    if (m_rateImage) {
+        m_list5->RSSetShadingRateImage(nullptr);
+        m_rateImage = false;
+        applyShadingRate();
+    }
     for (auto [dst, src] : m_pendingResolves) resolveTexture(dst, src);
     m_pendingResolves.clear();
 }
@@ -493,7 +537,9 @@ void D3D12CommandList::flushBindings(bool compute) {
     auto missing = [&](const RootLayout::Entry& e) {
         return Error(std::format("pipeline '{}': slot {}{} not bound", name, registerClass(e.type), e.slot));
     };
-    // Bound resources get a state that allows their use (recorded before the draw).
+    // Bound resources get a state that allows their use (recorded before the draw). Dispatches only
+    // need the non-pixel read state, which keeps textures handed to the compute queue usable there.
+    const D3D12_RESOURCE_STATES readState = compute ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE : shaderReadState();
     auto prepare = [&](const RootLayout::Entry& e) {
         const Bound& b = bound(e.type, e.slot);
         switch (e.type) {
@@ -503,7 +549,7 @@ void D3D12CommandList::flushBindings(bool compute) {
             break;
         case BindingType::StorageBufferRO:
             if (!b.buffer) throw missing(e);
-            require(b.buffer, shaderReadState());
+            require(b.buffer, readState);
             break;
         case BindingType::StorageBufferRW:
             if (!b.buffer) throw missing(e);
@@ -511,7 +557,7 @@ void D3D12CommandList::flushBindings(bool compute) {
             break;
         case BindingType::SampledTexture:
             if (!b.texture) throw missing(e);
-            require(b.texture, shaderReadState());
+            require(b.texture, readState);
             break;
         case BindingType::StorageTexture:
             if (!b.texture) throw missing(e);
@@ -712,7 +758,16 @@ void D3D12CommandList::setShadingRate(std::uint32_t width, std::uint32_t height)
     else if (width >= 2 && height >= 2) rate = D3D12_SHADING_RATE_2X2;
     else if (width >= 2) rate = D3D12_SHADING_RATE_2X1;
     else if (height >= 2) rate = D3D12_SHADING_RATE_1X2;
-    m_list5->RSSetShadingRate(rate, nullptr);
+    m_shadingRate = rate;
+    applyShadingRate();
+}
+
+void D3D12CommandList::applyShadingRate() {
+    // Final rate = combiner1(combiner0(per-draw, per-primitive), image): an open shading-rate image overrides.
+    const D3D12_SHADING_RATE_COMBINER combiners[2] = {
+        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH,
+        m_rateImage ? D3D12_SHADING_RATE_COMBINER_OVERRIDE : D3D12_SHADING_RATE_COMBINER_PASSTHROUGH};
+    m_list5->RSSetShadingRate(m_shadingRate, combiners);
 }
 
 // --- transfers ---------------------------------------------------------------------------------------------

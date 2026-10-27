@@ -165,6 +165,8 @@ struct DeviceFeatures {
     bool taskShader = false; ///< mesh pipelines may have a task (amplification) stage
     bool variableRateShading = false;
     std::uint32_t maxShadingRate = 1; ///< largest square per-draw shading rate (2 or 4) with variableRateShading
+    bool shadingRateImage = false;    ///< per-tile rates from an R8_UINT image (RenderPassDesc::shadingRateImage)
+    std::uint32_t shadingRateTileSize = 0; ///< pixels per shading-rate image texel (square) with shadingRateImage
     bool multiDrawIndirect = false;
     bool drawIndirectCount = false;
     bool pipelineStatistics = false;

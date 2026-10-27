@@ -270,6 +270,11 @@ public:
     ~D3D12CommandList() override;
     ID3D12GraphicsCommandList* handle() const { return m_list.get(); }
     void setLastSubmit(std::uint64_t value) { m_lastSubmit = value; }
+    /// For feature tests that record D3D12 commands directly: flushes pending barriers and returns the
+    /// list. Call endNative() afterwards; the next draw or dispatch then needs setPipeline() and re-binds
+    /// all root state (viewports and scissors set natively are not restored).
+    ID3D12GraphicsCommandList* beginNative();
+    void endNative();
 
     void begin() override;
     void end() override;
@@ -347,6 +352,7 @@ private:
     D3D12_RESOURCE_STATES stateFor(ResourceState s) const;
     D3D12_RESOURCE_STATES shaderReadState() const;
     D3D12_RESOURCE_STATES& trackedState(D3D12Texture* t);
+    void applyShadingRate();
     void require(D3D12Texture* t, D3D12_RESOURCE_STATES want);
     void require(D3D12Buffer* b, D3D12_RESOURCE_STATES want);
     void barrier(ID3D12Resource* r, D3D12_RESOURCE_STATES& current, D3D12_RESOURCE_STATES want, const char* name);
@@ -367,6 +373,8 @@ private:
     std::uint64_t m_lastSubmit = 0;
     bool m_recording = false;
     bool m_inRenderPass = false;
+    bool m_rateImage = false; ///< a shading-rate image is bound (render pass with shadingRateImage)
+    D3D12_SHADING_RATE m_shadingRate = D3D12_SHADING_RATE_1X1;
     D3D12Pipeline* m_pipeline = nullptr;
     const RootSignature* m_root = nullptr;
     bool m_rootDirty = true, m_viewsDirty = true, m_samplersDirty = true, m_pushDirty = false, m_tableDirty = true;
@@ -455,6 +463,8 @@ public:
     GpuDescriptorHeap& viewHeap() { return *m_viewHeap; }
     GpuDescriptorHeap& samplerHeap() { return *m_samplerHeap; }
     const RootSignature& rootSignature(const LayoutDesc& layout, bool inputAssembler);
+    /// Serializes and creates a root signature (also used by feature tests with native pipelines).
+    Com<ID3D12RootSignature> createRootSignature(const D3D12_VERSIONED_ROOT_SIGNATURE_DESC& desc);
     ID3D12CommandSignature* commandSignature(D3D12_INDIRECT_ARGUMENT_TYPE type, std::uint32_t stride);
     std::span<const std::uint8_t> shaderBytecode(const ShaderRef& ref) const;
     void deferDestroy(std::function<void()> fn);

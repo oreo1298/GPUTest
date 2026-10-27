@@ -109,6 +109,9 @@ D3D12Texture::D3D12Texture(D3D12Device& dev, const TextureDesc& desc) : m_dev(de
     rd.SampleDesc = {desc.sampleCount, 0};
     rd.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     const auto u = desc.usage;
+    if (any(u & TextureUsage::ShadingRate) &&
+        (!dev.features().shadingRateImage || desc.format != Format::R8_UINT || desc.type != TextureType::Tex2D))
+        throw Error(std::format("texture '{}': shading-rate images need VRS tier 2 and a 2D R8_UINT format", desc.name));
     if (any(u & TextureUsage::RenderTarget)) rd.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
     if (any(u & TextureUsage::DepthStencil)) rd.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
     if (any(u & TextureUsage::Storage)) rd.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;

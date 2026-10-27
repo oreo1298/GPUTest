@@ -95,6 +95,7 @@ enum class TextureUsage : std::uint32_t {
     DepthStencil = 1u << 3,
     CopySrc = 1u << 4,
     CopyDst = 1u << 5,
+    ShadingRate = 1u << 6, ///< R8_UINT shading-rate image (features().shadingRateImage)
 };
 template <>
 struct EnableFlags<TextureUsage> : std::true_type {};
@@ -404,6 +405,7 @@ enum class ResourceState : std::uint8_t {
     IndirectArgument,
     Present,
     HostRead,       ///< after a copy into a readback buffer, before mapping
+    ShadingRateSource, ///< read as a shading-rate image by the rasterizer
 };
 
 // --- render passes ---------------------------------------------------------------------
@@ -432,7 +434,18 @@ struct DepthAttachment {
 struct RenderPassDesc {
     std::vector<ColorAttachment> colors;
     DepthAttachment depth{};
+    /// Per-tile shading rates (features().shadingRateImage): an R8_UINT texture with one texel per
+    /// shadingRateTileSize pixels holding shadingRateCode() values. It replaces the per-draw rate of
+    /// pipelines created with variableRate while the pass is open.
+    Texture* shadingRateImage = nullptr;
 };
+
+/// Shading-rate image value for a rate of width x height pixels (1, 2 or 4 each): the encoding shared by
+/// D3D12_SHADING_RATE and Vulkan fragment shading rate attachments.
+constexpr std::uint8_t shadingRateCode(std::uint32_t width, std::uint32_t height) {
+    auto log2 = [](std::uint32_t v) { return v >= 4 ? 2u : v >= 2 ? 1u : 0u; };
+    return static_cast<std::uint8_t>((log2(width) << 2) | log2(height));
+}
 
 // --- command lists -------------------------------------------------------------------------
 enum class QueueType : std::uint8_t { Graphics, Compute, Copy };

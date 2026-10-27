@@ -120,6 +120,7 @@ void VulkanCommandList::uavBarrier() {
 void VulkanCommandList::beginRenderPass(const RenderPassDesc& desc) {
     requireRecording("beginRenderPass");
     if (m_inRenderPass) throw Error("beginRenderPass: already inside a render pass");
+    if (desc.shadingRateImage) throw Error("beginRenderPass: shading-rate images are not implemented on Vulkan");
     std::vector<VkFormat> colorFormats;
     std::vector<Format> colorFmts;
     std::vector<LoadOp> loads;

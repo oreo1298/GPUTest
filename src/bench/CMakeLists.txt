@@ -40,6 +40,7 @@ add_library(gt_bench_tests OBJECT
   tests/features/rt_omm.cpp
   tests/features/mesh_shaders.cpp
   tests/features/vrs.cpp
+  tests/features/sampler_feedback.cpp
   tests/features/async_queues.cpp
   tests/features/subgroups.cpp
   tests/features/bindless.cpp

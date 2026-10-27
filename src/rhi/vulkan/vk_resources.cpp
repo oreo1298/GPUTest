@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <format>
 
 namespace gt::rhi::vk {
 
@@ -177,6 +178,8 @@ VulkanTexture::VulkanTexture(VulkanDevice& dev, const TextureDesc& desc) : m_dev
     ci.samples = toVkSamples(desc.sampleCount);
     ci.tiling = VK_IMAGE_TILING_OPTIMAL;
     auto u = desc.usage;
+    if (any(u & TextureUsage::ShadingRate))
+        throw Error(std::format("texture '{}': shading-rate images are not implemented on Vulkan", desc.name));
     ci.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     if (any(u & TextureUsage::Sampled)) ci.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
     if (any(u & TextureUsage::Storage)) ci.usage |= VK_IMAGE_USAGE_STORAGE_BIT;

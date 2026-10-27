@@ -43,6 +43,12 @@ On a Windows PC (the 4090 if it dual-boots, otherwise any GPU), unzip the `windo
    `kiln-run --api d3d12 --suite smoke --validation`; the results file's `validation.errors` must be 0.
 5. **Runtime**: the device log line ends with "Windows built-in runtime"; tell me your Windows build (winver).
    Shader model 6.9 features (SER, opacity micromaps) need the Agility SDK, which is not shipped yet (see below).
+6. **VRS tier 2**: `kiln-run --api d3d12 --test feature.vrs --dump-frames vrs`: details should show
+   `shading_rate_image` "yes (16x16 px tiles)" (8 on some GPUs), `speedup_image` above 1, and a Pass verdict
+   ("Rate image: ~100 % of blocks in coarse tiles and ~0 % in 1x1 tiles shaded once").
+7. **Sampler feedback**: `kiln-run --api d3d12 --test feature.sampler_feedback`: Pass ("All 256 feedback regions
+   decode to the mip level that was sampled"); a Warn about conservative feedback is acceptable — tell me which.
+   Note `feedback_overhead_pct` (writing feedback on top of the same samples).
 
 **Decision needed (licensing):** shipping Microsoft's Agility SDK runtime (`D3D12Core.dll`,
 `d3d12SDKLayers.dll`) is allowed, but its license makes the distributor require end-user terms that protect

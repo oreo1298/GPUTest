@@ -85,6 +85,9 @@ features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 
 features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=e4m3_16x16x16 defines=AB_TYPE=FloatE4M3,C_TYPE=float,TILE_M=16,TILE_N=16,TILE_K=16
 features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=e4m3_16x16x32 defines=AB_TYPE=FloatE4M3,C_TYPE=float,TILE_M=16,TILE_N=16,TILE_K=32
 features/omm.slang             csAlphaTrace   compute         vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5
+features/sampler_feedback.slang csPattern      compute        d3d12      d3d12=sm_6_5
+features/sampler_feedback.slang csSample       compute        d3d12      d3d12=sm_6_5
+features/sampler_feedback.slang csSampleFeedback compute      d3d12      d3d12=sm_6_5
 scenes/courtyard.slang         vsObject       vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
 scenes/courtyard.slang         vsInstanced    vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
 scenes/courtyard.slang         vsTerrain      vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0

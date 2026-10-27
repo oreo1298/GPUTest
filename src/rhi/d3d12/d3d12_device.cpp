@@ -433,6 +433,8 @@ void D3D12Device::fillFeatures() {
     f.taskShader = f.meshShader;
     f.variableRateShading = o6.VariableShadingRateTier >= D3D12_VARIABLE_SHADING_RATE_TIER_1;
     f.maxShadingRate = f.variableRateShading ? (o6.AdditionalShadingRatesSupported ? 4u : 2u) : 1u;
+    f.shadingRateImage = o6.VariableShadingRateTier >= D3D12_VARIABLE_SHADING_RATE_TIER_2;
+    f.shadingRateTileSize = f.shadingRateImage ? o6.ShadingRateImageTileSize : 0u;
     f.multiDrawIndirect = true;
     f.drawIndirectCount = true;
     f.pipelineStatistics = true;
@@ -695,6 +697,11 @@ const RootSignature& D3D12Device::rootSignature(const LayoutDesc& layout, bool i
     desc.Desc_1_1.pParameters = params.data();
     desc.Desc_1_1.Flags =
         inputAssembler ? D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT : D3D12_ROOT_SIGNATURE_FLAG_NONE;
+    rs->signature = createRootSignature(desc);
+    return *m_rootSignatures.emplace(key, std::move(rs)).first->second;
+}
+
+Com<ID3D12RootSignature> D3D12Device::createRootSignature(const D3D12_VERSIONED_ROOT_SIGNATURE_DESC& desc) {
     Com<ID3DBlob> blob, errors;
     const HRESULT hr = runtime().serializeRootSignature(&desc, blob.put(), errors.put());
     if (FAILED(hr)) {
@@ -702,10 +709,11 @@ const RootSignature& D3D12Device::rootSignature(const LayoutDesc& layout, bool i
                                  : hresultName(hr);
         throw Error("D3D12SerializeVersionedRootSignature failed: " + msg);
     }
+    Com<ID3D12RootSignature> signature;
     check(m_device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), __uuidof(ID3D12RootSignature),
-                                        rs->signature.putVoid()),
+                                        signature.putVoid()),
           "CreateRootSignature");
-    return *m_rootSignatures.emplace(key, std::move(rs)).first->second;
+    return signature;
 }
 
 ID3D12CommandSignature* D3D12Device::commandSignature(D3D12_INDIRECT_ARGUMENT_TYPE type, std::uint32_t stride) {
@@ -914,6 +922,8 @@ std::vector<Capability> D3D12Device::capabilities() const {
     add(g, "Raytracing tier", tier10(o5.RaytracingTier));
     add(g, "Variable shading rate tier", tier(o6.VariableShadingRateTier));
     yes(g, "Additional shading rates (4x4)", o6.AdditionalShadingRatesSupported);
+    if (o6.VariableShadingRateTier >= D3D12_VARIABLE_SHADING_RATE_TIER_2)
+        add(g, "Shading-rate image tile size", std::format("{0}x{0}", o6.ShadingRateImageTileSize));
     add(g, "Mesh shader tier", tier(o7.MeshShaderTier));
     add(g, "Sampler feedback tier", tier10(o7.SamplerFeedbackTier));
     yes(g, "64-bit atomics on typed resources", o9.AtomicInt64OnTypedResourceSupported);

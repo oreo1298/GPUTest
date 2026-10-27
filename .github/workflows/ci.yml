@@ -18,6 +18,7 @@ env:
   # neither is packaged: WARP's license is test-only, the Agility SDK's needs an owner decision).
   AGILITY_SDK_VERSION: "1.619.6"
   WARP_VERSION: "1.0.21"
+  DXC_VERSION: "1.9.2609.5"
 
 jobs:
   linux:
@@ -285,6 +286,13 @@ jobs:
           $zip = Join-Path $env:RUNNER_TEMP "slang.zip"
           Invoke-WebRequest -Uri "https://github.com/shader-slang/slang/releases/download/v$env:SLANG_VERSION/slang-$env:SLANG_VERSION-windows-x86_64.zip" -OutFile $zip
           Expand-Archive -Path $zip -DestinationPath $dst
+          # slangc compiles DXIL through the dxcompiler.dll next to it; use a DXC that knows
+          # shader models 6.8/6.9 (work graphs, SER, OMM). Build-time only, never packaged.
+          $dxc = Join-Path $env:RUNNER_TEMP "dxc"
+          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.direct3d.dxc/$env:DXC_VERSION/microsoft.direct3d.dxc.$env:DXC_VERSION.nupkg" -OutFile "$dxc.zip"
+          Expand-Archive -Path "$dxc.zip" -DestinationPath $dxc
+          Copy-Item "$dxc/build/native/bin/x64/dxcompiler.dll", "$dxc/build/native/bin/x64/dxil.dll" (Join-Path $dst "bin") -Force
+          & "$dxc/build/native/bin/x64/dxc.exe" --version
           Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $dst "bin")
 
       - name: Configure

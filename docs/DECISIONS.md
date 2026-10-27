@@ -168,6 +168,21 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   call (asked). CI stages both next to the test build only; the portable zip uses Windows' runtime.
 - **DirectX-Headers v1.619.5** (MIT) for the API (no Windows SDK d3d12.h); the backend is compile-checked on
   Linux with mingw-w64 (`scripts/check-d3d12.sh`) because nothing can run Windows binaries here.
+- **Cross-queue hand-over on D3D12**: depth and MSAA textures cannot use simultaneous access, so a graphics-list
+  `transition(ShaderRead)` of a `concurrentQueues` texture uses NON_PIXEL_SHADER_RESOURCE (valid on the compute
+  queue) and compute dispatches only require that state; pixel-shader binds add PIXEL_SHADER_RESOURCE.
+- **Shading-rate images (VRS tier 2) on D3D12 only for now**: `RenderPassDesc::shadingRateImage` (R8_UINT, codes from
+  `rhi::shadingRateCode`, shared by D3D12 and Vulkan) overrides the per-draw rate. The Vulkan attachment rate needs
+  a render pass with a fragment-shading-rate attachment, which changes render-pass compatibility for every
+  pipeline used with it; with no Vulkan driver here or in CI that supports it (lavapipe has no
+  VK_KHR_fragment_shading_rate), that path would be written blind, so it waits for hardware testing (M14).
+- **Native D3D12 feature tests**: features with no Vulkan counterpart (sampler feedback, work graphs) record D3D12
+  commands directly between `D3D12CommandList::beginNative()` / `endNative()` (barriers flushed first, root state
+  re-bound after), with their own root signatures and descriptors borrowed from the device heaps, so they still use
+  the harness's timing (`measureMicro`) and state tracking for RHI resources.
+- **Sampler feedback is verified exactly**: one point sample per mip region at a chosen mip, with mips no larger
+  than a region and sample positions off every texel edge, so the decoded MinMip map is fully predictable; finer
+  than expected counts as conservative (warn), coarser as wrong (fail).
 
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
