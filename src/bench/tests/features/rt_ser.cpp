@@ -44,7 +44,8 @@ public:
         if (f.shaderExecutionReorderingNv)
             return SupportResult::no("only NVIDIA's own SER extension is available; the test uses the cross-vendor "
                                      "VK_EXT_ray_tracing_invocation_reorder (update the driver)");
-        return SupportResult::no("no shader execution reordering (VK_EXT_ray_tracing_invocation_reorder)");
+        return SupportResult::no("no shader execution reordering (VK_EXT_ray_tracing_invocation_reorder / D3D12 "
+                                 "raytracing tier 1.2 with shader model 6.9)");
     }
 
     void run(TestContext& ctx) override {

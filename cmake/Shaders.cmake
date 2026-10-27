@@ -55,6 +55,7 @@ function(gt_compile_shaders)
   set(_outputs)
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ARG_MANIFEST}")
   file(GLOB_RECURSE _all_sources CONFIGURE_DEPENDS "${ARG_SOURCE_DIR}/*.slang")
+  file(GLOB_RECURSE _all_hlsl CONFIGURE_DEPENDS "${ARG_SOURCE_DIR}/*.hlsl" "${ARG_SOURCE_DIR}/*.hlsli")
 
   foreach(_line IN LISTS _lines)
     string(STRIP "${_line}" _line)
@@ -115,7 +116,7 @@ function(gt_compile_shaders)
         add_custom_command(OUTPUT "${_base}.dxil"
           COMMAND "${GT_DXC}" "${ARG_SOURCE_DIR}/${_file}" -T ${_d3d12} ${_dxc_entry} -HV 2021 -O3
                   -I "${ARG_SOURCE_DIR}" -Fo "${_base}.dxil"
-          DEPENDS "${ARG_SOURCE_DIR}/${_file}"
+          DEPENDS "${ARG_SOURCE_DIR}/${_file}" ${_all_hlsl}
           COMMENT "dxc ${_module}:${_entry} -> DXIL" VERBATIM)
         list(APPEND _embed_args "${_module}:${_entry}:dxil=${_base}.dxil")
         list(APPEND _outputs "${_base}.dxil")

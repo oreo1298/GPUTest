@@ -1,8 +1,8 @@
 // Opacity micromaps (feature.rt.omm): camera rays through thousands of alpha-tested "leaf"
-// cards (shaders/src/features/omm.slang). Without micromaps every candidate triangle is
-// alpha-tested in the shader; with a per-triangle opacity micromap (VK_EXT_opacity_micromap)
-// the hardware resolves triangles entirely inside or outside the leaf, and only the ones on
-// its edge are tested. Reports both rates, the alpha tests per ray, and checks that both
+// cards (shaders/src/features/omm.slang; omm_dxr.hlsl on D3D12). Without micromaps every
+// candidate triangle is alpha-tested in the shader; with a per-triangle opacity micromap
+// (VK_EXT_opacity_micromap, DXR 1.2) the hardware resolves triangles entirely inside or
+// outside the leaf, and only the ones on its edge are tested. Reports both rates, the alpha tests per ray, and checks that both
 // return the same hits. --param feature.rt.omm.baseline_only=1 runs the alpha-tested part
 // alone (CI coverage on GPUs without micromaps).
 
@@ -11,6 +11,7 @@
 #include "gt/bench/context.h"
 #include "gt/bench/micro.h"
 #include "gt/bench/test.h"
+#include "gt/shaders.h"
 
 #include <algorithm>
 #include <cmath>
@@ -65,18 +66,25 @@ public:
     }
     const TestInfo& info() const override { return m_info; }
 
+    static bool dxrShaderEmbedded() {
+        return static_cast<bool>(shaders::find("features/omm_dxr", "csAlphaTrace", shaders::Format::Dxil));
+    }
+
     SupportResult checkSupport(TestContext& ctx) override {
         const auto& f = ctx.device().features();
         if (!f.rayQuery) return SupportResult::no("no ray queries");
-        if (f.opacityMicromap || ctx.settings().param("feature.rt.omm.baseline_only") == "1") return SupportResult::yes();
-        return SupportResult::no("no opacity micromaps (VK_EXT_opacity_micromap)");
+        if (ctx.settings().param("feature.rt.omm.baseline_only") == "1") return SupportResult::yes();
+        if (f.opacityMicromap && ctx.api() == rhi::Api::D3D12 && !dxrShaderEmbedded())
+            return SupportResult::no("the DXR 1.2 shader variant is not embedded in this build (needs DXC 1.9)");
+        if (f.opacityMicromap) return SupportResult::yes();
+        return SupportResult::no("no opacity micromaps (VK_EXT_opacity_micromap / D3D12 raytracing tier 1.2)");
     }
 
     void run(TestContext& ctx) override {
         rhi::Device& dev = ctx.device();
         const RunSettings& s = ctx.settings();
         const bool software = dev.adapter().isSoftware();
-        const bool omm = dev.features().opacityMicromap;
+        const bool omm = dev.features().opacityMicromap && (ctx.api() != rhi::Api::D3D12 || dxrShaderEmbedded());
         const std::uint32_t width = software ? 160 : s.width, height = software ? 90 : s.height;
         const std::uint32_t cells = software ? 4 : 8;
         const std::uint32_t cards = software ? 300 : 20000;
@@ -152,7 +160,10 @@ public:
         auto readback = dev.createBuffer({rays * 4 + 256, U::CopyDst, rhi::MemoryType::Readback, 0, "omm-readback"});
         rhi::ComputePipelineDesc pd;
         pd.name = "csAlphaTrace";
-        pd.compute = {"features/omm", "csAlphaTrace"};
+        // D3D12 ignores micromaps unless the ray query allows them, which needs the HLSL variant; it
+        // runs both passes so they share one shader.
+        if (ctx.api() == rhi::Api::D3D12 && omm) pd.compute = {"features/omm_dxr", "csAlphaTrace"};
+        else pd.compute = {"features/omm", "csAlphaTrace"};
         pd.layout.bindings = {{rhi::BindingType::AccelerationStructure, 0},
                               {rhi::BindingType::StorageBufferRW, 0},
                               {rhi::BindingType::StorageBufferRW, 1}};

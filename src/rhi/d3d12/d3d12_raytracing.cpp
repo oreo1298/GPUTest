@@ -9,28 +9,113 @@
 namespace gt::rhi::d3d12 {
 namespace {
 
-std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometryDescs(const BlasDesc& desc) {
-    std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> out;
-    for (const AccelTriangles& g : desc.geometries) {
-        D3D12_RAYTRACING_GEOMETRY_DESC d{};
-        d.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-        d.Flags = g.opaque ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE : D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
+/// Geometry descriptions of a BLAS; OMM triangles point into `triangles` and `links`.
+struct BlasGeometry {
+    std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> descs;
+    std::vector<D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC> triangles;
+    std::vector<D3D12_RAYTRACING_GEOMETRY_OMM_LINKAGE_DESC> links;
+};
+
+BlasGeometry geometryDescs(const BlasDesc& desc, const std::vector<D3D12Accel::Micromap>* micromaps = nullptr) {
+    BlasGeometry out;
+    out.triangles.reserve(desc.geometries.size()); // stable addresses for the OMM descs
+    out.links.reserve(desc.geometries.size());
+    for (std::size_t gi = 0; gi < desc.geometries.size(); ++gi) {
+        const AccelTriangles& g = desc.geometries[gi];
+        D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC tri{};
         auto* vb = static_cast<D3D12Buffer*>(g.vertices);
-        d.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
-        d.Triangles.VertexCount = g.vertexCount;
-        d.Triangles.VertexBuffer = {vb ? vb->address() + g.vertexOffset : 0, g.vertexStride};
+        tri.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+        tri.VertexCount = g.vertexCount;
+        tri.VertexBuffer = {vb ? vb->address() + g.vertexOffset : 0, g.vertexStride};
         if (g.indices && g.indexCount) {
-            d.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
-            d.Triangles.IndexCount = g.indexCount;
-            d.Triangles.IndexBuffer = static_cast<D3D12Buffer*>(g.indices)->address() + g.indexOffset;
+            tri.IndexFormat = DXGI_FORMAT_R32_UINT;
+            tri.IndexCount = g.indexCount;
+            tri.IndexBuffer = static_cast<D3D12Buffer*>(g.indices)->address() + g.indexOffset;
         }
-        out.push_back(d);
+        D3D12_RAYTRACING_GEOMETRY_DESC d{};
+        d.Flags = g.opaque ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE : D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
+        const D3D12Accel::Micromap* mm = micromaps && gi < micromaps->size() ? &(*micromaps)[gi] : nullptr;
+        if (mm && mm->storage) {
+            // Triangle i uses micromap i (32-bit index buffer), one OMM array per geometry.
+            D3D12_RAYTRACING_GEOMETRY_OMM_LINKAGE_DESC link{};
+            link.OpacityMicromapIndexBuffer = {mm->indices->address(), 4};
+            link.OpacityMicromapIndexFormat = DXGI_FORMAT_R32_UINT;
+            link.OpacityMicromapBaseLocation = 0;
+            link.OpacityMicromapArray = mm->storage->address();
+            out.triangles.push_back(tri);
+            out.links.push_back(link);
+            d.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_OMM_TRIANGLES;
+            d.OmmTriangles = {&out.triangles.back(), &out.links.back()};
+        } else {
+            d.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+            d.Triangles = tri;
+        }
+        out.descs.push_back(d);
     }
     return out;
 }
 
-D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS blasInputs(const BlasDesc& desc,
-                                                                const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geo) {
+/// Inputs of a level-0, 4-state opacity micromap array with one micromap per triangle.
+struct MicromapInputs {
+    D3D12_RAYTRACING_OPACITY_MICROMAP_HISTOGRAM_ENTRY histogram{};
+    D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC array{};
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs{};
+};
+
+void describeMicromap(const D3D12Accel::Micromap& m, MicromapInputs& mi) {
+    mi.histogram = {m.count, 0, D3D12_RAYTRACING_OPACITY_MICROMAP_FORMAT_OC1_4_STATE};
+    mi.array.NumOmmHistogramEntries = 1;
+    mi.array.pOmmHistogram = &mi.histogram;
+    mi.array.InputBuffer = m.data->address();
+    mi.array.PerOmmDescs = {m.descs->address(), sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC)};
+    mi.inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_ARRAY;
+    mi.inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+    mi.inputs.NumDescs = 1;
+    mi.inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+    mi.inputs.pOpacityMicromapArrayDesc = &mi.array;
+}
+
+D3D12Accel::Micromap createMicromap(D3D12Device& dev, std::span<const TriangleOpacity> opacity, const char* name) {
+    const auto n = static_cast<std::uint32_t>(opacity.size());
+    // One byte per micromap (a single 2-bit micro-triangle at subdivision level 0).
+    std::vector<std::uint8_t> data(std::max<std::size_t>(n, 4));
+    std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_DESC> descs(n);
+    std::vector<std::uint32_t> indices(n);
+    for (std::uint32_t i = 0; i < n; ++i) {
+        data[i] = static_cast<std::uint8_t>(opacity[i]); // 0 transparent, 1 opaque, 2 unknown-transparent
+        descs[i].ByteOffset = i;
+        descs[i].SubdivisionLevel = 0;
+        descs[i].Format = D3D12_RAYTRACING_OPACITY_MICROMAP_FORMAT_OC1_4_STATE;
+        indices[i] = i;
+    }
+    D3D12Accel::Micromap m;
+    m.count = n;
+    using U = BufferUsage;
+    auto make = [&](const void* bytes, std::size_t size, const char* what) {
+        auto b = std::make_unique<D3D12Buffer>(dev, BufferDesc{std::max<std::uint64_t>(size, 16), U::AccelInput | U::CopyDst,
+                                                               MemoryType::Device, 0, what});
+        dev.uploadBuffer(b.get(), bytes, size, 0);
+        return b;
+    };
+    m.data = make(data.data(), data.size(), "omm-data");
+    m.descs = make(descs.data(), descs.size() * sizeof(descs[0]), "omm-descs");
+    m.indices = make(indices.data(), indices.size() * 4, "omm-indices");
+    MicromapInputs mi;
+    describeMicromap(m, mi);
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
+    dev.device5()->GetRaytracingAccelerationStructurePrebuildInfo(&mi.inputs, &info);
+    m.storage = std::make_unique<D3D12Buffer>(
+        dev, BufferDesc{std::max<std::uint64_t>(info.ResultDataMaxSizeInBytes, 256), U::AccelStorage, MemoryType::Device,
+                        0, name});
+    m.scratch = std::make_unique<D3D12Buffer>(
+        dev, BufferDesc{alignUp(std::max<std::uint64_t>(info.ScratchDataSizeInBytes, 256),
+                                D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT),
+                        U::Storage, MemoryType::Device, 0, "omm-scratch"});
+    return m;
+}
+
+D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS blasInputs(const BlasDesc& desc, const BlasGeometry& g) {
+    const auto& geo = g.descs;
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS in{};
     in.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
     in.Flags = desc.fastBuild ? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD
@@ -57,14 +142,23 @@ D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS tlasInputs(std::uint32_t co
 std::unique_ptr<AccelerationStructure> D3D12Device::createBlas(const BlasDesc& desc) {
     if ((!m_features.rayQuery && !m_features.rayTracingPipeline) || !m_device5)
         throw Error("ray tracing is not supported by this GPU");
-    for (const AccelTriangles& g : desc.geometries)
-        if (!g.opacity.empty()) throw Error("opacity micromaps are not supported by the Direct3D 12 backend yet");
-    const auto geo = geometryDescs(desc);
+    std::vector<D3D12Accel::Micromap> micromaps(desc.geometries.size());
+    for (std::size_t i = 0; i < desc.geometries.size(); ++i) {
+        const AccelTriangles& t = desc.geometries[i];
+        if (t.opacity.empty()) continue;
+        if (!m_features.opacityMicromap) throw Error("opacity micromaps are not supported by this GPU");
+        if (t.opaque) throw Error("opacity micromaps need non-opaque geometry");
+        if (t.opacity.size() != (t.indices ? t.indexCount : t.vertexCount) / 3)
+            throw Error("opacity micromap: one state per triangle is required");
+        micromaps[i] = createMicromap(*this, t.opacity, desc.name);
+    }
+    const BlasGeometry geo = geometryDescs(desc, &micromaps);
     const auto inputs = blasInputs(desc, geo);
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
     m_device5->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
     auto a = std::make_unique<D3D12Accel>(*this, false, info, 0, desc.name);
     a->allowUpdate = desc.allowUpdate;
+    a->micromaps = std::move(micromaps);
     return a;
 }
 
@@ -190,9 +284,30 @@ void D3D12CommandList::buildBlas(AccelerationStructure* blas, const BlasDesc& de
         if (g.vertices) require(static_cast<D3D12Buffer*>(g.vertices), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         if (g.indices) require(static_cast<D3D12Buffer*>(g.indices), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
+    // Micromaps first (once: their contents never change), then the BLAS that references them.
+    bool builtMicromap = false;
+    for (D3D12Accel::Micromap& m : a->micromaps) {
+        if (!m.storage || m.built) continue;
+        for (D3D12Buffer* b : {m.data.get(), m.descs.get(), m.indices.get()})
+            require(b, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        require(m.scratch.get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        flushBarriers();
+        MicromapInputs mi;
+        describeMicromap(m, mi);
+        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC md{};
+        md.Inputs = mi.inputs;
+        md.DestAccelerationStructureData = m.storage->address();
+        md.ScratchAccelerationStructureData = m.scratch->address();
+        m_list4->BuildRaytracingAccelerationStructure(&md, 0, nullptr);
+        m.built = true;
+        builtMicromap = true;
+    }
+    if (builtMicromap) accelBarrier();
+    for (const D3D12Accel::Micromap& m : a->micromaps)
+        if (m.indices) require(m.indices.get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     require(a->scratchBuffer(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     flushBarriers();
-    const auto geo = geometryDescs(desc);
+    const BlasGeometry geo = geometryDescs(desc, &a->micromaps);
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bd{};
     bd.Inputs = blasInputs(desc, geo);
     if (update) {

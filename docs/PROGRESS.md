@@ -63,11 +63,15 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   owner's other projects (`cd GPUTest/packaging/arch && makepkg -si`); CI job "Arch Linux package" runs makepkg in
   an `archlinux:base-devel` container, installs the package, runs a smoke suite and GUI screenshots from it, and
   uploads the `.pkg.tar.zst`. README has the install section.
-- **Milestone 10 (D3D12): in progress.** Backend under `src/rhi/d3d12` (device, adapters, descriptor heaps,
-  root signatures, resources, pipelines so far), compile-checked locally with `scripts/check-d3d12.sh` (mingw-w64)
-  and built/run in Windows CI.
-- Next: finish the D3D12 command list, swapchain and acceleration structures, wire the backend into CMake and the
-  runner (Agility SDK export), then WARP smoke tests in CI.
+- **Milestone 10 (D3D12): in progress.** Backend complete under `src/rhi/d3d12` (device/adapters, descriptor heaps,
+  root signatures, resources and state tracking, graphics/compute/mesh/ray-tracing pipelines, command lists,
+  swapchain, acceleration structures; Agility SDK side-by-side when present), compile-checked locally with
+  `scripts/check-d3d12.sh` (mingw-w64) and built with MSVC /W4 /WX in CI. On WARP with the debug layer, the smoke
+  suite and the scenes run (Skyline's compute hand-over fixed after the first run). D3D12-only features: VRS tier 2
+  shading-rate images (`feature.vrs`), `feature.sampler_feedback`, `feature.work_graphs` (HLSL via DXC), SER on
+  DXR 1.2 (shared Slang shader, lib_6_9).
+- Next: confirm the new features on WARP, opacity micromaps on D3D12 (DXR 1.2; Slang lacks the ray-query OMM flag,
+  so an HLSL variant), make the standard suite strict on D3D12, then M11.
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
@@ -87,8 +91,10 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
 - lavapipe numbers are meaningless for performance; use them for correctness only.
 
 ## Known issues / follow-ups
-- Windows CI has no Vulkan driver, so the Windows smoke only checks start-up and listings until the D3D12/WARP
-  backend (M10). Option: install the LunarG SDK + mesa-dist-win lavapipe on the Windows runner.
+- Windows CI has no Vulkan driver, so Vulkan on Windows is only exercised on real hardware. Option: install the
+  LunarG SDK + mesa-dist-win lavapipe on the Windows runner.
+- Vulkan shading-rate attachments (image-based VRS) and cooperative vectors (VK_NV_cooperative_vector, Slang
+  CoopVec) are not implemented: no driver here or in CI supports them (docs/DECISIONS.md).
 - Telemetry on Windows for AMD (ADL/D3DKMT) and Intel (Level Zero) is still to do (planned alongside M5/M10).
 - Score references are provisional (docs/SCORING.md) until real hardware reports arrive.
 - Windows CI uses Qt 6.10.3 instead of 6.12.0 (aqt cannot fetch 6.12.0's Windows metadata); revisit when aqt or

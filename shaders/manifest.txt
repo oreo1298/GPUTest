@@ -74,7 +74,7 @@ features/drawcalls.slang       vsUniform      vertex          vk,d3d12,d3d11,gl
 features/drawcalls.slang       vsIndirect     vertex          vk,d3d12,d3d11,gl
 features/drawcalls.slang       psDraw         fragment        vk,d3d12,d3d11,gl
 features/ser.slang             rgShade        raygeneration   vk,d3d12   vk=spirv_1_4 d3d12=lib_6_3
-features/ser.slang             rgShadeSer     raygeneration   vk         vk=spirv_1_4
+features/ser.slang             rgShadeSer     raygeneration   vk,d3d12   vk=spirv_1_4 d3d12=lib_6_9
 features/ser.slang             msShade        miss            vk,d3d12   vk=spirv_1_4 d3d12=lib_6_3
 features/ser.slang             chShade        closesthit      vk,d3d12   vk=spirv_1_4 d3d12=lib_6_3
 features/coopmat.slang         csCoopMat      compute         vk   vk=spirv_1_6 name=f16_16x16x16 defines=AB_TYPE=half,C_TYPE=float,TILE_M=16,TILE_N=16,TILE_K=16
@@ -90,7 +90,8 @@ features/sampler_feedback.slang csSample       compute        d3d12      d3d12=s
 features/sampler_feedback.slang csSampleFeedback compute      d3d12      d3d12=sm_6_5
 # HLSL (DXC): node shaders; "graph" is the whole library (lib_6_8 exports every node).
 features/work_graphs.hlsl      graph          lib             d3d12      d3d12=lib_6_8
-features/work_graphs.hlsl      csBaseline     compute         d3d12      d3d12=cs_6_8
+features/work_graphs_baseline.hlsl csBaseline compute        d3d12      d3d12=cs_6_8
+features/omm_dxr.hlsl          csAlphaTrace   compute         d3d12      d3d12=cs_6_9
 scenes/courtyard.slang         vsObject       vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
 scenes/courtyard.slang         vsInstanced    vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0
 scenes/courtyard.slang         vsTerrain      vertex          vk,d3d12,d3d11,gl   d3d11=sm_4_0

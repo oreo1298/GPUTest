@@ -90,7 +90,7 @@ void runD3D12(TestContext& ctx) {
 
     // The graph: every node of the library, entry point "entry".
     const shaders::Blob lib = shaders::find(kModule, "graph", shaders::Format::Dxil);
-    const shaders::Blob baselineCs = shaders::find(kModule, "csBaseline", shaders::Format::Dxil);
+    const shaders::Blob baselineCs = shaders::find("features/work_graphs_baseline", "csBaseline", shaders::Format::Dxil);
     if (!lib || !baselineCs) throw rhi::Error("work-graph shaders are not embedded in this build");
     D3D12_DXIL_LIBRARY_DESC libDesc{};
     libDesc.DXILLibrary = {lib.data, lib.size};

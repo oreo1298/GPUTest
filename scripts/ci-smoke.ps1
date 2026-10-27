@@ -39,6 +39,9 @@ Write-Host "Direct3D 12 adapters: $(($d3d12.adapters | ForEach-Object { $_.name 
 & $runner.FullName --api d3d12 --caps --json | Out-File -Encoding utf8 (Join-Path $out "caps-d3d12.json")
 if ($LASTEXITCODE -ne 0) { throw "--caps --api d3d12 failed" }
 & $runner.FullName --api d3d12 --check-support | Out-File -Encoding utf8 (Join-Path $out "support-d3d12.txt")
+Write-Host "== D3D12 capabilities (WARP)"
+& $runner.FullName --api d3d12 --caps | Out-Host
+Get-Content (Join-Path $out "support-d3d12.txt") | Out-Host
 
 $common = @("--api", "d3d12", "--offscreen", "--resolution", "320x180", "--validation", "--fail-on-validation",
             "--log-level", "info")

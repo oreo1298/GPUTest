@@ -7,8 +7,6 @@
 namespace gt::rhi::d3d12 {
 namespace {
 
-std::uint64_t alignUp(std::uint64_t v, std::uint64_t a) { return a ? (v + a - 1) / a * a : v; }
-
 D3D12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE type) {
     D3D12_HEAP_PROPERTIES h{};
     h.Type = type;

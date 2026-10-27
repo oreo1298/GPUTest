@@ -15,7 +15,6 @@ constexpr std::uint32_t kViewBlock = 1024;
 constexpr std::uint32_t kSamplerHeapCapacity = 2048;
 constexpr std::uint32_t kSamplerBlock = 32;
 
-std::uint64_t alignUp(std::uint64_t v, std::uint64_t a) { return a ? (v + a - 1) / a * a : v; }
 
 template <typename T>
 bool feature(ID3D12Device* dev, D3D12_FEATURE f, T& data) {
@@ -429,6 +428,10 @@ void D3D12Device::fillFeatures() {
     f.maxBindlessTextures = f.descriptorIndexing ? 65536u : 0u;
     f.rayQuery = m_rtTier >= D3D12_RAYTRACING_TIER_1_1 && m_device5;
     f.rayTracingPipeline = m_rtTier >= D3D12_RAYTRACING_TIER_1_0 && m_device5;
+    // DXR 1.2: HitObject / MaybeReorderThread need shader model 6.9 and raytracing tier 1.2.
+    f.shaderExecutionReordering =
+        f.rayTracingPipeline && m_rtTier >= D3D12_RAYTRACING_TIER_1_2 && m_shaderModel >= D3D_SHADER_MODEL_6_9;
+    f.opacityMicromap = f.rayQuery && m_rtTier >= D3D12_RAYTRACING_TIER_1_2 && m_shaderModel >= D3D_SHADER_MODEL_6_9;
     f.meshShader = o7.MeshShaderTier >= D3D12_MESH_SHADER_TIER_1 && sm >= 0x65;
     f.taskShader = f.meshShader;
     f.variableRateShading = o6.VariableShadingRateTier >= D3D12_VARIABLE_SHADING_RATE_TIER_1;

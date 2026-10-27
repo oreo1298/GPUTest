@@ -178,6 +178,13 @@ public:
     D3D12Buffer* scratchBuffer() const { return m_scratchBuffer.get(); }
     std::uint32_t maxInstances() const { return m_maxInstances; }
     bool allowUpdate = false;
+    /// Opacity micromap array of one geometry (DXR 1.2), built before the first BLAS build.
+    struct Micromap {
+        std::unique_ptr<D3D12Buffer> data, descs, indices, storage, scratch;
+        std::uint32_t count = 0;
+        bool built = false;
+    };
+    std::vector<Micromap> micromaps; ///< one per geometry (empty entries: no micromap)
 
 private:
     std::unique_ptr<D3D12Buffer> m_storageBuffer, m_scratchBuffer;

@@ -52,6 +52,9 @@ On a Windows PC (the 4090 if it dual-boots, otherwise any GPU), unzip the `windo
 8. **Work graphs** (RTX 4090 with a 2024+ driver; Radeon 7000-series iGPU/dGPU with Adrenalin 24.x+):
    `kiln-run --api d3d12 --test feature.work_graphs`: Pass ("All 1048576 records ... ran exactly once"); send
    `graph_mrecords_s` and `graph_vs_dispatch`. A skip should name the missing tier or shader model.
+9. **DXR 1.2** (needs the Agility SDK runtime, see below; driver 572+ on the 4090):
+   `kiln-run --api d3d12 --test feature.rt.ser,feature.rt.omm`: both should run (not skip) with Pass verdicts;
+   send `ser_speedup`, `omm_speedup` and `omm_tests_per_ray` for comparison with the Vulkan run.
 
 **Decision needed (licensing):** shipping Microsoft's Agility SDK runtime (`D3D12Core.dll`,
 `d3d12SDKLayers.dll`) is allowed, but its license makes the distributor require end-user terms that protect

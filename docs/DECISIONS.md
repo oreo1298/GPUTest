@@ -185,6 +185,17 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   backs slangc). Without a suitable DXC the build still succeeds and the test reports the shaders as missing. The
   test graph is deliberately simple (broadcasting entry → thread-launch leaf) so every record can be checked;
   its throughput is shown next to the same work as one dispatch (ratio, not scored).
+- **Pipeline-compilation test stays SPIR-V only**: DXIL keeps constants in LLVM bitcode (variable-width fields)
+  and containers carry a hash, so per-run salting would need a bitcode rewriter and re-hashing; build-time
+  variants would be cached by the driver's disk cache after the first run, which defeats a cold measurement.
+- **D3D12 SER = raytracing tier 1.2 + shader model 6.9** (DXR 1.2); Slang emits native `dx::HitObject` /
+  `dx::MaybeReorderThread` for lib_6_9, so the SER test shares its shader with Vulkan.
+- **D3D12 opacity micromaps mirror the Vulkan ones**: one OMM array per geometry with a 4-state, subdivision-0
+  micromap per triangle, linked through a 32-bit index buffer, built in the first `buildBlas`. D3D12 honours OMMs
+  in ray queries only with `RAYQUERY_FLAG_ALLOW_OPACITY_MICROMAPS`, which Slang's `RayQuery` cannot express yet,
+  so the OMM test uses an HLSL copy of its shader on D3D12 (`omm_dxr.hlsl`, DXC, cs_6_9) for both passes.
+- **Cooperative vectors**: D3D12's are preview-only (absent from the retail Agility SDK and DirectX-Headers) and
+  Slang has no HLSL path for them; on Vulkan only VK_NV_cooperative_vector exists (reported in caps).
 - **Sampler feedback is verified exactly**: one point sample per mip region at a chosen mip, with mips no larger
   than a region and sample positions off every texel edge, so the decoded MinMip map is fully predictable; finer
   than expected counts as conservative (warn), coarser as wrong (fail).

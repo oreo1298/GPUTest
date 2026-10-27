@@ -103,6 +103,7 @@ DXGI_FORMAT toDxgi(Format f);
 /// Format of shader-resource views (depth formats map to their readable colour format).
 DXGI_FORMAT toDxgiSrv(Format f);
 D3D12_COMPARISON_FUNC toD3d(CompareOp op);
+inline std::uint64_t alignUp(std::uint64_t v, std::uint64_t a) { return a ? (v + a - 1) / a * a : v; }
 
 /// Entry points of d3d12.dll / dxgi.dll, loaded on first use.
 struct Runtime {
