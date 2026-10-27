@@ -141,4 +141,12 @@ struct Stream {
 std::optional<Stream> split(std::span<const std::uint8_t> annexB, const ParameterSets* params,
                             std::string* error);
 
+/// A picture's short-term reference picture set resolved to earlier pictures (indices into Stream::pictures):
+/// RefPicSetStCurrBefore, RefPicSetStCurrAfter, and RefPicSetStFoll (kept for later pictures).
+struct References {
+    std::vector<std::uint32_t> before, after, follow;
+};
+/// Resolves every picture's set. Fails if a picture it uses is missing (a StFoll picture may be missing).
+std::optional<std::vector<References>> references(const Stream& s, std::string* error);
+
 } // namespace gt::bench::h265

@@ -161,3 +161,24 @@ TEST_CASE("The x264 reference stream splits into eight frames", "[h264][video]")
         CHECK(p.data.size() > 1000);
     }
 }
+
+TEST_CASE("H.264 sliding-window references follow max_num_ref_frames", "[h264][video]") {
+    const video::ReferenceStream* s = video::referenceStream("h264");
+    REQUIRE(s);
+    std::string error;
+    auto st = h264::split(s->data, nullptr, &error);
+    REQUIRE(st);
+    const auto refs = h264::slidingWindow(*st); // one reference frame: always the previous one
+    REQUIRE(refs.size() == 8);
+    CHECK(refs[0].empty());
+    for (std::uint32_t f = 1; f < 8; ++f)
+        CHECK(refs[f] == std::vector<std::uint32_t>{f - 1});
+
+    st->params.sps->maxNumRefFrames = 3;
+    st->pictures[4].header.nalRefIdc = 0; // not kept as a reference
+    const auto three = h264::slidingWindow(*st);
+    CHECK(three[3] == std::vector<std::uint32_t>{0, 1, 2});
+    CHECK(three[4] == std::vector<std::uint32_t>{1, 2, 3});
+    CHECK(three[5] == std::vector<std::uint32_t>{1, 2, 3});
+    CHECK(three[6] == std::vector<std::uint32_t>{2, 3, 5});
+}

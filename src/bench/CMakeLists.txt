@@ -68,10 +68,13 @@ add_library(gt_bench_tests OBJECT
   tests/features/upscale.cpp
   tests/features/hdr.cpp
   tests/features/video.cpp
+  tests/features/video_common.cpp
   tests/features/video_vk.cpp
   tests/features/video_h264_vk.cpp
   tests/features/video_h265_vk.cpp
   tests/features/video_av1_vk.cpp
+  tests/features/video_d3d12.cpp
+  tests/features/video_dxva.cpp
   tests/features/sampler_feedback.cpp
   tests/features/work_graphs.cpp
   tests/features/async_queues.cpp

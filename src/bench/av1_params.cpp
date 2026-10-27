@@ -954,6 +954,8 @@ std::optional<Stream> parse(std::span<const std::uint8_t> data, const SequenceHe
                 // The reference names resolve to the frames in the slots before this frame updates them.
                 Bits b(std::vector<std::uint8_t>(payload.begin(), payload.end()), false);
                 f.header = parser.frameHeader(b, o.temporalId, o.spatialId);
+                for (std::uint32_t v = 0; v < kNumRefFrames; ++v)
+                    f.refFrameMap[v] = parser.frameIn(v);
                 if (!f.header.frameIsIntra())
                     for (std::uint32_t i = 0; i < kRefsPerFrame; ++i)
                         f.refFrames[i] = parser.frameIn(f.header.refFrameIdx[i]);

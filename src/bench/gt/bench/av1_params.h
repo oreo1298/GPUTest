@@ -119,6 +119,8 @@ struct Frame {
     FrameHeader header;
     /// For each reference name LAST..ALTREF: the earlier frame (index in Stream::frames) it refers to.
     std::array<std::int32_t, 7> refFrames{-1, -1, -1, -1, -1, -1, -1};
+    /// For each reference slot (VBI): the earlier frame in it before this frame is decoded (-1: empty).
+    std::array<std::int32_t, 8> refFrameMap{-1, -1, -1, -1, -1, -1, -1, -1};
 };
 
 struct Stream {

@@ -93,4 +93,9 @@ struct Stream {
 std::optional<Stream> split(std::span<const std::uint8_t> annexB, const ParameterSets* params,
                             std::string* error);
 
+/// For each picture, the earlier pictures (indices into Stream::pictures, oldest first) marked "used for
+/// reference" under sliding-window marking: the last max_num_ref_frames reference pictures since the IDR.
+/// Adaptive marking (memory_management_control_operation) is not followed.
+std::vector<std::vector<std::uint32_t>> slidingWindow(const Stream& s);
+
 } // namespace gt::bench::h264

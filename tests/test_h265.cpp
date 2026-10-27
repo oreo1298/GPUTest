@@ -93,3 +93,33 @@ TEST_CASE("The x265 reference stream splits into pictures with reference picture
         }
     }
 }
+
+TEST_CASE("H.265 reference picture sets resolve to earlier pictures", "[h265][video]") {
+    const video::ReferenceStream* s = video::referenceStream("h265");
+    REQUIRE(s);
+    std::string error;
+    auto st = h265::split(s->data, nullptr, &error);
+    REQUIRE(st);
+    auto refs = h265::references(*st, &error);
+    INFO(error);
+    REQUIRE(refs);
+    REQUIRE(refs->size() == 8);
+    CHECK((*refs)[0].before.empty());
+    CHECK((*refs)[1].before == std::vector<std::uint32_t>{0});
+    for (std::uint32_t f = 2; f < 8; ++f) {
+        INFO("frame " << f);
+        CHECK((*refs)[f].before == std::vector<std::uint32_t>{f - 1, f - 2});
+        CHECK((*refs)[f].after.empty());
+        CHECK((*refs)[f].follow.empty());
+    }
+
+    // A picture kept only for later pictures goes to the StFoll list; a missing used one is an error.
+    st->pictures[3].header.rps.usedS0 = {true, false};
+    refs = h265::references(*st, &error);
+    REQUIRE(refs);
+    CHECK((*refs)[3].before == std::vector<std::uint32_t>{2});
+    CHECK((*refs)[3].follow == std::vector<std::uint32_t>{1});
+    st->pictures[1].header.rps.deltaPocS0 = {-2};
+    CHECK_FALSE(h265::references(*st, &error));
+    CHECK(error.find("before the stream starts") != std::string::npos);
+}

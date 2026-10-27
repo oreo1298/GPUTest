@@ -283,3 +283,25 @@ TEST_CASE("AV1 OBUs without size fields get them", "[av1][video]") {
     CHECK(av1::withSizeFields(ref) == ref);
     CHECK_THROWS(av1::withSizeFields(std::vector<std::uint8_t>{0x32, 0x05, 0x00}));
 }
+
+TEST_CASE("AV1 frames record which frame each reference slot holds", "[av1][video]") {
+    for (const char* name : {"av1_tiles_segmentation", "av1_global_motion"}) {
+        INFO(name);
+        const std::vector<std::uint8_t> data =
+            readFile(std::string(GT_TEST_DATA_DIR) + "/video/" + name + ".obu");
+        std::string error;
+        const auto st = av1::parse(data, nullptr, &error);
+        INFO(error);
+        REQUIRE(st);
+        std::array<std::int32_t, 8> map{-1, -1, -1, -1, -1, -1, -1, -1};
+        for (std::size_t f = 0; f < st->frames.size(); ++f) {
+            const av1::Frame& fr = st->frames[f];
+            CHECK(fr.refFrameMap == map);
+            if (!fr.header.frameIsIntra())
+                for (std::size_t i = 0; i < 7; ++i)
+                    CHECK(fr.refFrames[i] == map[fr.header.refFrameIdx[i]]);
+            for (std::uint32_t v = 0; v < 8; ++v)
+                if ((fr.header.refreshFrameFlags >> v) & 1u) map[v] = static_cast<std::int32_t>(f);
+        }
+    }
+}

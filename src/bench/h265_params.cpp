@@ -434,4 +434,43 @@ std::optional<Stream> split(std::span<const std::uint8_t> data, const ParameterS
     return out;
 }
 
+std::optional<std::vector<References>> references(const Stream& s, std::string* error) {
+    std::vector<References> out(s.pictures.size());
+    for (std::uint32_t f = 0; f < s.pictures.size(); ++f) {
+        const Picture& p = s.pictures[f];
+        const ShortTermRps& r = p.header.rps;
+        auto find = [&](std::int32_t poc) -> std::optional<std::uint32_t> {
+            for (std::uint32_t g = f; g-- > 0;)
+                if (s.pictures[g].poc == poc) return g;
+            return std::nullopt;
+        };
+        auto add = [&](std::int32_t delta, bool used, std::vector<std::uint32_t>& list) {
+            const auto g = find(p.poc + delta);
+            if (g) {
+                (used ? list : out[f].follow).push_back(*g);
+                return true;
+            }
+            return !used;
+        };
+        for (std::size_t i = 0; i < r.deltaPocS0.size(); ++i)
+            if (!add(r.deltaPocS0[i], r.usedS0[i], out[f].before)) {
+                if (error)
+                    *error = std::format("picture {} references a picture before the stream starts", f);
+                return std::nullopt;
+            }
+        for (std::size_t i = 0; i < r.deltaPocS1.size(); ++i)
+            if (!add(r.deltaPocS1[i], r.usedS1[i], out[f].after)) {
+                if (error)
+                    *error = std::format("picture {} references a later picture that was not decoded", f);
+                return std::nullopt;
+            }
+        if (out[f].before.size() > 8 || out[f].after.size() > 8 ||
+            out[f].before.size() + out[f].after.size() + out[f].follow.size() > 15) {
+            if (error) *error = "too many references";
+            return std::nullopt;
+        }
+    }
+    return out;
+}
+
 } // namespace gt::bench::h265

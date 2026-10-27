@@ -60,6 +60,13 @@ and the iGPU, and that `kiln-hw-report` finds the runner by itself. Tell me if m
    that grows over the inter frames points at the reference state (`SavedOrderHints`, sign bias); an AV1 encode
    note "videoEncodeAV1 feature" means the driver lists the extension but not the feature. GPUs with AV1 decode
    only (RTX 30, RDNA 2) should report AV1 encode as not available, not as a failure.
+6. **Video engines on Direct3D 12** (`feature.video`, Windows, the 4090 and the iGPU):
+   `kiln-run --api d3d12 --test feature.video --duration quick --validation`. Decode only (DXVA buffers built
+   from the same parsers; never run on a real decoder). Send the result JSON (the `decode_profiles` list, each
+   codec's `decode_output` line with the decode tier and whether reference-only pictures were required, the
+   CRCs and any notes) and the log with D3D12 debug-layer messages. A CRC mismatch on every frame points at the
+   picture parameters; only on inter frames, at the reference list (H.264 `RefFrameList`, H.265 `RefPicList`
+   / `RefPicSet*`, AV1 `RefFrameMapTextureIndex` / `frame_refs`). Compare the fps with the Vulkan run.
 
 ### M11 — OpenGL and Direct3D 11
 1. **OpenGL on the 4090 and the iGPU (Linux)**: `kiln-run --api opengl --suite legacy --duration quick` and the

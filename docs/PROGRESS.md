@@ -83,8 +83,8 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   Vulkan plugin (tested in CI) and Intel XeSS (D3D12, user supplies `libxess.dll`); no DLSS (license).
   `feature.hdr` (PQ encoding check; HDR10 swapchain in a window). `feature.video` (Vulkan Video): decode fps
   on embedded 1080p reference streams (`data/video`, FFmpeg-made, frames checked by CRC against FFmpeg's
-  decode) and encode fps with a GPU round-trip PSNR check; H.264, H.265 and AV1 on Vulkan (skips without video
-  queues; hardware-only, unverified). Next: D3D12 Video.
+  decode) and encode fps with a GPU round-trip PSNR check; H.264, H.265 and AV1 on Vulkan, decode on D3D12
+  through DXVA (skips without video engines; hardware-only, unverified). Next: D3D12 Video encode.
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
@@ -136,6 +136,9 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   frames (checked against FFmpeg's trace on the reference stream and two small libaom streams with tiles,
   segmentation and global motion in `tests/data/video`), Vulkan AV1 decode, key + inter-frame encoder at a
   constant q_idx; the device enables `videoEncodeAV1`.
+- M12: Direct3D 12 Video decode in `feature.video` (DXVA picture parameters for H.264, H.265 and AV1 from the
+  same parsers, texture-array DPB, reference-only support); shared video code split out of the Vulkan path
+  (`video_common.h`, parser-side reference resolution with unit tests).
 
 ### 2026-10-26
 - Saved brief to docs/SPEC.md; research pass recorded in docs/RESEARCH.md (two research subagents).

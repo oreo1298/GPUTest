@@ -1,21 +1,29 @@
 // Video engines (feature.video): throughput and correctness of the GPU's fixed-function video decoder and
-// encoder, through Vulkan Video (video_vk.h).
+// encoder, through Vulkan Video (video_vk.h) or Direct3D 12 Video (video_d3d12.h).
 //
 // Per codec:
 //  - Decode: a fixed 1080p reference stream (data/video, made with FFmpeg's software encoders from a
 //    synthetic pattern) is decoded back to back; every GPU decodes the same bits, so the frame rates are
 //    comparable, and each decoded frame must match FFmpeg's decode bit for bit (CRC-32), as the codecs
 //    define decoding exactly.
-//  - Encode: the same pattern is encoded on the GPU (IDR + P-frames at a constant quantizer where the encoder
-//    allows it); the stream it wrote is decoded on the GPU with the parameter sets and headers it actually
-//    produced (encoders may override what they were asked for), and compared with the source (luma PSNR).
+//  - Encode (Vulkan): the same pattern is encoded on the GPU (IDR + P-frames at a constant quantizer where
+//  the
+//    encoder allows it); the stream it wrote is decoded on the GPU with the parameter sets and headers it
+//    actually produced (encoders may override what they were asked for), and compared with the source (luma
+//    PSNR).
 // Every step is gated on what the driver reports (queues, extensions, profiles, formats, capabilities), so
 // missing pieces are reported in the details and the test skips only when there is nothing to run.
 
 #include "gt/bench/context.h"
 #include "gt/bench/test.h"
 
+#include "video_common.h"
 #include "video_vk.h"
+
+#if GT_HAS_D3D12
+#include "d3d12/d3d12_device.h"
+#include "video_d3d12.h"
+#endif
 
 #include <format>
 #include <string>
@@ -23,6 +31,17 @@
 
 namespace gt::bench {
 namespace {
+
+#if GT_HAS_VULKAN
+std::vector<vkvideo::CodecHooks> vulkanCodecs() {
+    return {vkvideo::h264Hooks(), vkvideo::h265Hooks(), vkvideo::av1Hooks()};
+}
+#endif
+#if GT_HAS_D3D12
+ID3D12Device* d3dDevice(TestContext& ctx) {
+    return static_cast<rhi::d3d12::D3D12Device&>(ctx.device()).d3dDevice();
+}
+#endif
 
 class VideoTest : public Test {
 public:
@@ -35,7 +54,7 @@ public:
             "per second and the codecs the video engines offer.";
         m_info.category = Category::Feature;
         m_info.group = "Video";
-        m_info.apis = {rhi::Api::Vulkan};
+        m_info.apis = {rhi::Api::Vulkan, rhi::Api::D3D12};
         m_info.frameBased = false;
         m_info.primaryMetric = "h264_decode_fps";
         m_info.primaryUnit = "fps";
@@ -46,53 +65,89 @@ public:
     }
     const TestInfo& info() const override { return m_info; }
 
-#if GT_HAS_VULKAN
-    static std::vector<vkvideo::CodecHooks> codecs() {
-        return {vkvideo::h264Hooks(), vkvideo::h265Hooks(), vkvideo::av1Hooks()};
-    }
-#endif
-
     SupportResult checkSupport(TestContext& ctx) override {
+        switch (ctx.api()) {
 #if GT_HAS_VULKAN
-        if (ctx.api() != rhi::Api::Vulkan)
-            return SupportResult::no("video engines are tested through Vulkan Video");
-        const rhi::NativeDevice n = ctx.device().nativeDevice();
-        if (std::string why = vkvideo::blocker(n); !why.empty()) return SupportResult::no(why);
-        for (const auto& c : codecs())
-            if (vkvideo::canDecode(n, c) || vkvideo::canEncode(n, c)) return SupportResult::yes();
-        return SupportResult::no("the video queues offer none of the tested codecs (H.264, H.265, AV1)");
-#else
-        (void)ctx;
-        return SupportResult::no("built without Vulkan");
+        case rhi::Api::Vulkan: {
+            const rhi::NativeDevice n = ctx.device().nativeDevice();
+            if (std::string why = vkvideo::blocker(n); !why.empty()) return SupportResult::no(why);
+            for (const auto& c : vulkanCodecs())
+                if (vkvideo::canDecode(n, c) || vkvideo::canEncode(n, c)) return SupportResult::yes();
+            return SupportResult::no("the video queues offer none of the tested codecs (H.264, H.265, AV1)");
+        }
 #endif
+#if GT_HAS_D3D12
+        case rhi::Api::D3D12: {
+            ID3D12Device* dev = d3dDevice(ctx);
+            if (std::string why = d3d12video::blocker(dev); !why.empty()) return SupportResult::no(why);
+            for (const auto& c : d3d12video::codecs())
+                if (d3d12video::canDecode(dev, c)) return SupportResult::yes();
+            return SupportResult::no(
+                "the video decoder offers none of the tested codecs (H.264, H.265, AV1)");
+        }
+#endif
+        default:
+            return SupportResult::no("video engines are tested through Vulkan Video and Direct3D 12 Video");
+        }
     }
 
     void run(TestContext& ctx) override {
-#if GT_HAS_VULKAN
-        rhi::Device& dev = ctx.device();
-        const rhi::NativeDevice n = dev.nativeDevice();
-        auto& d = ctx.details();
-        const auto pd = static_cast<VkPhysicalDevice>(n.physicalDevice);
-        d["decode_codecs"] = vkvideo::codecList(vkvideo::familyCodecs(pd, n.videoDecodeFamily));
-        d["encode_codecs"] = vkvideo::codecList(vkvideo::familyCodecs(pd, n.videoEncodeFamily));
-
         const DurationPreset dur = ctx.settings().duration;
         const double seconds = dur == DurationPreset::Smoke     ? 0.5
                                : dur == DurationPreset::Quick   ? 2.0
                                : dur == DurationPreset::Extreme ? 8.0
                                                                 : 4.0;
-        const std::vector<std::uint8_t> source = vkvideo::makeSource();
-        const auto all = codecs();
-        std::vector<vkvideo::CodecResult> results;
+        std::vector<video::CodecResult> results;
+        rhi::Device& dev = ctx.device();
         dev.waitIdle();
+#if GT_HAS_VULKAN
+        if (ctx.api() == rhi::Api::Vulkan) results = runVulkan(ctx, seconds);
+#endif
+#if GT_HAS_D3D12
+        if (ctx.api() == rhi::Api::D3D12) results = runD3D12(ctx, seconds);
+#endif
+        dev.waitIdle();
+        report(ctx, results);
+    }
+
+private:
+#if GT_HAS_VULKAN
+    static std::vector<video::CodecResult> runVulkan(TestContext& ctx, double seconds) {
+        const rhi::NativeDevice n = ctx.device().nativeDevice();
+        auto& d = ctx.details();
+        const auto pd = static_cast<VkPhysicalDevice>(n.physicalDevice);
+        d["decode_codecs"] = vkvideo::codecList(vkvideo::familyCodecs(pd, n.videoDecodeFamily));
+        d["encode_codecs"] = vkvideo::codecList(vkvideo::familyCodecs(pd, n.videoEncodeFamily));
+        const std::vector<std::uint8_t> source = video::makeSource();
+        const auto all = vulkanCodecs();
+        std::vector<video::CodecResult> results;
         for (std::size_t i = 0; i < all.size(); ++i) {
             const double base = double(i) / double(all.size()), span = 1.0 / double(all.size());
             auto progress = [&](double f, const std::string& s) { ctx.progress(base + f * span, s); };
             results.push_back(vkvideo::runCodec(ctx, n, all[i], source, seconds, progress));
             ctx.checkStop();
         }
-        dev.waitIdle();
+        return results;
+    }
+#endif
+#if GT_HAS_D3D12
+    static std::vector<video::CodecResult> runD3D12(TestContext& ctx, double seconds) {
+        ID3D12Device* dev = d3dDevice(ctx);
+        ctx.details()["decode_profiles"] = d3d12video::decodeProfiles(dev);
+        const auto all = d3d12video::codecs();
+        std::vector<video::CodecResult> results;
+        for (std::size_t i = 0; i < all.size(); ++i) {
+            const double base = double(i) / double(all.size()), span = 1.0 / double(all.size());
+            auto progress = [&](double f, const std::string& s) { ctx.progress(base + f * span, s); };
+            results.push_back(d3d12video::runCodec(ctx, dev, all[i], seconds, progress));
+            ctx.checkStop();
+        }
+        return results;
+    }
+#endif
 
+    static void report(TestContext& ctx, const std::vector<video::CodecResult>& results) {
+        auto& d = ctx.details();
         std::vector<std::string> failures, warnings, summary;
         for (const auto& r : results) {
             nlohmann::json& cd = d[r.key];
@@ -146,12 +201,8 @@ public:
         const std::string text = join(summary, "; ") + ". The details list what was not measured and why.";
         ctx.setVerdict(warnings.empty() ? results::Verdict::Pass : results::Verdict::Warn,
                        warnings.empty() ? text : join(warnings, "; ") + ". " + text);
-#else
-        (void)ctx;
-#endif
     }
 
-private:
     TestInfo m_info;
 };
 

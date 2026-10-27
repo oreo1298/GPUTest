@@ -13,6 +13,8 @@
 #include "gt/bench/context.h"
 #include "gt/rhi/rhi.h"
 
+#include "video_common.h"
+
 #include <volk.h>
 
 #include <cstdint>
@@ -27,18 +29,21 @@
 
 namespace gt::bench::vkvideo {
 
-constexpr std::uint32_t kWidth = 1920, kHeight = 1080;           ///< shown picture
-constexpr std::uint32_t kImageWidth = 1920, kImageHeight = 1088; ///< picture images (16, 32 and 64 aligned)
-constexpr std::uint32_t kGop = 8;                                ///< frames per group of pictures
-constexpr std::size_t kFrameBytes = std::size_t(kWidth) * kHeight * 3 / 2; ///< NV12 at the shown size
-
-/// The source frames the encoders take: NV12 at the image size (rows below 1080 repeat the last one), the
-/// same pattern scripts/make-video-streams.py encodes into the reference streams.
-std::vector<std::uint8_t> makeSource();
-constexpr std::size_t kSourceLuma = std::size_t(kImageWidth) * kImageHeight;
-constexpr std::size_t kSourceFrame = kSourceLuma * 3 / 2;
-/// Luma PSNR of a decoded frame (NV12, 1920x1080) against source frame f.
-double lumaPsnr(const std::uint8_t* decoded, const std::vector<std::uint8_t>& source, std::uint32_t f);
+// Shared with the Direct3D 12 path (video_common.h).
+using video::checkReference;
+using video::checkRoundTrip;
+using video::CodecResult;
+using video::kFrameBytes;
+using video::kGop;
+using video::kHeight;
+using video::kImageHeight;
+using video::kImageWidth;
+using video::kSourceFrame;
+using video::kSourceLuma;
+using video::kWidth;
+using video::lumaPsnr;
+using video::makeSource;
+using video::Progress;
 
 std::string resultName(VkResult r);
 void check(VkResult r, const char* what);
@@ -277,17 +282,6 @@ CodecHooks av1Hooks();
 
 bool canDecode(const rhi::NativeDevice& n, const CodecHooks& c);
 bool canEncode(const rhi::NativeDevice& n, const CodecHooks& c);
-
-struct CodecResult {
-    std::string key, label;
-    std::optional<double> decodeFps, encodeFps;
-    std::optional<double> psnr, psnrMin; ///< GPU encoder -> GPU decoder round trip, luma
-    bool decodeExact = false;            ///< every reference frame matched FFmpeg's decode
-    std::string decodeNote, encodeNote;  ///< why something was not measured or checked
-    std::string failure;                 ///< wrong results
-    nlohmann::json details = nlohmann::json::object();
-};
-using Progress = std::function<void(double fraction, const std::string& status)>;
 
 /// Decodes the codec's reference stream (throughput + bit-exact check) and encodes the source frames
 /// (throughput + round-trip PSNR through the GPU's decoder), as far as the GPU supports them.

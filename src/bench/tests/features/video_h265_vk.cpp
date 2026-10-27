@@ -127,31 +127,16 @@ public:
 
     /// Resolves each picture's reference picture set to earlier frames. Fails if a reference is missing.
     std::string resolve() {
-        m_before.assign(m_s.pictures.size(), {});
-        m_after.assign(m_s.pictures.size(), {});
-        for (std::uint32_t f = 0; f < m_s.pictures.size(); ++f) {
-            const h265::Picture& p = m_s.pictures[f];
-            const h265::ShortTermRps& r = p.header.rps;
-            auto find = [&](std::int32_t poc) -> std::optional<std::uint32_t> {
-                for (std::uint32_t g = f; g-- > 0;)
-                    if (m_s.pictures[g].poc == poc) return g;
-                return std::nullopt;
-            };
-            for (std::size_t i = 0; i < r.deltaPocS0.size(); ++i) {
-                if (!r.usedS0[i]) continue;
-                auto g = find(p.poc + r.deltaPocS0[i]);
-                if (!g) return std::format("frame {} references a picture before the stream starts", f);
-                m_before[f].push_back(*g);
-            }
-            for (std::size_t i = 0; i < r.deltaPocS1.size(); ++i) {
-                if (!r.usedS1[i]) continue;
-                auto g = find(p.poc + r.deltaPocS1[i]);
-                if (!g) return std::format("frame {} references a later picture that was not decoded", f);
-                m_after[f].push_back(*g);
-            }
-            if (m_before[f].size() > 8 || m_after[f].size() > 8) return "too many references";
-            m_maxRefs = std::max<std::uint32_t>(
-                m_maxRefs, static_cast<std::uint32_t>(m_before[f].size() + m_after[f].size()));
+        std::string error;
+        const auto refs = h265::references(m_s, &error);
+        if (!refs) return error;
+        m_before.clear();
+        m_after.clear();
+        for (const h265::References& r : *refs) {
+            m_before.push_back(r.before);
+            m_after.push_back(r.after);
+            m_maxRefs = std::max<std::uint32_t>(m_maxRefs,
+                                                static_cast<std::uint32_t>(r.before.size() + r.after.size()));
         }
         return {};
     }

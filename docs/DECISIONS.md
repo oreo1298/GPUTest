@@ -306,6 +306,19 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   constant `base_q_idx` 110 where rate control can be disabled; it needs the `videoEncodeAV1` feature, which the
   device now enables when offered. The spec does not say whether encoders write OBU size fields, so the output
   of each encode is normalised (`av1::withSizeFields`) before the frames are joined and read back.
+- **Direct3D 12 Video in `feature.video`: decode through DXVA buffers.** `video_dxva.cpp` turns the same parsed
+  streams into DXVA picture parameters, inverse quantization matrices and short-format slice / AV1 tile entries
+  (Microsoft's DXVA H.264, HEVC and AV1 specifications; Mesa's MIT-licensed d3d12 video driver was read as a
+  reference for the field semantics, no code taken). The decoder (`video_d3d12.cpp`) uses one NV12 texture
+  array with a slice per GOP frame, so the DXVA picture index of frame f is f and works on decode tiers 1 and
+  2; decoders that require reference-only allocations get a second array written through the output
+  conversion. Each frame's slice is in VIDEO_DECODE_WRITE and every other slice in VIDEO_DECODE_READ while it
+  decodes, everything else in COMMON; the bitstream is copied once into a default-heap buffer (frames at
+  256-byte offsets, zero-padded to 128 bytes), so throughput does not include uploads. Reference resolution
+  (H.264 sliding window, H.265 RPS, AV1 slot map) moved into the parsers so both APIs use the same code.
+  AV1 streams with rotation / affine global motion are refused on D3D12 (DXVA wants each model's validity,
+  AV1 7.11.3.6, which is not derived); the reference stream has none. Encoding stays on Vulkan Video for
+  now: D3D12's encoder writes slice data only, so the application must write every parameter set and header.
 
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).

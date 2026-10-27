@@ -8,7 +8,6 @@
 #include "gt/bench/h264_params.h"
 
 #include <algorithm>
-#include <deque>
 #include <format>
 
 namespace gt::bench::vkvideo {
@@ -90,19 +89,9 @@ public:
         m_h264Profile.stdProfileIdc = static_cast<StdVideoH264ProfileIdc>(sps.profileIdc);
         m_h264Profile.pictureLayout = VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_PROGRESSIVE_KHR;
         fillProfile(m_profile, VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR, &m_h264Profile);
-        // Sliding-window reference marking: the last max_num_ref_frames reference frames since the IDR.
-        std::deque<std::uint32_t> window;
-        for (std::uint32_t f = 0; f < m_s.pictures.size(); ++f) {
-            const h264::SliceHeader& h = m_s.pictures[f].header;
-            if (h.idr()) window.clear();
-            m_refs.emplace_back(window.begin(), window.end());
-            m_maxRefs = std::max<std::uint32_t>(m_maxRefs, static_cast<std::uint32_t>(window.size()));
-            if (h.nalRefIdc) {
-                window.push_back(f);
-                while (window.size() > std::max(sps.maxNumRefFrames, 1u))
-                    window.pop_front();
-            }
-        }
+        m_refs = h264::slidingWindow(m_s);
+        for (const auto& r : m_refs)
+            m_maxRefs = std::max<std::uint32_t>(m_maxRefs, static_cast<std::uint32_t>(r.size()));
     }
     H264Decode(const H264Decode&) = delete;
     H264Decode& operator=(const H264Decode&) = delete;

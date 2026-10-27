@@ -3,6 +3,7 @@
 #include "bit_reader.h"
 
 #include <algorithm>
+#include <deque>
 #include <stdexcept>
 #include <vector>
 
@@ -222,6 +223,23 @@ std::optional<Stream> split(std::span<const std::uint8_t> data, const ParameterS
     if (out.pictures.empty()) {
         if (error) *error = "no slices";
         return std::nullopt;
+    }
+    return out;
+}
+
+std::vector<std::vector<std::uint32_t>> slidingWindow(const Stream& s) {
+    std::vector<std::vector<std::uint32_t>> out;
+    std::deque<std::uint32_t> window;
+    const std::uint32_t size = std::max(s.params.sps ? s.params.sps->maxNumRefFrames : 1u, 1u);
+    for (std::uint32_t f = 0; f < s.pictures.size(); ++f) {
+        const SliceHeader& h = s.pictures[f].header;
+        if (h.idr()) window.clear();
+        out.emplace_back(window.begin(), window.end());
+        if (h.nalRefIdc) {
+            window.push_back(f);
+            while (window.size() > size)
+                window.pop_front();
+        }
     }
     return out;
 }
