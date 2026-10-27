@@ -44,6 +44,28 @@ MeshData heightfield(std::uint32_t cells, float size, const std::function<float(
 /// Appends `src` to `dst` transformed by translation + uniform scale + rotation about Y.
 void append(MeshData& dst, const MeshData& src, Vec3 offset, float scale = 1.0f, float rotationY = 0.0f,
             Vec3 stretch = {1, 1, 1});
+/// Appends an open tube from `a` (radius r0) to `b` (radius r1) with `segments` sides.
+void appendTube(MeshData& dst, Vec3 a, Vec3 b, float r0, float r1, std::uint32_t segments);
+/// Appends a two-triangle card centred on `c` spanning ±u and ±v (uv over [0, 1]², v along `v`), facing u × v.
+void appendCard(MeshData& dst, Vec3 c, Vec3 u, Vec3 v);
+
+/// Random numbers for building content. Portable on purpose: the std:: distributions differ between standard
+/// libraries, so generated scenes (and their scores) would differ between Linux and Windows builds.
+class Random {
+public:
+    explicit Random(std::uint64_t seed) : m_state(seed) {}
+    std::uint32_t next() { // SplitMix64
+        std::uint64_t z = (m_state += 0x9E3779B97F4A7C15ull);
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+        return static_cast<std::uint32_t>((z ^ (z >> 31)) >> 32);
+    }
+    float uniform() { return static_cast<float>(next() >> 8) * (1.0f / 16777216.0f); } ///< [0, 1)
+    float uniform(float lo, float hi) { return lo + (hi - lo) * uniform(); }
+
+private:
+    std::uint64_t m_state;
+};
 
 /// Smooth value noise in [0, 1] (deterministic, matches nothing on the GPU; for building geometry).
 float noise2(float x, float y);

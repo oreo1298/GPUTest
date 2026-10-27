@@ -1,6 +1,7 @@
 // Ray-traced scene tables shared by the ultimate-tier scenes (src/bench/tests/scenes/rt_scene.h):
 // the TLAS, per-instance transform/colour/material, per-mesh index ranges and the scene-toolkit
-// vertex and index buffers, plus helpers to recover a hit's shading normal.
+// vertex and index buffers, plus helpers to recover a hit's shading normal and to trace through
+// alpha-tested leaf cards.
 
 struct Instance {
     float4 row0, row1, row2; // object-to-world 3x4 (the same matrix as the ray-tracing instance)
@@ -8,11 +9,13 @@ struct Instance {
     float4 info;             // x = mesh index
 };
 
+static const uint kMeshAlphaTested = 1u;
+
 struct MeshInfo {
     uint firstIndex;
     uint indexCount;
     int baseVertex;
-    uint pad;
+    uint flags; // kMeshAlphaTested: leaf cards (non-opaque geometry)
 };
 
 RaytracingAccelerationStructure scene : register(t0);
@@ -47,6 +50,81 @@ float3 outwardNormal(Instance inst, uint primitive, float2 bc) {
 float3 hitNormal(Instance inst, uint primitive, float2 bc, float3 dir) {
     float3 n = outwardNormal(inst, primitive, bc);
     return dot(n, dir) > 0.0 ? -n : n;
+}
+
+float2 vertexUv(uint index) { return float2(vertices[index * 8u + 6u], vertices[index * 8u + 7u]); }
+
+/// Interpolated texture coordinates of a hit.
+float2 hitUv(Instance inst, uint primitive, float2 bc) {
+    MeshInfo m = meshes[uint(inst.info.x)];
+    uint tri = m.firstIndex + primitive * 3u;
+    float2 t0 = vertexUv(uint(int(indices[tri]) + m.baseVertex));
+    float2 t1 = vertexUv(uint(int(indices[tri + 1u]) + m.baseVertex));
+    float2 t2 = vertexUv(uint(int(indices[tri + 2u]) + m.baseVertex));
+    return t0 * (1.0 - bc.x - bc.y) + t1 * bc.x + t2 * bc.y;
+}
+
+/// The leaf on an alpha-tested card (uv over the card, v from the stalk to the tip): an ovate, finely
+/// serrated blade that covers a little over half of the card. Rasterisation and ray queries share it.
+bool leafCoverage(float2 uv) {
+    float y = saturate(uv.y);
+    float halfWidth = 0.92 * sin(3.14159265 * pow(y, 0.75)) * (1.0 - 0.07 * abs(sin(y * 38.0)));
+    return y > 0.04 && abs(uv.x * 2.0 - 1.0) < halfWidth;
+}
+
+/// Whether a candidate hit on an alpha-tested triangle lands on the leaf.
+bool candidateSolid(uint instanceId, uint primitive, float2 bc) {
+    return leafCoverage(hitUv(instances[instanceId], primitive, bc));
+}
+
+/// Like occluded(), but rays pass between the leaves of alpha-tested meshes.
+bool occludedAlpha(float3 origin, float3 dir, float tMax) {
+    RayDesc r;
+    r.Origin = origin;
+    r.Direction = dir;
+    r.TMin = 0.0;
+    r.TMax = tMax;
+    RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
+    q.TraceRayInline(scene, RAY_FLAG_NONE, 0xFF, r);
+    while (q.Proceed()) {
+        if (q.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE &&
+            candidateSolid(q.CandidateInstanceID(), q.CandidatePrimitiveIndex(),
+                           q.CandidateTriangleBarycentrics()))
+            q.CommitNonOpaqueTriangleHit();
+    }
+    return q.CommittedStatus() != COMMITTED_NOTHING;
+}
+
+struct SceneHit {
+    bool found;
+    uint instance;
+    uint primitive;
+    float2 bc;
+    float t;
+};
+
+/// The closest hit along a ray, passing between the leaves of alpha-tested meshes.
+SceneHit traceClosest(float3 origin, float3 dir, float tMax) {
+    RayDesc r;
+    r.Origin = origin;
+    r.Direction = dir;
+    r.TMin = 0.0;
+    r.TMax = tMax;
+    RayQuery<RAY_FLAG_NONE> q;
+    q.TraceRayInline(scene, RAY_FLAG_NONE, 0xFF, r);
+    while (q.Proceed()) {
+        if (q.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE &&
+            candidateSolid(q.CandidateInstanceID(), q.CandidatePrimitiveIndex(),
+                           q.CandidateTriangleBarycentrics()))
+            q.CommitNonOpaqueTriangleHit();
+    }
+    SceneHit h;
+    h.found = q.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+    h.instance = h.found ? q.CommittedInstanceID() : 0u;
+    h.primitive = h.found ? q.CommittedPrimitiveIndex() : 0u;
+    h.bc = h.found ? q.CommittedTriangleBarycentrics() : float2(0, 0);
+    h.t = h.found ? q.CommittedRayT() : tMax;
+    return h;
 }
 
 /// True when anything lies along the ray before tMax.

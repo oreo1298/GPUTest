@@ -24,13 +24,13 @@ RtInstance rtInstance(std::uint32_t mesh, Vec3 t, Vec3 s, float yaw, float roll,
 }
 
 RtScene buildRtScene(TestContext& ctx, const MeshPool& pool, const std::vector<std::uint32_t>& meshIds,
-                     std::vector<RtInstance>& instances) {
+                     std::vector<RtInstance>& instances, const std::vector<bool>& alphaTested) {
     rhi::Device& dev = ctx.device();
     using U = rhi::BufferUsage;
     struct MeshInfo {
         std::uint32_t firstIndex, indexCount;
         std::int32_t baseVertex;
-        std::uint32_t pad;
+        std::uint32_t flags;
     };
     RtScene rs;
     const std::size_t kinds = meshIds.size();
@@ -42,10 +42,11 @@ RtScene buildRtScene(TestContext& ctx, const MeshPool& pool, const std::vector<s
         const auto m = static_cast<std::size_t>(instances[i].info[0]);
         if (rs.groupCount[m]++ == 0) rs.groupFirst[m] = i;
     }
+    auto alpha = [&](std::size_t m) { return m < alphaTested.size() && alphaTested[m]; };
     std::vector<MeshInfo> meshes(kinds);
     for (std::size_t m = 0; m < kinds; ++m) {
         const SubMesh& sm = pool[meshIds[m]];
-        meshes[m] = {sm.firstIndex, sm.indexCount, sm.baseVertex, 0};
+        meshes[m] = {sm.firstIndex, sm.indexCount, sm.baseVertex, alpha(m) ? 1u : 0u};
     }
     rs.instances = dev.createBuffer({instances.size() * sizeof(RtInstance), U::Vertex | U::Storage | U::CopyDst,
                                      rhi::MemoryType::Device, sizeof(RtInstance), "rt-scene-instances"},
@@ -65,6 +66,7 @@ RtScene buildRtScene(TestContext& ctx, const MeshPool& pool, const std::vector<s
         t.indices = pool.indexBuffer();
         t.indexOffset = std::uint64_t(sm.firstIndex) * 4;
         t.indexCount = sm.indexCount;
+        t.opaque = !alpha(m);
         blasDescs[m].geometries = {t};
         blasDescs[m].name = "rt-scene-blas";
         rs.blas.push_back(dev.createBlas(blasDescs[m]));

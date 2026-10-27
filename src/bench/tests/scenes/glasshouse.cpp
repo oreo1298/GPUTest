@@ -1,10 +1,11 @@
 // "Glasshouse" (ultimate tier): hybrid ray tracing (shaders/src/scenes/glasshouse.slang).
-// A steel conservatory frame with a pond, a chrome sculpture, trees and beds of grass. The
-// G-buffer is rasterised — grass blades come from mesh shaders where the GPU has them (an
-// identical vertex-shader path otherwise) and are shaded at 2x2 where variable-rate shading
-// exists. Then two compute passes use ray queries: one traces a soft sun-shadow ray and short
-// ambient-occlusion rays per pixel, the next filters that visibility (cross-bilateral 5x5) and
-// shades with one reflection ray (hits are shaded with a shadow ray of their own). A composite
+// A steel-and-glass conservatory with a pond, a chrome sculpture, leafy trees and shrubs and beds
+// of grass. The G-buffer is rasterised: leaves are alpha-tested cards, grass blades come from mesh
+// shaders where the GPU has them (an identical vertex-shader path otherwise) and are shaded at 2x2
+// where variable-rate shading exists. Then compute passes use ray queries, which test the leaf
+// shape on every leaf card they cross: soft sun shadows, short ambient-occlusion rays and one-bounce
+// diffuse GI (each hit with a shadow ray of its own), an edge-aware wavelet filter for the GI, and
+// shading with one reflection ray per smooth surface plus one per glass pane in view. A composite
 // pass tone-maps.
 
 #include "rt_scene.h"
@@ -15,6 +16,7 @@
 #include "gt/bench/test.h"
 
 #include <cmath>
+#include <utility>
 #include <vector>
 
 namespace gt::bench {
@@ -22,8 +24,8 @@ namespace {
 
 using namespace scene;
 
-enum MeshKind { kBox, kCylinder, kSphere, kTorus, kMeshKinds };
-enum Material { kGround, kSteel, kChrome, kWater, kLeaves, kBark, kSoil, kGrass, kStone };
+enum MeshKind { kBox, kCylinder, kSphere, kTorus, kBark, kTreeLeaves, kShrubLeaves, kMeshKinds };
+enum Material { kGround, kSteel, kChrome, kWater, kLeaves, kBarkMaterial, kSoil, kGrass, kStone };
 
 struct FrameData {
     Mat4 viewProj;
@@ -33,15 +35,104 @@ struct FrameData {
     float sunColor[4];
     float screen[4];
     std::uint32_t params[4];
+    std::uint32_t rays[4];
     float grass[4];
     float beds[8][4];
 };
-static_assert(sizeof(FrameData) == 128 + 6 * 16 + 128);
+static_assert(sizeof(FrameData) == 128 + 7 * 16 + 128);
+
+struct FilterParams {
+    std::int32_t stepSize;
+    float phiNormal;
+    float phiPlane;
+    float pad;
+};
 
 struct Bed {
     Vec3 centre;
     float half;
 };
+
+/// How much there is to draw and trace at each quality.
+struct Detail {
+    std::uint32_t treeLeaves, shrubLeaves; ///< leaf cards per tree / shrub
+    std::uint32_t bladesPerRow;            ///< grass blades per row of a 1 m patch
+    std::uint32_t shadowRays, aoRays, giRays;
+    bool reflectionShadows;     ///< reflection and glass hits get a shadow ray
+    int giFilterPasses;
+};
+
+Detail detailFor(Quality q, bool software) {
+    if (software) return {250, 80, 4, 1, 1, 1, true, 2};
+    switch (q) {
+    case Quality::Low: return {1200, 300, 8, 1, 1, 0, false, 0};
+    case Quality::Medium: return {2500, 600, 12, 1, 2, 1, true, 3};
+    case Quality::High: return {5000, 1200, 20, 2, 4, 2, true, 3};
+    case Quality::Ultra: return {9000, 2000, 28, 4, 8, 4, true, 4};
+    }
+    return {5000, 1200, 20, 2, 4, 2, true, 3};
+}
+
+/// A broadleaf tree about 7 m tall: a tapered trunk, seven limbs with three twigs each, and `leaves` cards in
+/// clusters around the limb and twig ends.
+std::pair<MeshData, MeshData> makeTree(std::uint32_t leaves, std::uint32_t segments) {
+    Random rng(0x7EE5u);
+    MeshData bark, cards;
+    appendTube(bark, {0, 0, 0}, {0, 3.0f, 0}, 0.24f, 0.15f, segments);
+    std::vector<Vec3> tips;
+    const int limbs = 7;
+    for (int i = 0; i < limbs; ++i) {
+        const float yaw = (float(i) + rng.uniform(-0.3f, 0.3f)) * 2.0f * kPi / float(limbs);
+        const Vec3 start{0, rng.uniform(2.1f, 2.9f), 0};
+        const Vec3 dir = normalize({std::cos(yaw), rng.uniform(0.5f, 1.1f), std::sin(yaw)});
+        const Vec3 end = start + dir * rng.uniform(1.7f, 2.5f);
+        appendTube(bark, start, end, 0.11f, 0.05f, segments / 2 + 2);
+        tips.push_back(end);
+        for (int j = 0; j < 3; ++j) {
+            const Vec3 from = start + (end - start) * rng.uniform(0.45f, 0.95f);
+            const Vec3 bend{rng.uniform(-0.8f, 0.8f), rng.uniform(-0.1f, 0.7f), rng.uniform(-0.8f, 0.8f)};
+            const Vec3 d = normalize(dir + bend);
+            const Vec3 to = from + d * rng.uniform(0.7f, 1.2f);
+            appendTube(bark, from, to, 0.045f, 0.02f, 4);
+            tips.push_back(to);
+        }
+    }
+    for (std::uint32_t k = 0; k < leaves; ++k) {
+        Vec3 off;
+        do off = {rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)};
+        while (dot(off, off) > 1.0f);
+        const Vec3 c = tips[k % tips.size()] + off * 0.95f;
+        const Vec3 n = normalize({rng.uniform(-1, 1), rng.uniform(0.2f, 1.5f), rng.uniform(-1, 1)});
+        const Vec3 t = normalize(cross(n, std::abs(n.y) < 0.99f ? Vec3{0, 1, 0} : Vec3{1, 0, 0}));
+        const Vec3 b = cross(n, t);
+        const float spin = rng.uniform(0.0f, 2.0f * kPi), len = rng.uniform(0.09f, 0.14f);
+        const Vec3 along = t * std::cos(spin) + b * std::sin(spin), across = cross(n, along);
+        appendCard(cards, c, across * (len * 0.55f), along * len);
+    }
+    return {std::move(bark), std::move(cards)};
+}
+
+/// A rounded shrub: `leaves` cards in an ellipsoid 1.5 m wide and 1.2 m tall, standing on y = 0.
+MeshData makeShrub(std::uint32_t leaves) {
+    Random rng(0x5B1Bu);
+    MeshData cards;
+    for (std::uint32_t k = 0; k < leaves; ++k) {
+        Vec3 off;
+        do off = {rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)};
+        while (dot(off, off) > 1.0f);
+        const Vec3 c{off.x * 0.75f, 0.6f + off.y * 0.6f, off.z * 0.75f};
+        const Vec3 tilt{rng.uniform(-0.6f, 0.6f), 0, rng.uniform(-0.6f, 0.6f)};
+        const Vec3 n = normalize(Vec3{off.x, std::abs(off.y) + 0.3f, off.z} + tilt);
+        const Vec3 t = normalize(cross(n, std::abs(n.y) < 0.99f ? Vec3{0, 1, 0} : Vec3{1, 0, 0}));
+        const Vec3 b = cross(n, t);
+        const float spin = rng.uniform(0.0f, 2.0f * kPi), len = rng.uniform(0.06f, 0.10f);
+        const Vec3 along = t * std::cos(spin) + b * std::sin(spin), across = cross(n, along);
+        appendCard(cards, c, across * (len * 0.55f), along * len);
+    }
+    return cards;
+}
+
+const float kTreeZ[] = {-24.0f, -14.0f, -4.0f, 6.0f, 16.0f, 26.0f};
 
 std::vector<RtInstance> buildGlasshouse(const std::vector<Bed>& beds) {
     std::vector<RtInstance> v;
@@ -76,21 +167,29 @@ std::vector<RtInstance> buildGlasshouse(const std::vector<Bed>& beds) {
     add(kSphere, {0, 2.4f, -6}, {1.3f, 1.3f, 1.3f}, {0.95f, 0.93f, 0.90f}, kChrome);
     add(kTorus, {0, 2.4f, -6}, {2.3f, 2.3f, 2.3f}, {0.95f, 0.80f, 0.55f}, kChrome, 0.6f, 0.55f);
     add(kCylinder, {0, 0.4f, -6}, {0.25f, 1.0f, 0.25f}, steel, kSteel);
-    // Trees in planters.
+    // Trees in planters along both sides; every tree is the same mesh, turned and scaled.
+    Random rng(0x61A55u);
     for (float sx : {-1.0f, 1.0f})
-        for (float z : {-22.0f, -8.0f, 6.0f, 22.0f}) {
+        for (float z : kTreeZ) {
             const Vec3 p{sx * 13.0f, 0, z};
             add(kBox, {p.x, 0.45f, p.z}, {3.2f, 0.9f, 3.2f}, stone, kStone);
             add(kBox, {p.x, 0.9f, p.z}, {2.8f, 0.1f, 2.8f}, {0.30f, 0.20f, 0.12f}, kSoil);
-            add(kCylinder, {p.x, 0.9f, p.z}, {0.22f, 4.2f, 0.22f}, {0.35f, 0.24f, 0.15f}, kBark);
-            add(kSphere, {p.x, 5.6f, p.z}, {2.0f, 1.8f, 2.0f}, {0.20f, 0.40f, 0.14f}, kLeaves);
-            add(kSphere, {p.x + 0.9f, 4.8f, p.z - 0.6f}, {1.4f, 1.2f, 1.4f}, {0.24f, 0.44f, 0.16f}, kLeaves);
-            add(kSphere, {p.x - 0.8f, 5.0f, p.z + 0.7f}, {1.3f, 1.2f, 1.3f}, {0.18f, 0.36f, 0.12f}, kLeaves);
+            const float s = rng.uniform(0.9f, 1.15f), yaw = rng.uniform(0.0f, 2.0f * kPi);
+            add(kBark, {p.x, 0.9f, p.z}, {s, s, s}, {0.35f, 0.24f, 0.15f}, kBarkMaterial, yaw);
+            const Vec3 leafColor{rng.uniform(0.16f, 0.24f), rng.uniform(0.34f, 0.44f), rng.uniform(0.10f, 0.16f)};
+            add(kTreeLeaves, {p.x, 0.9f, p.z}, {s, s, s}, leafColor, kLeaves, yaw);
         }
-    // Grass beds (soil under the blades).
+    // Grass beds (soil under the blades) with shrubs along their inner edge.
     for (const Bed& b : beds) {
         add(kBox, {b.centre.x, b.centre.y / 2, b.centre.z}, {b.half * 2 + 0.6f, b.centre.y, b.half * 2 + 0.6f}, stone, kStone);
         add(kBox, {b.centre.x, b.centre.y + 0.01f, b.centre.z}, {b.half * 2, 0.02f, b.half * 2}, {0.28f, 0.19f, 0.11f}, kSoil);
+        const float inner = b.centre.x > 0 ? b.centre.x - b.half - 0.6f : b.centre.x + b.half + 0.6f;
+        for (float dz : {-b.half + 0.8f, 0.0f, b.half - 0.8f}) {
+            const float s = rng.uniform(0.8f, 1.2f);
+            const Vec3 leafColor{rng.uniform(0.12f, 0.20f), rng.uniform(0.28f, 0.38f), rng.uniform(0.08f, 0.13f)};
+            const float yaw = rng.uniform(0.0f, 2.0f * kPi);
+            add(kShrubLeaves, {inner, 0, b.centre.z + dz}, {s, s, s}, leafColor, kLeaves, yaw);
+        }
     }
     return v;
 }
@@ -100,8 +199,9 @@ public:
     Glasshouse() {
         m_info.id = "scene.glasshouse";
         m_info.name = "Glasshouse";
-        m_info.description = "Hybrid rendering of a steel conservatory: rasterised G-buffer with mesh-shader grass and "
-                             "variable-rate shading, ray-traced soft shadows, ambient occlusion and reflections.";
+        m_info.description = "Hybrid rendering of a steel-and-glass conservatory with leafy trees: rasterised "
+                             "G-buffer with mesh-shader grass and variable-rate shading; ray-traced soft shadows, "
+                             "ambient occlusion, diffuse GI and reflections through alpha-tested foliage and glass.";
         m_info.category = Category::Scene;
         m_info.group = "Ultimate";
         m_info.apis = {rhi::Api::Vulkan, rhi::Api::D3D12};
@@ -120,21 +220,30 @@ public:
         rhi::Device& dev = ctx.device();
         const RunSettings& s = ctx.settings();
         const auto& f = dev.features();
-        const bool software = dev.adapter().isSoftware();
+        // Software renderers get less content (--param scene.full_detail=1 keeps all of it).
+        const bool software = dev.adapter().isSoftware() && s.param("scene.full_detail") != "1";
+        const Detail detail = detailFor(s.quality, software);
         using U = rhi::BufferUsage;
         using TU = rhi::TextureUsage;
         using BT = rhi::BindingType;
 
         // --- content -----------------------------------------------------------------------------
         MeshPool pool;
+        auto [bark, treeLeaves] = makeTree(detail.treeLeaves, software ? 6 : 12);
+        const MeshData shrubLeaves = makeShrub(detail.shrubLeaves);
         const std::vector<std::uint32_t> meshIds = {pool.add(box(1, 1, 1)), pool.add(cylinder(software ? 10 : 20, true)),
                                                     pool.add(sphere(software ? 12 : 28, software ? 8 : 16)),
-                                                    pool.add(torus(software ? 20 : 48, software ? 8 : 16, 0.12f))};
+                                                    pool.add(torus(software ? 20 : 48, software ? 8 : 16, 0.12f)),
+                                                    pool.add(bark), pool.add(treeLeaves), pool.add(shrubLeaves)};
         pool.upload(dev, U::AccelInput);
-        const std::vector<Bed> beds = {{{-6.5f, 0.35f, 20.0f}, 4.0f}, {{6.5f, 0.35f, 20.0f}, 4.0f},
-                                       {{-6.5f, 0.35f, -21.0f}, 4.0f}, {{6.5f, 0.35f, -21.0f}, 4.0f}};
+        const std::vector<Bed> beds = {{{-7.0f, 0.35f, -25.0f}, 4.0f}, {{7.0f, 0.35f, -25.0f}, 4.0f},
+                                       {{-7.0f, 0.35f, -16.0f}, 4.0f}, {{7.0f, 0.35f, -16.0f}, 4.0f},
+                                       {{-7.0f, 0.35f, 8.0f}, 4.0f},   {{7.0f, 0.35f, 8.0f}, 4.0f},
+                                       {{-7.0f, 0.35f, 20.0f}, 4.0f},  {{7.0f, 0.35f, 20.0f}, 4.0f}};
         std::vector<RtInstance> instances = buildGlasshouse(beds);
-        const RtScene rs = buildRtScene(ctx, pool, meshIds, instances);
+        std::vector<bool> alphaTested(kMeshKinds, false);
+        alphaTested[kTreeLeaves] = alphaTested[kShrubLeaves] = true;
+        const RtScene rs = buildRtScene(ctx, pool, meshIds, instances, alphaTested);
 
         // --- targets -----------------------------------------------------------------------------
         const std::uint32_t w = s.width, h = s.height;
@@ -151,6 +260,9 @@ public:
         auto normal = tex(rhi::Format::RGBA16_FLOAT, TU::RenderTarget | TU::Sampled, "glasshouse-normal");
         auto depth = tex(rhi::Format::D32_FLOAT, TU::DepthStencil | TU::Sampled, "glasshouse-depth");
         auto vis = tex(rhi::Format::RGBA8_UNORM, TU::Storage | TU::Sampled, "glasshouse-visibility");
+        auto giRaw = tex(rhi::Format::RGBA16_FLOAT, TU::Storage | TU::Sampled, "glasshouse-gi");
+        auto giA = tex(rhi::Format::RGBA16_FLOAT, TU::Storage | TU::Sampled, "glasshouse-gi-a");
+        auto giB = tex(rhi::Format::RGBA16_FLOAT, TU::Storage | TU::Sampled, "glasshouse-gi-b");
         auto hdr = tex(rhi::Format::RGBA16_FLOAT, TU::Storage | TU::Sampled, "glasshouse-hdr");
         auto output = tex(rhi::Format::RGBA8_UNORM, TU::RenderTarget | TU::Sampled | TU::CopySrc, "glasshouse-output");
 
@@ -170,6 +282,10 @@ public:
         gd.raster.cull = rhi::CullMode::None;
         gd.layout.bindings = {{BT::UniformBuffer, 0}};
         auto geometryPipe = dev.createGraphicsPipeline(gd);
+        rhi::GraphicsPipelineDesc lfd = gd;
+        lfd.name = "glasshouse-leaves";
+        lfd.fragment = {"scenes/glasshouse", "psLeaves"};
+        auto leavesPipe = dev.createGraphicsPipeline(lfd);
         rhi::GraphicsPipelineDesc grd;
         grd.name = mesh ? "glasshouse-grass-mesh" : "glasshouse-grass";
         if (mesh) grd.mesh = {"scenes/glasshouse", "msGrass"};
@@ -184,16 +300,25 @@ public:
         rhi::ComputePipelineDesc td;
         td.name = "glasshouse-trace";
         td.compute = {"scenes/glasshouse", "csTrace"};
-        td.layout.bindings = {{BT::UniformBuffer, 0}, {BT::AccelerationStructure, 0}, {BT::SampledTexture, 6},
-                              {BT::SampledTexture, 7}, {BT::StorageTexture, 1}};
+        td.layout.bindings = {{BT::UniformBuffer, 0},   {BT::AccelerationStructure, 0}, {BT::StorageBufferRO, 1},
+                              {BT::StorageBufferRO, 2}, {BT::StorageBufferRO, 3},       {BT::StorageBufferRO, 4},
+                              {BT::SampledTexture, 6},  {BT::SampledTexture, 7},        {BT::StorageTexture, 1},
+                              {BT::StorageTexture, 2}};
         auto tracePipe = dev.createComputePipeline(td);
+        rhi::ComputePipelineDesc fd;
+        fd.name = "glasshouse-filter-gi";
+        fd.compute = {"scenes/glasshouse", "csFilterGi"};
+        fd.layout.bindings = {{BT::UniformBuffer, 0}, {BT::SampledTexture, 6}, {BT::SampledTexture, 7},
+                              {BT::SampledTexture, 10}, {BT::StorageTexture, 3}};
+        fd.layout.pushConstantBytes = sizeof(FilterParams);
+        auto filterPipe = dev.createComputePipeline(fd);
         rhi::ComputePipelineDesc ld;
         ld.name = "glasshouse-lighting";
         ld.compute = {"scenes/glasshouse", "csLighting"};
-        ld.layout.bindings = {{BT::UniformBuffer, 0},     {BT::AccelerationStructure, 0}, {BT::StorageBufferRO, 1},
-                              {BT::StorageBufferRO, 2},   {BT::StorageBufferRO, 3},       {BT::StorageBufferRO, 4},
-                              {BT::SampledTexture, 5},    {BT::SampledTexture, 6},        {BT::SampledTexture, 7},
-                              {BT::SampledTexture, 9},    {BT::StorageTexture, 0}};
+        ld.layout.bindings = {{BT::UniformBuffer, 0},   {BT::AccelerationStructure, 0}, {BT::StorageBufferRO, 1},
+                              {BT::StorageBufferRO, 2}, {BT::StorageBufferRO, 3},       {BT::StorageBufferRO, 4},
+                              {BT::SampledTexture, 5},  {BT::SampledTexture, 6},        {BT::SampledTexture, 7},
+                              {BT::SampledTexture, 9},  {BT::SampledTexture, 11},       {BT::StorageTexture, 0}};
         auto lightingPipe = dev.createComputePipeline(ld);
         rhi::GraphicsPipelineDesc cd;
         cd.name = "glasshouse-composite";
@@ -206,21 +331,29 @@ public:
         cd.layout.bindings = {{BT::SampledTexture, 8}};
         auto compositePipe = dev.createGraphicsPipeline(cd);
 
-        const std::uint32_t bladesPerRow = software ? 4u : s.quality == Quality::Low ? 6u : s.quality == Quality::Medium ? 8u
-                                                     : s.quality == Quality::High ? 10u : 14u;
         const std::uint32_t patchesPerRow = 8; // 1 m patches over 8 m beds
         const std::uint32_t patches = static_cast<std::uint32_t>(beds.size()) * patchesPerRow * patchesPerRow;
-        const std::uint32_t bladesPerPatch = bladesPerRow * bladesPerRow;
+        const std::uint32_t bladesPerPatch = detail.bladesPerRow * detail.bladesPerRow;
         const std::uint32_t groupsPerPatch = (bladesPerPatch + 31) / 32;
-        const std::uint32_t aoRays = software ? 1u : s.quality == Quality::Ultra ? 4u : s.quality == Quality::High ? 2u : 1u;
+        const bool gi = detail.giRays > 0;
+        std::uint64_t bvhTriangles = 0, leafCards = 0;
+        for (const RtInstance& in : instances) {
+            const auto m = static_cast<std::size_t>(in.info[0]);
+            bvhTriangles += pool[meshIds[m]].indexCount / 3;
+            if (alphaTested[m]) leafCards += pool[meshIds[m]].indexCount / 6;
+        }
         auto& d = ctx.details();
         d["instances"] = instances.size();
+        d["bvh_triangles"] = bvhTriangles;
+        d["leaf_cards"] = leafCards;
         d["grass_blades"] = patches * bladesPerPatch;
         d["grass_path"] = mesh ? "mesh shaders" : "vertex shader";
         d["variable_rate_shading"] = vrs;
-        d["ao_rays_per_pixel"] = aoRays;
-        d["rays_per_pixel_max"] = 3 + aoRays;
-        if (software) d["note"] = "software renderer: less grass";
+        d["shadow_rays_per_pixel"] = detail.shadowRays;
+        d["ao_rays_per_pixel"] = detail.aoRays;
+        d["gi_rays_per_pixel"] = detail.giRays;
+        d["gi_filter_passes"] = gi ? detail.giFilterPasses : 0;
+        if (software) d["note"] = "software renderer: fewer leaves and grass blades, one ray of each kind";
 
         // --- frame -------------------------------------------------------------------------------
         const CameraPath path({{{0, 2.0f, 28}, {0, 3.0f, -6}},
@@ -231,7 +364,6 @@ public:
                                {{30, 6.0f, 36}, {0, 5.0f, 0}}});
         const Vec3 sun = normalize({0.38f, 0.78f, -0.5f});
         const float aspect = float(w) / float(h);
-        std::uint32_t frameIndex = 0;
         FrameLoopDesc fl;
         fl.framesPerPass = s.framesPerPass(720);
         fl.simDuration = 30.0;
@@ -248,17 +380,19 @@ public:
             fd.sunDir[0] = sun.x, fd.sunDir[1] = sun.y, fd.sunDir[2] = sun.z, fd.sunDir[3] = 3.2f;
             fd.sunColor[0] = 1.0f, fd.sunColor[1] = 0.95f, fd.sunColor[2] = 0.86f, fd.sunColor[3] = 0.01f;
             fd.screen[0] = float(w), fd.screen[1] = float(h), fd.screen[2] = 1.0f / float(w), fd.screen[3] = 1.0f / float(h);
-            // The noise pattern depends on the frame index; golden frames and passes repeat it.
+            // The noise pattern depends on the frame index; golden frames repeat it.
             fd.params[0] = fc.warmup ? 0u : fc.frame;
-            fd.params[1] = aoRays;
-            fd.params[2] = bladesPerRow;
+            fd.params[2] = detail.bladesPerRow;
             fd.params[3] = patchesPerRow;
+            fd.rays[0] = detail.shadowRays;
+            fd.rays[1] = detail.aoRays;
+            fd.rays[2] = detail.giRays;
+            fd.rays[3] = detail.reflectionShadows ? 1u : 0u;
             fd.grass[0] = 1.0f, fd.grass[1] = 0.55f, fd.grass[2] = 0.08f, fd.grass[3] = float(beds.size());
             for (std::size_t b = 0; b < beds.size(); ++b) {
                 fd.beds[b][0] = beds[b].centre.x, fd.beds[b][1] = beds[b].centre.y + 0.02f, fd.beds[b][2] = beds[b].centre.z;
                 fd.beds[b][3] = beds[b].half;
             }
-            ++frameIndex;
 
             rhi::CommandList& cmd = fc.cmd;
             rhi::RenderPassDesc gp;
@@ -267,42 +401,75 @@ public:
             gp.depth = {depth.get(), rhi::LoadOp::Clear, rhi::StoreOp::Store, 1.0f};
             cmd.beginRenderPass(gp);
             cmd.setUniformData(0, &fd, sizeof(fd));
-            cmd.setPipeline(geometryPipe.get());
             cmd.setVertexBuffer(0, pool.vertexBuffer());
             cmd.setIndexBuffer(pool.indexBuffer(), rhi::IndexType::Uint32);
-            for (int m = 0; m < kMeshKinds; ++m) {
+            auto drawKind = [&](int m) {
                 const SubMesh& sm = pool[meshIds[std::size_t(m)]];
-                if (rs.groupCount[std::size_t(m)] == 0) continue;
+                if (rs.groupCount[std::size_t(m)] == 0) return;
                 cmd.setVertexBuffer(1, rs.instances.get(), std::uint64_t(rs.groupFirst[std::size_t(m)]) * sizeof(RtInstance));
                 cmd.drawIndexed(sm.indexCount, rs.groupCount[std::size_t(m)], sm.firstIndex, sm.baseVertex);
-            }
+            };
+            cmd.setPipeline(geometryPipe.get());
+            for (int m = 0; m < kMeshKinds; ++m)
+                if (!alphaTested[std::size_t(m)]) drawKind(m);
+            cmd.setPipeline(leavesPipe.get());
+            for (int m = 0; m < kMeshKinds; ++m)
+                if (alphaTested[std::size_t(m)]) drawKind(m);
             cmd.setPipeline(grassPipe.get());
             if (vrs) cmd.setShadingRate(2, 2);
             if (mesh) cmd.drawMeshTasks(patches * groupsPerPatch);
             else cmd.draw(9, patches * bladesPerPatch);
             cmd.endRenderPass();
 
+            auto bindScene = [&] {
+                cmd.setAccelerationStructure(0, rs.tlas.get());
+                cmd.setReadOnlyBuffer(1, rs.instances.get());
+                cmd.setReadOnlyBuffer(2, rs.meshes.get());
+                cmd.setReadOnlyBuffer(3, pool.vertexBuffer());
+                cmd.setReadOnlyBuffer(4, pool.indexBuffer());
+            };
             for (rhi::Texture* t : {albedo.get(), normal.get(), depth.get()}) cmd.transition(t, rhi::ResourceState::ShaderRead);
-            cmd.transition(vis.get(), rhi::ResourceState::UnorderedAccess);
+            for (rhi::Texture* t : {vis.get(), giRaw.get()})
+                cmd.transition(t, rhi::ResourceState::UnorderedAccess);
             cmd.setPipeline(tracePipe.get());
-            cmd.setAccelerationStructure(0, rs.tlas.get());
+            bindScene();
             cmd.setTexture(6, normal.get());
             cmd.setTexture(7, depth.get());
             cmd.setStorageTexture(1, vis.get());
+            cmd.setStorageTexture(2, giRaw.get());
             cmd.dispatch((w + 7) / 8, (h + 7) / 8);
-            cmd.transition(vis.get(), rhi::ResourceState::ShaderRead);
+            for (rhi::Texture* t : {vis.get(), giRaw.get()}) cmd.transition(t, rhi::ResourceState::ShaderRead);
+
+            // GI wavelet filter: raw -> A -> B -> A ...
+            rhi::Texture* giResult = giRaw.get();
+            if (gi) {
+                rhi::Texture* dst = giA.get();
+                cmd.setPipeline(filterPipe.get());
+                for (int i = 0; i < detail.giFilterPasses; ++i) {
+                    const FilterParams fp{1 << i, 32.0f, 0.01f, 0.0f};
+                    cmd.transition(dst, rhi::ResourceState::UnorderedAccess);
+                    cmd.setUniformData(0, &fd, sizeof(fd));
+                    cmd.pushConstants(&fp, sizeof(fp));
+                    cmd.setTexture(6, normal.get());
+                    cmd.setTexture(7, depth.get());
+                    cmd.setTexture(10, giResult);
+                    cmd.setStorageTexture(3, dst);
+                    cmd.dispatch((w + 7) / 8, (h + 7) / 8);
+                    cmd.transition(dst, rhi::ResourceState::ShaderRead);
+                    giResult = dst;
+                    dst = dst == giA.get() ? giB.get() : giA.get();
+                }
+            }
 
             cmd.transition(hdr.get(), rhi::ResourceState::UnorderedAccess);
             cmd.setPipeline(lightingPipe.get());
-            cmd.setAccelerationStructure(0, rs.tlas.get());
-            cmd.setReadOnlyBuffer(1, rs.instances.get());
-            cmd.setReadOnlyBuffer(2, rs.meshes.get());
-            cmd.setReadOnlyBuffer(3, pool.vertexBuffer());
-            cmd.setReadOnlyBuffer(4, pool.indexBuffer());
+            cmd.setUniformData(0, &fd, sizeof(fd));
+            bindScene();
             cmd.setTexture(5, albedo.get());
             cmd.setTexture(6, normal.get());
             cmd.setTexture(7, depth.get());
             cmd.setTexture(9, vis.get());
+            cmd.setTexture(11, giResult);
             cmd.setStorageTexture(0, hdr.get());
             cmd.dispatch((w + 7) / 8, (h + 7) / 8);
             cmd.transition(hdr.get(), rhi::ResourceState::ShaderRead);

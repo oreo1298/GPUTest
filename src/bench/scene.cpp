@@ -155,6 +155,38 @@ void append(MeshData& dst, const MeshData& src, Vec3 offset, float scale, float 
     for (std::uint32_t i : src.indices) dst.indices.push_back(base + i);
 }
 
+void appendTube(MeshData& dst, Vec3 a, Vec3 b, float r0, float r1, std::uint32_t segments) {
+    const Vec3 axis = normalize(b - a);
+    const Vec3 t = normalize(cross(axis, std::abs(axis.y) < 0.99f ? Vec3{0, 1, 0} : Vec3{1, 0, 0}));
+    const Vec3 bt = cross(axis, t);
+    // The surface normal leans along the axis by the taper.
+    const float lean = (r0 - r1) / std::max(1e-6f, std::sqrt(dot(b - a, b - a)));
+    const auto base = static_cast<std::uint32_t>(dst.vertices.size());
+    for (std::uint32_t s = 0; s <= segments; ++s) {
+        const float u = float(s) / float(segments), th = u * 2.0f * kPi;
+        const Vec3 radial = t * std::cos(th) + bt * std::sin(th);
+        const Vec3 n = normalize(radial + axis * lean);
+        const Vec3 p0 = a + radial * r0, p1 = b + radial * r1;
+        dst.vertices.push_back({p0.x, p0.y, p0.z, n.x, n.y, n.z, u, 0});
+        dst.vertices.push_back({p1.x, p1.y, p1.z, n.x, n.y, n.z, u, 1});
+    }
+    for (std::uint32_t s = 0; s < segments; ++s) {
+        const std::uint32_t i = base + s * 2;
+        dst.indices.insert(dst.indices.end(), {i, i + 2, i + 1, i + 1, i + 2, i + 3});
+    }
+}
+
+void appendCard(MeshData& dst, Vec3 c, Vec3 u, Vec3 v) {
+    const Vec3 n = normalize(cross(u, v));
+    const auto base = static_cast<std::uint32_t>(dst.vertices.size());
+    const float corners[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+    for (const auto& k : corners) {
+        const Vec3 p = c + u * k[0] + v * k[1];
+        dst.vertices.push_back({p.x, p.y, p.z, n.x, n.y, n.z, 0.5f + 0.5f * k[0], 0.5f + 0.5f * k[1]});
+    }
+    dst.indices.insert(dst.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+}
+
 namespace {
 float hash2(int x, int y) {
     std::uint32_t h = static_cast<std::uint32_t>(x) * 73856093u ^ static_cast<std::uint32_t>(y) * 19349663u;

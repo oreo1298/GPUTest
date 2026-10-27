@@ -54,6 +54,18 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
 - **Run length per duration preset.** Scenes: quick plays the timeline once at double speed, standard once, extreme
   three times (a 30 s timeline: 15 s, 30 s, 90 s). Deterministic loops repeat whole passes until the preset's minimum
   time (quick 8 s, standard 25 s, extreme 90 s). A hard time limit (90/240/900 s) marks results `time_limited`.
+- **Scene weight targets a high-end GPU at the default 1080p / high.** The owner's RTX 4090 ran the first scenes
+  in 0.2-2.3 ms of GPU time (Glasshouse 0.22 ms, Gallery 2.2 ms, Atrium 0.23 ms, Lattice 0.20 ms): far too light to
+  tell fast GPUs apart. Content and ray budgets were raised so that a 4090 needs roughly 2-6 ms at high, more at
+  ultra, while low stays usable on integrated GPUs; the quality preset is the knob between them. Calibration
+  follows from real results (the VM's software renderers only give rough ratios, see Environment).
+  - Glasshouse: twelve trees and 24 shrubs of alpha-tested leaf cards (up to 9000 per tree) in the BVH, so every
+    ray tests leaf shapes as real foliage does; glass panes (analytic planes with a reflection ray each); eight
+    grass beds (up to 400k mesh-shader blades); per pixel 1/2/4 soft-shadow rays, 1/2/4/8 AO rays, 0/1/2/4 GI
+    rays with a shadow ray at each hit and an a-trous filter (low/medium/high/ultra), plus reflection rays with
+    hit shadows. Rough reflection and GI rays see the sky without the sun's disc (the direct term has the sun).
+- **Generated content uses a portable random generator** (`scene::Random`, SplitMix64): the std:: distributions
+  differ between libstdc++ and MSVC, which would make the same scene differ between Linux and Windows builds.
 - **Golden-image checks use a 16×9 mean-colour signature with a tolerance (default 8/255) plus an exact hash**: exact hashes break across drivers/LLVM versions, signatures still catch broken rendering.
 - **Tests are linked as an OBJECT library with static self-registration** (`GT_REGISTER_TEST`): adding a test is one file, and the linker cannot drop it.
 - **HUD font: public-domain 8×8 VGA font** taken from SDL3's debug-text font (no font dependency).

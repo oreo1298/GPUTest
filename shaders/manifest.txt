@@ -128,10 +128,12 @@ scenes/skyline_post.slang      csBloomDown    compute         vk,d3d12
 scenes/skyline_post.slang      csBloomUp      compute         vk,d3d12
 scenes/glasshouse.slang        vsGeometry     vertex          vk,d3d12
 scenes/glasshouse.slang        psGeometry     fragment        vk,d3d12
+scenes/glasshouse.slang        psLeaves       fragment        vk,d3d12
 scenes/glasshouse.slang        vsGrass        vertex          vk,d3d12
 scenes/glasshouse.slang        msGrass        mesh            vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5
 scenes/glasshouse.slang        psGrass        fragment        vk,d3d12
 scenes/glasshouse.slang        csTrace        compute         vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5
+scenes/glasshouse.slang        csFilterGi     compute         vk,d3d12
 scenes/glasshouse.slang        csLighting     compute         vk,d3d12   vk=spirv_1_4 d3d12=sm_6_5
 scenes/glasshouse.slang        vsFullscreen   vertex          vk,d3d12
 scenes/glasshouse.slang        psComposite    fragment        vk,d3d12
