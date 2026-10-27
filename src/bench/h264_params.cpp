@@ -1,5 +1,7 @@
 #include "gt/bench/h264_params.h"
 
+#include "bit_reader.h"
+
 #include <algorithm>
 #include <stdexcept>
 #include <vector>
@@ -7,49 +9,8 @@
 namespace gt::bench::h264 {
 namespace {
 
-struct Unsupported : std::runtime_error {
-    using std::runtime_error::runtime_error;
-};
-
-/// Bit reader over an RBSP (emulation-prevention bytes already removed).
-class Bits {
-public:
-    explicit Bits(std::vector<std::uint8_t> data) : m_data(std::move(data)) {
-        // The RBSP ends with a stop bit (1) and zero padding: remember where, for more_rbsp_data().
-        m_end = m_data.size() * 8;
-        while (m_end > 0 && !bitAt(m_end - 1))
-            --m_end;
-        if (m_end > 0) --m_end; // the stop bit itself
-    }
-    std::uint32_t u(int n) {
-        std::uint32_t v = 0;
-        for (int i = 0; i < n; ++i)
-            v = (v << 1) | bit();
-        return v;
-    }
-    bool flag() { return bit() != 0; }
-    std::uint32_t ue() {
-        int zeros = 0;
-        while (bit() == 0) {
-            if (++zeros > 31) throw Unsupported("bad exp-Golomb code");
-        }
-        return zeros ? ((1u << zeros) - 1u + u(zeros)) : 0u;
-    }
-    std::int32_t se() {
-        const std::uint32_t k = ue();
-        return (k & 1u) ? static_cast<std::int32_t>((k + 1) / 2) : -static_cast<std::int32_t>(k / 2);
-    }
-    bool moreRbspData() const { return m_pos < m_end; }
-
-private:
-    std::uint32_t bitAt(std::size_t p) const { return (m_data[p / 8] >> (7 - p % 8)) & 1u; }
-    std::uint32_t bit() {
-        if (m_pos >= m_data.size() * 8) throw Unsupported("parameter set is truncated");
-        return bitAt(m_pos++);
-    }
-    std::vector<std::uint8_t> m_data;
-    std::size_t m_pos = 0, m_end = 0;
-};
+using bits::Unsupported;
+using Bits = bits::Reader;
 
 Sps readSps(Bits& b) {
     Sps s;
@@ -124,47 +85,22 @@ Pps readPps(Bits& b) {
 
 std::vector<NalUnit> nalUnits(std::span<const std::uint8_t> data) {
     std::vector<NalUnit> out;
-    std::size_t i = 0;
-    while (i + 3 < data.size()) {
-        if (!(data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1)) {
-            ++i;
-            continue;
-        }
+    for (const bits::AnnexBUnit& u : bits::annexB(data)) {
         NalUnit n;
-        n.offset = i;
-        n.payload = i + 3;
-        std::size_t end = n.payload;
-        while (end + 2 < data.size() &&
-               !(data[end] == 0 && data[end + 1] == 0 && (data[end + 2] == 1 || data[end + 2] == 0)))
-            ++end;
-        if (end + 2 >= data.size()) end = data.size();
-        n.end = end;
-        if (n.payload < end) {
-            n.type = data[n.payload] & 0x1Fu;
-            n.refIdc = (data[n.payload] >> 5) & 3u;
-            out.push_back(n);
-        }
-        i = end;
+        n.offset = u.offset;
+        n.payload = u.payload;
+        n.end = u.end;
+        n.type = data[u.payload] & 0x1Fu;
+        n.refIdc = (data[u.payload] >> 5) & 3u;
+        out.push_back(n);
     }
     return out;
 }
 
 namespace {
 
-/// The RBSP of a NAL unit (header byte dropped, emulation-prevention bytes removed).
 std::vector<std::uint8_t> rbsp(std::span<const std::uint8_t> nal) {
-    std::vector<std::uint8_t> out;
-    out.reserve(nal.size());
-    for (std::size_t k = 1; k < nal.size(); ++k) {
-        if (k + 2 < nal.size() && nal[k] == 0 && nal[k + 1] == 0 && nal[k + 2] == 3) {
-            out.push_back(0);
-            out.push_back(0);
-            k += 2; // skip the emulation-prevention byte
-            continue;
-        }
-        out.push_back(nal[k]);
-    }
-    return out;
+    return bits::rbsp(nal, 1);
 }
 
 } // namespace

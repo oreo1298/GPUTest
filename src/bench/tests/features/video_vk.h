@@ -272,6 +272,7 @@ struct CodecHooks {
         encoded;
 };
 CodecHooks h264Hooks();
+CodecHooks h265Hooks();
 
 bool canDecode(const rhi::NativeDevice& n, const CodecHooks& c);
 bool canEncode(const rhi::NativeDevice& n, const CodecHooks& c);

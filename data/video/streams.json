@@ -10,84 +10,84 @@
       "file": "h264_1080p.h264",
       "codec": "H.264",
       "profile": "High",
-      "bytes": 412504,
+      "bytes": 560481,
       "crc32": [
-        "3e21c05f",
-        "b1c38e21",
-        "a6e0fce6",
-        "678094eb",
-        "ff8982b5",
-        "c6485035",
-        "c50ac1b4",
-        "f05452ab"
+        "9d0e7670",
+        "8438d0c5",
+        "85dd33f9",
+        "e46b6647",
+        "e2f14f02",
+        "1f3c3d01",
+        "e89dbc2b",
+        "d46f2041"
       ],
       "psnr": [
-        39.82,
-        39.92,
-        39.9,
-        39.9,
-        39.87,
-        39.84,
-        39.83,
-        39.76
+        38.09,
+        36.38,
+        36.41,
+        36.45,
+        36.45,
+        36.49,
+        36.52,
+        36.54
       ],
-      "encoder": "-c:v libx264 -profile:v high -preset medium -crf 20 -x264-params ref=1:bframes=0:weightp=0:keyint=8:min-keyint=8:scenecut=0:threads=1:sliced-threads=0 -bsf:v filter_units=remove_types=6 -f h264"
+      "encoder": "-c:v libx264 -profile:v high -preset medium -x264-params qp=24:ipratio=1.0:mbtree=0:aq-mode=0:psy=0:ref=1:bframes=0:weightp=0:keyint=8:min-keyint=8:scenecut=0:threads=1:sliced-threads=0 -bsf:v filter_units=remove_types=6 -f h264"
     },
     {
       "key": "h265",
       "file": "h265_1080p.h265",
       "codec": "H.265",
       "profile": "Main",
-      "bytes": 472483,
+      "bytes": 556133,
       "crc32": [
-        "47e916ba",
-        "117f45ff",
-        "d2a50fcd",
-        "34331221",
-        "970903ee",
-        "b3866a58",
-        "17629b33",
-        "50530412"
+        "8db315cc",
+        "f6488c61",
+        "5bd93b24",
+        "2ecca3eb",
+        "d4644ae9",
+        "226f1840",
+        "48560fe1",
+        "756e202b"
       ],
       "psnr": [
-        42.2,
-        41.96,
-        41.89,
-        41.87,
-        41.91,
-        42.03,
-        42.09,
-        42.19
+        38.2,
+        37.17,
+        37.1,
+        37.05,
+        36.96,
+        37.0,
+        37.02,
+        37.02
       ],
-      "encoder": "-c:v libx265 -profile:v main -preset medium -crf 25 -x265-params ref=1:bframes=0:keyint=8:min-keyint=8:scenecut=0:open-gop=0:info=0:repeat-headers=1:pools=1:frame-threads=1:rc-lookahead=0:log-level=error -bsf:v filter_units=remove_types=39|40 -f hevc"
+      "encoder": "-c:v libx265 -profile:v main -preset medium -x265-params qp=24:ipratio=1.0:aq-mode=0:psy-rd=0:psy-rdoq=0:cutree=0:rdoq-level=0:ref=1:bframes=0:keyint=8:min-keyint=8:scenecut=0:open-gop=0:info=0:repeat-headers=1:pools=1:frame-threads=1:rc-lookahead=0:log-level=error -bsf:v filter_units=remove_types=39|40 -f hevc"
     },
     {
       "key": "av1",
       "file": "av1_1080p.obu",
       "codec": "AV1",
       "profile": "Main",
-      "bytes": 451610,
+      "bytes": 810837,
       "crc32": [
-        "4dffc65a",
-        "16c18463",
-        "2f8f3d35",
-        "5455e6fd",
-        "76a10f9e",
-        "97d4bb60",
-        "bfe684af",
-        "6b67f668"
+        "b9a89ecf",
+        "df58867d",
+        "72717def",
+        "95a63995",
+        "a094b959",
+        "54f762f1",
+        "6d8812cf",
+        "4e3be039"
       ],
       "psnr": [
-        42.41,
-        42.34,
-        42.31,
-        42.27,
-        42.24,
-        42.2,
-        42.16,
-        42.13
+        38.75,
+        36.04,
+        38.11,
+        38.02,
+        37.98,
+        38.03,
+        38.03,
+        38.03
       ],
-      "encoder": "-c:v libaom-av1 -cpu-used 6 -crf 32 -b:v 0 -g 8 -keyint_min 8 -lag-in-frames 0 -auto-alt-ref 0 -tiles 1x1 -row-mt 0 -threads 1 -denoise-noise-level 0 -f obu"
+      "encoder": "-c:v libaom-av1 -cpu-used 6 -crf 40 -b:v 0 -g 8 -keyint_min 8 -lag-in-frames 0 -auto-alt-ref 0 -tiles 1x1 -row-mt 0 -threads 1 -denoise-noise-level 0 -aq-mode 0 -aom-params enable-tpl-model=0:deltaq-mode=0:enable-keyframe-filtering=0 -f obu"
     }
   ]
 }

@@ -148,7 +148,7 @@ TEST_CASE("The x264 reference stream splits into eight frames", "[h264][video]")
     CHECK(sps.vuiPresent);
     CHECK(st->params.pps->entropyCodingMode);
     CHECK(st->params.pps->transform8x8Mode);
-    CHECK(st->params.pps->chromaQpIndexOffset == -2);
+    CHECK(st->params.pps->chromaQpIndexOffset == 0);
     REQUIRE(st->pictures.size() == 8);
     for (std::size_t f = 0; f < 8; ++f) {
         const h264::Picture& p = st->pictures[f];

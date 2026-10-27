@@ -6,6 +6,7 @@ add_library(gt_bench STATIC
   plugins.cpp
   upscale.cpp
   h264_params.cpp
+  h265_params.cpp
   video_streams.cpp
   suites.cpp
   scene.cpp
@@ -68,6 +69,7 @@ add_library(gt_bench_tests OBJECT
   tests/features/video.cpp
   tests/features/video_vk.cpp
   tests/features/video_h264_vk.cpp
+  tests/features/video_h265_vk.cpp
   tests/features/sampler_feedback.cpp
   tests/features/work_graphs.cpp
   tests/features/async_queues.cpp

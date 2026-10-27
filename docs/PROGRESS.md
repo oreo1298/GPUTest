@@ -83,8 +83,8 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   Vulkan plugin (tested in CI) and Intel XeSS (D3D12, user supplies `libxess.dll`); no DLSS (license).
   `feature.hdr` (PQ encoding check; HDR10 swapchain in a window). `feature.video` (Vulkan Video): decode fps
   on embedded 1080p reference streams (`data/video`, FFmpeg-made, frames checked by CRC against FFmpeg's
-  decode) and encode fps with a GPU round-trip PSNR check; H.264 so far (skips without video queues;
-  hardware-only, unverified). Next: H.265 and AV1, D3D12 Video.
+  decode) and encode fps with a GPU round-trip PSNR check; H.264 and H.265 so far (skips without video queues;
+  hardware-only, unverified). Next: AV1, D3D12 Video.
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
@@ -129,6 +129,9 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   shadowed the C library's under MSVC).
 - M12: `feature.video` reworked: reference streams (`scripts/make-video-streams.py`), codec-independent Vulkan
   decoder/encoder (`video_vk.h`), H.264 parser checked against x264 output.
+- M12: H.265 in `feature.video` (VPS/SPS/PPS/slice-header reader with RPS derivation, checked against x265
+  output; Vulkan decode with RPS references; IDR + P encoder). Reference streams use fixed QP with temporal grain
+  so inter frames carry residual.
 
 ### 2026-10-26
 - Saved brief to docs/SPEC.md; research pass recorded in docs/RESEARCH.md (two research subagents).

@@ -44,6 +44,12 @@ def source_frames():
         h = (xi * np.uint32(73856093)) ^ (yi * np.uint32(19349663))
         h = (h ^ (h >> np.uint32(13))) * np.uint32(1274126177)
         g = g + ((h >> np.uint32(24)) & np.uint32(15)).astype(np.float64) - 8.0
+        # Grain that changes every frame (so inter frames carry residual, as camera footage does).
+        px = np.broadcast_to(np.arange(W, dtype=np.uint32)[None, :], (H, W))
+        py = np.broadcast_to(np.arange(H, dtype=np.uint32)[:, None], (H, W))
+        t = (px * np.uint32(2654435761)) ^ (py * np.uint32(2246822519)) ^ np.uint32(f * 3266489917 & 0xFFFFFFFF)
+        t = (t ^ (t >> np.uint32(15))) * np.uint32(2246822519)
+        g = g + ((t >> np.uint32(28)) & np.uint32(7)).astype(np.float64) - 4.0
         luma = np.clip(np.rint(g), 16, 235).astype(np.uint8)
         cy = np.minimum(2 * np.arange(H // 2), H - 2).astype(np.float64)[:, None] + dy
         cx = 2.0 * np.arange(W // 2, dtype=np.float64)[None, :] + dx
@@ -58,23 +64,25 @@ def source_frames():
 STREAMS = [
     {
         "key": "h264", "file": "h264_1080p.h264", "codec": "H.264", "profile": "High",
-        "args": ["-c:v", "libx264", "-profile:v", "high", "-preset", "medium", "-crf", "20",
-                 "-x264-params", "ref=1:bframes=0:weightp=0:keyint=8:min-keyint=8:scenecut=0:threads=1:"
-                                 "sliced-threads=0",
+        "args": ["-c:v", "libx264", "-profile:v", "high", "-preset", "medium",
+                 "-x264-params", "qp=24:ipratio=1.0:mbtree=0:aq-mode=0:psy=0:ref=1:bframes=0:weightp=0:keyint=8:"
+                                 "min-keyint=8:scenecut=0:threads=1:sliced-threads=0",
                  "-bsf:v", "filter_units=remove_types=6", "-f", "h264"],
     },
     {
         "key": "h265", "file": "h265_1080p.h265", "codec": "H.265", "profile": "Main",
-        "args": ["-c:v", "libx265", "-profile:v", "main", "-preset", "medium", "-crf", "25",
-                 "-x265-params", "ref=1:bframes=0:keyint=8:min-keyint=8:scenecut=0:open-gop=0:info=0:"
+        "args": ["-c:v", "libx265", "-profile:v", "main", "-preset", "medium",
+                 "-x265-params", "qp=24:ipratio=1.0:aq-mode=0:psy-rd=0:psy-rdoq=0:cutree=0:rdoq-level=0:"
+                                 "ref=1:bframes=0:keyint=8:min-keyint=8:scenecut=0:open-gop=0:info=0:"
                                  "repeat-headers=1:pools=1:frame-threads=1:rc-lookahead=0:log-level=error",
                  "-bsf:v", "filter_units=remove_types=39|40", "-f", "hevc"],
     },
     {
         "key": "av1", "file": "av1_1080p.obu", "codec": "AV1", "profile": "Main",
-        "args": ["-c:v", "libaom-av1", "-cpu-used", "6", "-crf", "32", "-b:v", "0", "-g", "8", "-keyint_min", "8",
+        "args": ["-c:v", "libaom-av1", "-cpu-used", "6", "-crf", "40", "-b:v", "0", "-g", "8", "-keyint_min", "8",
                  "-lag-in-frames", "0", "-auto-alt-ref", "0", "-tiles", "1x1", "-row-mt", "0", "-threads", "1",
-                 "-denoise-noise-level", "0", "-f", "obu"],
+                 "-denoise-noise-level", "0", "-aq-mode", "0",
+                 "-aom-params", "enable-tpl-model=0:deltaq-mode=0:enable-keyframe-filtering=0", "-f", "obu"],
     },
 ]
 

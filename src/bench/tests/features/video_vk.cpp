@@ -15,7 +15,10 @@ namespace gt::bench::vkvideo {
 
 std::vector<std::uint8_t> makeSource() {
     std::vector<std::uint8_t> nv12(kSourceFrame * kGop);
-    auto clamp8 = [](double v) { return static_cast<std::uint8_t>(std::clamp(std::lround(v), 16l, 235l)); };
+    // Rounds half to even, like numpy's rint in scripts/make-video-streams.py.
+    auto clamp8 = [](double v) {
+        return static_cast<std::uint8_t>(std::clamp(std::nearbyint(v), 16.0, 235.0));
+    };
     for (std::uint32_t f = 0; f < kGop; ++f) {
         std::uint8_t* y = nv12.data() + f * kSourceFrame;
         std::uint8_t* uv = y + kSourceLuma;
@@ -34,6 +37,11 @@ std::vector<std::uint8_t> makeSource() {
                 std::uint32_t h = (xi * 73856093u) ^ (yi * 19349663u);
                 h = (h ^ (h >> 13)) * 1274126177u;
                 g += static_cast<double>((h >> 24) & 15u) - 8.0;
+                // Grain that changes every frame (so inter frames carry residual, as camera footage does).
+                std::uint32_t t =
+                    (px * 2654435761u) ^ (std::min(py, kHeight - 1) * 2246822519u) ^ (f * 3266489917u);
+                t = (t ^ (t >> 15)) * 2246822519u;
+                g += static_cast<double>((t >> 28) & 7u) - 4.0;
                 y[std::size_t(py) * kImageWidth + px] = clamp8(g);
             }
         }
