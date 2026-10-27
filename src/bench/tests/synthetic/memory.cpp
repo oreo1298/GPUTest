@@ -54,7 +54,7 @@ public:
         m_info.primaryUnit = "GB/s";
         m_info.reference = 700.0;
         m_info.tags = {"memory"};
-        m_info.suites = {"quick", "standard", "extreme", "compute"};
+        m_info.suites = {"quick", "standard", "extreme", "compute", "legacy"};
         m_info.order = 20;
     }
     const TestInfo& info() const override { return m_info; }

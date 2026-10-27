@@ -217,6 +217,24 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   through SDL_GL_GetProcAddress — nothing links against libGL/opengl32. Software GL (llvmpipe) reports no GPU
   timestamps: it runs compute and copies in the API thread but captures timestamps later in its rasterizer
   threads, so the harness times with the CPU clock there.
+- **Direct3D 11 backend model**: the OpenGL model again — closures recorded into a shared `CommandArena` and
+  replayed on the immediate context at submit (deferred contexts would serialise on most drivers anyway), one
+  ordered stream for every queue type, completion through event queries, every submission inside a
+  timestamp-disjoint query. Feature level 11_0 is the floor: every embedded D3D11 shader is shader model 5, and
+  FL10 hardware (2006–2009) is out of scope. d3d11.dll/dxgi.dll are loaded at run time like D3D12's.
+- **D3D11 memory**: Upload and Readback buffers are CPU copies (D3D11 cannot map GPU memory persistently).
+  Upload data reaches its GPU buffer once per submission, when a command first reads it (transient chunks copy
+  only their used bytes); readback copies go through staging resources and land in the CPU copy when the
+  submission retires. Uniform data and push constants (b13) use per-slot dynamic constant buffers in five size
+  classes, written with Map(WRITE_DISCARD) at replay, so a rename keeps the binding valid.
+- **D3D11 views follow the shader's reflection**: D3D11 views must match the declaration (structured buffer of a
+  given stride, raw buffer or texture), and the RHI's buffers do not say which they are. Pipelines parse their
+  DXBC's RDEF chunk (`src/rhi/dxbc_reflect.cpp`, unit-tested on Linux); storage buffers without vertex, index or
+  indirect use are created when first used, structured with the stride the first shader declares (or raw), and
+  are re-created with their contents if a later shader wants another layout. CPU-side data read as a structured
+  buffer by a shader when its buffer cannot take that layout (transient memory) is copied to a dynamic
+  structured buffer. Resources a draw or dispatch writes are unbound from inputs first, so the runtime never
+  silently nulls a binding.
 
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).

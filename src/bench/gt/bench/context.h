@@ -146,6 +146,7 @@ private:
     std::string* m_stopReason;
     results::TestResult m_result;
     std::chrono::steady_clock::time_point m_lastProgress{};
+    std::string m_lastStatus;
     std::unique_ptr<rhi::CommandList> m_timerList;
     std::unique_ptr<rhi::QueryPool> m_timerQueries;
 };

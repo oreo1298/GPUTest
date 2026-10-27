@@ -76,7 +76,7 @@ public:
         m_info.primaryUnit = "Gpixel/s";
         m_info.reference = 250.0;
         m_info.tags = {"raster"};
-        m_info.suites = {"standard", "extreme"};
+        m_info.suites = {"standard", "extreme", "legacy"};
         m_info.order = 40;
     }
     const TestInfo& info() const override { return m_info; }
@@ -144,7 +144,7 @@ public:
         m_info.primaryUnit = "Gtexel/s";
         m_info.reference = 800.0;
         m_info.tags = {"raster"};
-        m_info.suites = {"standard", "extreme"};
+        m_info.suites = {"standard", "extreme", "legacy"};
         m_info.order = 41;
     }
     const TestInfo& info() const override { return m_info; }
@@ -249,7 +249,7 @@ public:
         m_info.primaryUnit = "Gtris/s";
         m_info.reference = 8.0;
         m_info.tags = {"raster"};
-        m_info.suites = {"standard", "extreme"};
+        m_info.suites = {"standard", "extreme", "legacy"};
         m_info.order = 42;
     }
     const TestInfo& info() const override { return m_info; }
@@ -321,7 +321,7 @@ public:
         m_info.primaryUnit = "%";
         m_info.higherIsBetter = false;
         m_info.tags = {"raster"};
-        m_info.suites = {"standard", "extreme"};
+        m_info.suites = {"standard", "extreme", "legacy"};
         m_info.order = 43;
     }
     const TestInfo& info() const override { return m_info; }

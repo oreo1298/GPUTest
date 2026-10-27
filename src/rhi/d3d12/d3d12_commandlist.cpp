@@ -185,6 +185,17 @@ void D3D12CommandList::barrier(ID3D12Resource* r, D3D12_RESOURCE_STATES& current
     // A combined read state that already includes the wanted reads stays as it is (e.g. a depth
     // buffer attached read-only and sampled at the same time).
     if (current != D3D12_RESOURCE_STATE_COMMON && !writes(current) && !writes(want) && (current & want) == want) return;
+    // Barriers waiting in the batch all take effect at the same point: chain onto a pending
+    // transition of the same resource instead of adding a second one (A->B, B->C becomes A->C).
+    for (auto it = m_barriers.rbegin(); it != m_barriers.rend(); ++it) {
+        if (it->Type != D3D12_RESOURCE_BARRIER_TYPE_TRANSITION || it->Transition.pResource != r) continue;
+        if (it->Transition.StateBefore == want)
+            m_barriers.erase(std::next(it).base());
+        else
+            it->Transition.StateAfter = want;
+        current = want;
+        return;
+    }
     D3D12_RESOURCE_BARRIER b{};
     b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     b.Transition.pResource = r;

@@ -58,7 +58,7 @@ public:
         m_info.reference = spec.reference;
         m_info.tags = {"compute"};
         m_info.suites = {"standard", "extreme", "compute"};
-        if (spec.kind == Alu::Fp32) m_info.suites.push_back("quick");
+        if (spec.kind == Alu::Fp32) m_info.suites.insert(m_info.suites.end(), {"quick", "legacy"});
         m_info.order = 10 + static_cast<int>(spec.kind);
     }
     const TestInfo& info() const override { return m_info; }

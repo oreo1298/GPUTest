@@ -49,10 +49,10 @@ public:
                              "A pure rasterization workload with per-pixel noise shading; CPU-light by design.";
         m_info.category = Category::Scene;
         m_info.group = "Rasterization";
-        m_info.apis = {rhi::Api::Vulkan, rhi::Api::D3D12, rhi::Api::OpenGL};
+        m_info.apis = {rhi::Api::Vulkan, rhi::Api::D3D12, rhi::Api::D3D11, rhi::Api::OpenGL};
         m_info.reference = 600.0; // provisional, see docs/SCORING.md
         m_info.tags = {"cpu-light", "modern"};
-        m_info.suites = {"smoke", "quick", "standard", "extreme"};
+        m_info.suites = {"smoke", "quick", "standard", "extreme", "legacy"};
     }
     const TestInfo& info() const override { return m_info; }
 

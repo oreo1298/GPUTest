@@ -503,7 +503,12 @@ void D3D12Device::wait(QueueType type, std::uint64_t value) {
     Queue& q = m_queues[static_cast<std::size_t>(type)];
     if (value <= q.completed || value <= poll(q)) return;
     check(q.fence->SetEventOnCompletion(value, q.event), "ID3D12Fence::SetEventOnCompletion");
-    WaitForSingleObject(q.event, INFINITE);
+    // Long waits are logged (a hung submission otherwise leaves no trace before a watchdog kills us).
+    for (int seconds = 10; WaitForSingleObject(q.event, 10000) == WAIT_TIMEOUT; seconds += 10) {
+        log::warn("Direct3D 12: still waiting for {} submission {} after {} s (GPU at {}, device {})",
+                  queueTypeName(type), value, seconds, poll(q), hresultName(m_device->GetDeviceRemovedReason()));
+        drainMessages();
+    }
     poll(q);
 }
 

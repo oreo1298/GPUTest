@@ -35,7 +35,7 @@ public:
         m_info.primaryUnit = "M draws/s";
         m_info.reference = 0.0; // CPU bound: shown, not scored
         m_info.tags = {"cpu"};
-        m_info.suites = {"standard", "extreme"};
+        m_info.suites = {"standard", "extreme", "legacy"};
         m_info.order = 90;
     }
     const TestInfo& info() const override { return m_info; }

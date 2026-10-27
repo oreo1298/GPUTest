@@ -70,13 +70,18 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   suite and the scenes run (Skyline's compute hand-over fixed after the first run). D3D12-only features: VRS tier 2
   shading-rate images (`feature.vrs`), `feature.sampler_feedback`, `feature.work_graphs` (HLSL via DXC), SER on
   DXR 1.2 (shared Slang shader, lib_6_9).
-- Next for M10: confirm the new features on WARP (standard suite report in the Windows job), then make the
-  standard suite strict on D3D12.
+- Next for M10: the D3D12 standard suite on WARP hangs in `feature.rt.bvh` (first 13 tests pass); the Windows job
+  now runs each standard test in its own bounded process with debug logs (long fence waits and test stages are
+  logged), so the next run shows where it hangs and how the 20 tests after it fare. Then make it strict.
 - **Milestone 11 (legacy backends): in progress.** OpenGL backend (`src/rhi/gl`, GL 3.3 core + buffer storage,
   newer features when present) renders Lattice, Courtyard and Atrium (+ lite) on llvmpipe identically to Vulkan
   (golden frames); windowed presentation and the HUD work (HUD needs GLSL 4.30). The synthetic tests,
   diagnostics, draw-call and async tests also run on GL (compute needs 4.3); CI runs the whole standard suite
-  on llvmpipe GL with debug output as errors. Next: the D3D11 backend, the legacy suite.
+  on llvmpipe GL with debug output as errors.
+  Direct3D 11 backend (`src/rhi/d3d11`, FL 11_0+) written: record/replay like GL, CPU-side upload/readback
+  memory, buffer layouts from DXBC reflection (docs/DECISIONS.md); compile-checked with mingw. Windows CI runs
+  the D3D11 smoke suite, the legacy scenes against the D3D12 frames and the legacy suite (now also Lattice, the
+  fill/texel/geometry/MSAA tests, fp32 ALU, memory bandwidth and draw calls) on WARP. Next: get that green.
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,

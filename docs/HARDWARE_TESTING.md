@@ -30,6 +30,15 @@ in the KDE application menu with its icon, that it starts on Wayland, that `kiln
 and the iGPU, and that `kiln-hw-report` finds the runner by itself. Tell me if makepkg complained about anything
 (missing dependency, namcap warnings) — CI builds it in a clean Arch container, but CachyOS's compiler flags differ.
 
+### M11 — OpenGL and Direct3D 11
+1. **OpenGL on the 4090 and the iGPU (Linux)**: `kiln-run --api opengl --suite legacy --duration quick` and the
+   same windowed (drop `--offscreen`). The scenes should look like their Vulkan frames; the HUD should read
+   "[OpenGL]". Send `results/*.json` and the log; note any `[gl-debug]` errors.
+2. **Direct3D 11 (Windows, any GPU)**: `kiln-run.exe --api d3d11 --suite legacy --duration quick --validation`
+   (the debug layer needs Windows' optional feature "Graphics Tools"; without it the log says so) and a windowed
+   run of `--test scene.courtyard`. Check that frames match the D3D12 run's, that the HUD shows, that resizing
+   the window works, and that `--caps --api d3d11` lists the feature level. Send the results JSON and the logs.
+
 ### M10 — Direct3D 12 (Windows)
 On a Windows PC (the 4090 if it dual-boots, otherwise any GPU), unzip the `windows-portable` artifact and run
 `powershell -ExecutionPolicy Bypass -File hw-report.ps1 -Mode standard` (it covers Vulkan and Direct3D 12).

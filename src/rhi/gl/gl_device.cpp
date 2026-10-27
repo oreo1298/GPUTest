@@ -77,45 +77,6 @@ void GLAPIENTRY debugCallback(GLenum /*source*/, GLenum type, GLuint /*id*/, GLe
 
 } // namespace
 
-// --- arena ----------------------------------------------------------------------------------------
-void* CommandArena::allocate(std::size_t bytes) {
-    bytes = (bytes + kAlign - 1) / kAlign * kAlign;
-    if (bytes > kBlock) {
-        m_large.push_back(std::make_unique<std::byte[]>(bytes + kAlign));
-        auto p = reinterpret_cast<std::uintptr_t>(m_large.back().get());
-        return reinterpret_cast<void*>((p + kAlign - 1) / kAlign * kAlign);
-    }
-    if (m_used + bytes > kBlock) {
-        if (m_blocks.empty() || m_block + 1 >= m_blocks.size()) {
-            m_blocks.push_back(std::make_unique<std::byte[]>(kBlock + kAlign));
-            m_block = m_blocks.size() - 1;
-        } else {
-            ++m_block;
-        }
-        m_used = 0;
-    }
-    auto base = reinterpret_cast<std::uintptr_t>(m_blocks[m_block].get());
-    base = (base + kAlign - 1) / kAlign * kAlign;
-    void* p = reinterpret_cast<void*>(base + m_used);
-    m_used += bytes;
-    return p;
-}
-
-void CommandArena::execute(Executor& e) const {
-    for (Header* h = m_head; h; h = h->next)
-        h->run(h + 1, e);
-}
-
-void CommandArena::reset() {
-    for (Header* h = m_head; h; h = h->next)
-        if (h->destroy) h->destroy(h + 1);
-    m_head = m_tail = nullptr;
-    m_count = 0;
-    m_large.clear();
-    m_block = 0;
-    m_used = m_blocks.empty() ? kBlock : 0;
-}
-
 // --- adapters ---------------------------------------------------------------------------------------
 namespace {
 struct ProbeResult {

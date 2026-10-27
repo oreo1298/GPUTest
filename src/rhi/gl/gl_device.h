@@ -5,6 +5,7 @@
 // what the current program's binding table (emitted by gt_glslgen) asks for. Every queue type
 // maps to the same GL stream; submissions are ordered and fenced with glFenceSync.
 
+#include "command_arena.h"
 #include "gl_common.h"
 
 #include <SDL3/SDL_video.h>
@@ -25,54 +26,6 @@ struct Executor;
 
 std::vector<AdapterInfo> enumerateAdapters(std::string* error);
 std::unique_ptr<Device> createDevice(const DeviceCreateInfo& info);
-
-// --- command arena ------------------------------------------------------------------------------
-class CommandArena {
-public:
-    CommandArena() = default;
-    ~CommandArena() { reset(); }
-    CommandArena(const CommandArena&) = delete;
-    CommandArena& operator=(const CommandArena&) = delete;
-
-    template <typename F>
-    void push(F&& fn) {
-        using T = std::decay_t<F>;
-        static_assert(alignof(T) <= kAlign, "command payload is over-aligned");
-        auto* h = static_cast<Header*>(allocate(sizeof(Header) + sizeof(T)));
-        new (h + 1) T(std::forward<F>(fn));
-        h->run = [](void* p, Executor& e) { (*static_cast<T*>(p))(e); };
-        if constexpr (std::is_trivially_destructible_v<T>)
-            h->destroy = nullptr;
-        else
-            h->destroy = [](void* p) { static_cast<T*>(p)->~T(); };
-        h->next = nullptr;
-        if (m_tail)
-            m_tail->next = h;
-        else
-            m_head = h;
-        m_tail = h;
-        ++m_count;
-    }
-    void execute(Executor& e) const;
-    void reset();
-    std::size_t count() const { return m_count; }
-
-private:
-    static constexpr std::size_t kAlign = 16;
-    static constexpr std::size_t kBlock = 64 * 1024;
-    struct alignas(kAlign) Header {
-        void (*run)(void*, Executor&);
-        void (*destroy)(void*);
-        Header* next;
-    };
-    void* allocate(std::size_t bytes);
-    std::vector<std::unique_ptr<std::byte[]>> m_blocks;
-    std::vector<std::unique_ptr<std::byte[]>> m_large; ///< payloads bigger than a block
-    std::size_t m_block = 0, m_used = kBlock;
-    Header* m_head = nullptr;
-    Header* m_tail = nullptr;
-    std::size_t m_count = 0;
-};
 
 // --- resources ------------------------------------------------------------------------------------
 class GLBuffer final : public Buffer {
@@ -215,7 +168,7 @@ public:
     GLCommandList(GLDevice& dev, QueueType queue);
     ~GLCommandList() override;
     void setLastSubmit(std::uint64_t v) { m_lastSubmit = v; }
-    const CommandArena& commands() const { return m_cmds; }
+    const CommandArena<Executor>& commands() const { return m_cmds; }
 
     void begin() override;
     void end() override;
@@ -274,7 +227,7 @@ private:
     void beforeWork(const char* what);
     void barrierIfNeeded();
     GLDevice& m_dev;
-    CommandArena m_cmds;
+    CommandArena<Executor> m_cmds;
     // Record-time view of the bindings (validation; the executor holds the real ones at replay).
     GLPipeline* m_pipe = nullptr;
     std::uint32_t m_uboMask = 0, m_srvTexMask = 0, m_srvBufMask = 0, m_uavTexMask = 0, m_uavBufMask = 0,

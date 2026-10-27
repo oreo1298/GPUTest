@@ -1,4 +1,4 @@
-set(_rhi_sources rhi.cpp)
+set(_rhi_sources rhi.cpp dxbc_reflect.cpp)
 set(_rhi_defs)
 set(_rhi_libs gt_common gt_shaders SDL3::SDL3-static)
 
@@ -31,6 +31,17 @@ if(GT_ENABLE_D3D12)
   list(APPEND _rhi_defs GT_HAS_D3D12=1)
   # Headers only: d3d12.dll and dxgi.dll are loaded at run time.
   list(APPEND _rhi_libs Microsoft::DirectX-Headers Microsoft::DirectX-Guids)
+endif()
+
+if(GT_ENABLE_D3D11)
+  list(APPEND _rhi_sources
+    d3d11/d3d11_device.cpp
+    d3d11/d3d11_resources.cpp
+    d3d11/d3d11_pipeline.cpp
+    d3d11/d3d11_commandlist.cpp
+    d3d11/d3d11_swapchain.cpp)
+  # Windows SDK headers only: d3d11.dll and dxgi.dll are loaded at run time.
+  list(APPEND _rhi_defs GT_HAS_D3D11=1)
 endif()
 
 if(GT_ENABLE_OPENGL)

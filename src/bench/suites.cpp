@@ -21,7 +21,7 @@ const Preset kPresets[] = {
      "standard", "high"},
     {"extreme", "Extreme", "Heavier settings and longer runs for high-end GPUs.", "extreme", "ultra"},
     {"raytracing", "Ray tracing", "Every ray-tracing scene and feature test.", "standard", "high"},
-    {"legacy", "Legacy", "Tests that run on older GPUs and legacy APIs (OpenGL 3.3, D3D11 FL10).", "standard", "medium"},
+    {"legacy", "Legacy", "Tests that run on older GPUs and legacy APIs (OpenGL 3.3+, Direct3D 11).", "standard", "medium"},
     {"compute", "Compute", "Compute throughput, memory bandwidth/latency and matrix tests.", "standard", "high"},
     {"diagnostics", "Diagnostics", "Repair-bench checks: VRAM test, artifact and compute-error detection, thermals, PCIe.",
      "standard", "high"},

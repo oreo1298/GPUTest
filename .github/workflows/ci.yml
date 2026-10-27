@@ -302,6 +302,7 @@ jobs:
         run: cmake --preset ci-windows
 
       - name: Build
+        id: build
         shell: bash
         run: cmake --build --preset ci-windows -- -k 0 2>&1 | tee build/ci-windows/build.log; exit ${PIPESTATUS[0]}
 
@@ -338,11 +339,14 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      # Every push that builds gets its portable zip, also when a smoke check failed.
       - name: Package portable zip
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
         run: pwsh scripts/package-windows.ps1 -BuildDir build/ci-windows -OutDir dist
 
       - name: Upload portable zip
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: windows-portable

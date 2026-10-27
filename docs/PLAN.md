@@ -72,7 +72,8 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 - [ ] WARP smoke tests in CI, debug layer clean
 
 ## 11. Legacy backends
-- [ ] OpenGL 3.3–4.6 backend (scenes done; compute/synthetic next), D3D11 backend
+- [x] OpenGL 3.3–4.6 backend (scenes, synthetic, diagnostics, feature tests where GL has them)
+- [ ] D3D11 backend (written; first WARP runs in CI)
 - [ ] Legacy suite
 
 ## 12. Upscalers & video

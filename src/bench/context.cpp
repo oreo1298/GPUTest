@@ -171,6 +171,10 @@ void TestContext::checkStop() const {
 void TestContext::log(const std::string& message) { gt::log::info("[{}] {}", m_info.id, message); }
 
 void TestContext::progress(double fraction, const std::string& status) {
+    if (!status.empty() && status != m_lastStatus) {
+        log::debug("{}: {}", m_info.id, status); // the stage a hang happened in shows in the log
+        m_lastStatus = status;
+    }
     if (!m_events) return;
     const auto now = std::chrono::steady_clock::now();
     if (now - m_lastProgress < std::chrono::milliseconds(200) && fraction < 1.0) return;

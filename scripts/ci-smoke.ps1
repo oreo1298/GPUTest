@@ -1,11 +1,13 @@
 # Windows CI smoke test: the runner starts and lists tests and suites; then, on Direct3D 12 with
 # WARP (CI runners have no GPU), the smoke suite and every scene run offscreen with the debug layer,
-# and must complete with zero debug-layer errors. The standard suite also runs at smoke size; its
-# outcome is reported (annotations) without failing the job until every test is ported.
+# and must complete with zero debug-layer errors; so must the Direct3D 11 smoke and legacy runs. The standard suite also runs at smoke size, one
+# bounded process per test; its outcome is reported (annotations) without failing the job until every
+# test is ported.
 param(
     [Parameter(Mandatory = $true)][string]$BuildDir,
     [switch]$StrictStandard,
-    [int]$StandardTimeoutMinutes = 25
+    [int]$StandardTimeoutMinutes = 30,
+    [int]$PerTestTimeoutMinutes = 4
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -60,32 +62,96 @@ Run "D3D12 scenes" ($common + @("--test", $scenes, "--duration", "smoke", "--qua
 python "$root/scripts/check-results.py" "$out\scenes-d3d12.json" --require-completed
 if ($LASTEXITCODE -ne 0) { throw "D3D12 scene results check failed" }
 
-# Broad: every other test at smoke size (report only unless -StrictStandard).
-# Bounded: a hang on WARP must not hold the job until GitHub's six-hour limit.
-Write-Host "== D3D12 standard suite (smoke size)"
-$standardArgs = $common + @("--suite", "standard", "--duration", "smoke", "--quality", "low",
-                            "--out", "$out\standard-d3d12.json", "--log-file", "$out\standard-d3d12.log")
-$proc = Start-Process -FilePath $runner.FullName -ArgumentList $standardArgs -NoNewWindow -PassThru
-$null = $proc.Handle # keeps the exit code readable after WaitForExit(timeout)
-if ($proc.WaitForExit($StandardTimeoutMinutes * 60 * 1000)) {
-    $code = $proc.ExitCode
-} else {
-    $proc.Kill()
-    $code = 124
-    Write-Host "::warning title=D3D12 standard suite::timed out after $StandardTimeoutMinutes min; last log lines follow"
-    if (Test-Path "$out\standard-d3d12.log") { Get-Content "$out\standard-d3d12.log" -Tail 25 | Out-Host }
-}
-if (Test-Path "$out\standard-d3d12.json") {
-    $r = Get-Content "$out\standard-d3d12.json" -Raw | ConvertFrom-Json
-    foreach ($t in $r.tests) {
-        $line = "{0,-28} {1,-10} {2}" -f $t.id, $t.status, ($(if ($t.verdict) { "$($t.verdict): $($t.verdict_message)" } else { $t.status_message }))
-        if ($t.status -ne "completed" -and $t.status -ne "skipped" -or $t.verdict -eq "fail") {
-            Write-Host "::warning title=D3D12 $($t.id)::$line"
-        } else {
-            Write-Host $line
-        }
+# Broad: every standard-suite test at smoke size, each in its own bounded process, so that a hang on
+# WARP shows up as one timed-out test (with its log) instead of hiding the tests after it. Report
+# only unless -StrictStandard.
+Write-Host "== D3D12 standard suite (smoke size, one process per test)"
+$stdDir = Join-Path $out "standard-d3d12"
+New-Item -ItemType Directory -Force -Path $stdDir | Out-Null
+$stdCommon = @("--api", "d3d12", "--offscreen", "--resolution", "320x180", "--validation", "--fail-on-validation",
+               "--duration", "smoke", "--quality", "low", "--log-level", "debug")
+$standard = @($tests | Where-Object { $_.suites -contains "standard" } | ForEach-Object { $_.id })
+$deadline = (Get-Date).AddMinutes($StandardTimeoutMinutes)
+$problems = 0
+$code = 0
+foreach ($id in $standard) {
+    $remaining = [int](($deadline - (Get-Date)).TotalSeconds)
+    if ($remaining -le 0) {
+        Write-Host "::warning title=D3D12 standard suite::time budget of $StandardTimeoutMinutes min used up before $id"
+        $problems++
+        break
     }
-    Write-Host "debug-layer errors: $($r.validation.errors)"
+    $json = Join-Path $stdDir "$id.json"
+    $log = Join-Path $stdDir "$id.log"
+    $testArgs = $stdCommon + @("--test", $id, "--out", $json, "--log-file", $log)
+    $started = Get-Date
+    $proc = Start-Process -FilePath $runner.FullName -ArgumentList $testArgs -NoNewWindow -PassThru `
+        -RedirectStandardOutput (Join-Path $stdDir "$id.out") -RedirectStandardError (Join-Path $stdDir "$id.err")
+    $null = $proc.Handle # keeps the exit code readable after WaitForExit(timeout)
+    $limit = [Math]::Min($PerTestTimeoutMinutes * 60, $remaining)
+    if ($proc.WaitForExit($limit * 1000)) {
+        $exit = $proc.ExitCode
+    } else {
+        $proc.Kill()
+        $exit = 124
+    }
+    $secs = [int]((Get-Date) - $started).TotalSeconds
+    $line = "{0,-26} exit {1,-4} {2,4}s" -f $id, $exit, $secs
+    $bad = $exit -ne 0
+    if (Test-Path $json) {
+        $r = Get-Content $json -Raw | ConvertFrom-Json
+        $t = $r.tests | Select-Object -First 1
+        if ($t) {
+            $msg = if ($t.verdict) { "$($t.verdict): $($t.verdict_message)" } else { $t.status_message }
+            $line += " {0,-10} {1}" -f $t.status, $msg
+            if ($t.status -ne "completed" -and $t.status -ne "skipped" -or $t.verdict -eq "fail") { $bad = $true }
+        }
+        if ($r.validation.errors -gt 0) { $line += " [debug-layer errors: $($r.validation.errors)]"; $bad = $true }
+    }
+    if ($bad) {
+        $problems++
+        $code = if ($exit -ne 0) { $exit } else { 1 }
+        Write-Host "::warning title=D3D12 $($id)::$line"
+        if ($exit -eq 124) { Write-Host "timed out after $limit s; last log lines:" }
+        if (Test-Path $log) { Get-Content $log -Tail 30 | Out-Host }
+    } else {
+        Write-Host $line
+    }
 }
-if ($StrictStandard -and $code -ne 0) { throw "D3D12 standard suite failed (exit $code)" }
-Write-Host "windows smoke OK ($($tests.Count) tests; D3D12 standard suite exit $code)"
+Write-Host "D3D12 standard suite: $($standard.Count) tests, $problems with problems"
+if ($StrictStandard -and $problems -gt 0) { throw "D3D12 standard suite failed ($problems tests)" }
+
+# Direct3D 11 on WARP: the smoke suite, the legacy scenes checked against the Direct3D 12 frames
+# above (same rasterizer, so they must match), and the legacy suite. Must pass; runs after the
+# report-only D3D12 suite so that one failure does not hide the other's report.
+$d3d11 = $devices.apis | Where-Object { $_.api -eq "d3d11" }
+if (-not $d3d11 -or -not $d3d11.adapters -or $d3d11.adapters.Count -lt 1) {
+    throw "no Direct3D 11 adapter (WARP) found: $(Get-Content (Join-Path $out 'devices.json') -Raw)"
+}
+Write-Host "== D3D11 capabilities (WARP)"
+& $runner.FullName --api d3d11 --caps | Out-Host
+& $runner.FullName --api d3d11 --check-support | Out-Host
+$common11 = @("--api", "d3d11", "--offscreen", "--resolution", "320x180", "--validation", "--fail-on-validation",
+              "--log-level", "info")
+Run "D3D11 smoke suite" ($common11 + @("--suite", "smoke", "--out", "$out\smoke-d3d11.json",
+                                        "--log-file", "$out\smoke-d3d11.log")) | Out-Null
+python "$root/scripts/check-results.py" "$out\smoke-d3d11.json" --require-completed
+if ($LASTEXITCODE -ne 0) { throw "D3D11 smoke results check failed" }
+python "$root/scripts/update-golden.py" "$out\scenes-d3d12.json" "$out\golden-d3d12" --tolerance 8
+if ($LASTEXITCODE -ne 0) { throw "could not write the D3D12 reference frames" }
+$legacyScenes = "scene.lattice,scene.courtyard,scene.courtyard.lite,scene.atrium,scene.atrium.lite"
+Run "D3D11 scenes (against the D3D12 frames)" ($common11 + @("--test", $legacyScenes, "--duration", "smoke",
+        "--quality", "low", "--dump-frames", "$out\scene-frames-d3d11", "--golden", "$out\golden-d3d12",
+        "--out", "$out\scenes-d3d11.json", "--log-file", "$out\scenes-d3d11.log")) @(0, 7) | Out-Null
+python "$root/scripts/check-results.py" "$out\scenes-d3d11.json" --require-completed --require-golden-pass
+if ($LASTEXITCODE -ne 0) { throw "D3D11 scene results check failed" }
+Run "D3D11 legacy suite" ($common11 + @("--suite", "legacy", "--duration", "smoke", "--quality", "low",
+                                         "--out", "$out\legacy-d3d11.json", "--log-file", "$out\legacy-d3d11.log")) @(0, 7) | Out-Null
+python "$root/scripts/check-results.py" "$out\legacy-d3d11.json" --require-completed
+if ($LASTEXITCODE -ne 0) { throw "D3D11 legacy suite results check failed" }
+$legacy = Get-Content "$out\legacy-d3d11.json" -Raw | ConvertFrom-Json
+foreach ($t in $legacy.tests) {
+    "{0,-26} {1,-10} {2}" -f $t.id, $t.status, $(if ($t.verdict) { "$($t.verdict): $($t.verdict_message)" } else { $t.status_message }) | Out-Host
+    if ($t.verdict -eq "fail") { throw "D3D11 $($t.id) failed: $($t.verdict_message)" }
+}
+Write-Host "windows smoke OK ($($tests.Count) tests; D3D12 standard suite: $problems with problems)"
