@@ -114,7 +114,8 @@ SettingsPage::SettingsPage(QWidget* parent)
     auto* pl = static_cast<QVBoxLayout*>(pathsCard->layout());
     pl->addWidget(makeSubtitle(tr("Locations")));
     auto* pf = new QFormLayout;
-    auto pathRow = [this](const QString& value, const QString& placeholder, bool directory, std::function<void(const QString&)> save) {
+    auto pathRow = [this](const QString& value, const QString& name, const QString& placeholder, bool directory,
+                          std::function<void(const QString&)> save) {
         auto* w = new QWidget;
         auto* h = new QHBoxLayout(w);
         h->setContentsMargins(0, 0, 0, 0);
@@ -132,13 +133,15 @@ SettingsPage::SettingsPage(QWidget* parent)
                 save(p);
             }
         });
-        edit->setAccessibleName(placeholder);
+        edit->setAccessibleName(name);
+        browse->setAccessibleName(tr("Browse: %1").arg(name)); // two "Browse…" buttons on this card
         return w;
     };
-    pf->addRow(tr("Results folder:"), pathRow(s.resultsDir(), tr("Results folder"), true,
+    pf->addRow(tr("Results folder:"), pathRow(s.resultsDir(), tr("Results folder"), tr("Results folder"), true,
                                               [](const QString& v) { Settings::instance().setResultsDir(v); }));
-    pf->addRow(tr("Runner executable:"), pathRow(s.runnerPath(), tr("Automatic (next to this program)"), false,
-                                                 [](const QString& v) { Settings::instance().setRunnerPath(v); }));
+    pf->addRow(tr("Runner executable:"),
+               pathRow(s.runnerPath(), tr("Runner executable"), tr("Automatic (next to this program)"), false,
+                       [](const QString& v) { Settings::instance().setRunnerPath(v); }));
     pl->addLayout(pf);
     pl->addWidget(makeHint(tr("Settings file: %1").arg(s.filePath())));
     m_content->addWidget(pathsCard);
