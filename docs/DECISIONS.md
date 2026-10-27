@@ -317,8 +317,24 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   256-byte offsets, zero-padded to 128 bytes), so throughput does not include uploads. Reference resolution
   (H.264 sliding window, H.265 RPS, AV1 slot map) moved into the parsers so both APIs use the same code.
   AV1 streams with rotation / affine global motion are refused on D3D12 (DXVA wants each model's validity,
-  AV1 7.11.3.6, which is not derived); the reference stream has none. Encoding stays on Vulkan Video for
-  now: D3D12's encoder writes slice data only, so the application must write every parameter set and header.
+  AV1 7.11.3.6, which is not derived); the reference stream has none.
+- **Direct3D 12 Video encode: H.264 and H.265, parameter sets written by the test.** D3D12 encoders write slice
+  data only, so `video_d3d12_encode.cpp` settles a configuration with the support queries (profile High then
+  Main for H.264, Main for H.265; CABAC / 8x8 transform / SAO where offered; the largest CTU and transform sizes
+  the encoder takes; constant QP 26 / 28; one slice; GOP of 8 with POC type 2, else 0) and writes the SPS / PPS
+  (and VPS) the D3D12 encoding specification gives for it, with `h264::write` / `h265::write`. The
+  specification's tables were checked against the header (its enum values and some names are out of date) and
+  read by a subagent; where it is ambiguous the choices are: H.264 cropping at the bottom (the table says top,
+  which no decoder expects), H.265 picture size aligned to the encoder's block size with a conformance window.
+  Slices without an Annex B start code get one. The joined stream is decoded on the D3D12 decoder for the
+  round-trip PSNR. Reconstructed pictures are a two-slice reference-only array used in turn; recon in
+  VIDEO_ENCODE_WRITE and the reference in VIDEO_ENCODE_READ around each EncodeFrame (states the specification
+  leaves unstated, taken from the resource-state names). AV1 encoding on D3D12 would need the frame header
+  written after each frame from the resolved metadata; it is not done, AV1 encode is measured on Vulkan.
+- **WARP's video engines are opt-in.** WARP (1.0.13 and later) decodes and encodes H.264 / H.265 through Media
+  Foundation on the CPU, so `feature.video` skips software adapters unless `--param feature.video.software=1`
+  is given: it is not a GPU measurement and it hung the first CI run. CI runs it in a separate, bounded,
+  report-only step, which exercises the DXVA and encoder paths that no GPU runs there.
 
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).

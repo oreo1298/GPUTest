@@ -79,7 +79,7 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 ## 12. Upscalers & video
 - [x] FSR 1 (open-source) built in: `--upscale`, GUI setting, `feature.upscale`
 - [x] DLSS/XeSS optional runtime plugins (license permitting): plugin interface + XeSS plugin; no DLSS (license)
-- [ ] Vulkan Video / D3D12 Video decode/encode throughput (H.264, H.265, AV1) — Vulkan H.264, H.265 and AV1 done; D3D12 decode done
+- [ ] Vulkan Video / D3D12 Video decode/encode throughput (H.264, H.265, AV1) — Vulkan H.264, H.265 and AV1 done; D3D12 decode (all three) and encode (H.264, H.265) done
 - [x] HDR output check (`feature.hdr`: PQ encoding verified everywhere; HDR10 swapchain + pattern in a window)
 
 ## 13. Packaging

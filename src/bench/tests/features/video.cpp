@@ -6,11 +6,11 @@
 //    synthetic pattern) is decoded back to back; every GPU decodes the same bits, so the frame rates are
 //    comparable, and each decoded frame must match FFmpeg's decode bit for bit (CRC-32), as the codecs
 //    define decoding exactly.
-//  - Encode (Vulkan): the same pattern is encoded on the GPU (IDR + P-frames at a constant quantizer where
+//  - Encode: the same pattern is encoded on the GPU (IDR + P-frames at a constant quantizer where
 //  the
 //    encoder allows it); the stream it wrote is decoded on the GPU with the parameter sets and headers it
-//    actually produced (encoders may override what they were asked for), and compared with the source (luma
-//    PSNR).
+//    actually produced (Vulkan encoders may override what they were asked for; on Direct3D 12 the test
+//    writes them), and compared with the source (luma PSNR). AV1 encoding is tested on Vulkan only.
 // Every step is gated on what the driver reports (queues, extensions, profiles, formats, capabilities), so
 // missing pieces are reported in the details and the test skips only when there is nothing to run.
 
@@ -79,6 +79,11 @@ public:
 #if GT_HAS_D3D12
         case rhi::Api::D3D12: {
             ID3D12Device* dev = d3dDevice(ctx);
+            // WARP's video engines are Media Foundation on the CPU: not a GPU measurement, and slow enough to
+            // hit the runner's timeouts, so they run only on request (CI does, for diagnostics).
+            if (ctx.device().adapter().isSoftware() && ctx.settings().param("feature.video.software") != "1")
+                return SupportResult::no("the software adapter's video engines run on the CPU (--param "
+                                         "feature.video.software=1 tests them anyway)");
             if (std::string why = d3d12video::blocker(dev); !why.empty()) return SupportResult::no(why);
             for (const auto& c : d3d12video::codecs())
                 if (d3d12video::canDecode(dev, c)) return SupportResult::yes();
@@ -134,12 +139,13 @@ private:
     static std::vector<video::CodecResult> runD3D12(TestContext& ctx, double seconds) {
         ID3D12Device* dev = d3dDevice(ctx);
         ctx.details()["decode_profiles"] = d3d12video::decodeProfiles(dev);
+        const std::vector<std::uint8_t> source = video::makeSource();
         const auto all = d3d12video::codecs();
         std::vector<video::CodecResult> results;
         for (std::size_t i = 0; i < all.size(); ++i) {
             const double base = double(i) / double(all.size()), span = 1.0 / double(all.size());
             auto progress = [&](double f, const std::string& s) { ctx.progress(base + f * span, s); };
-            results.push_back(d3d12video::runCodec(ctx, dev, all[i], seconds, progress));
+            results.push_back(d3d12video::runCodec(ctx, dev, all[i], source, seconds, progress));
             ctx.checkStop();
         }
         return results;

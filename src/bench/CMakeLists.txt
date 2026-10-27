@@ -74,6 +74,7 @@ add_library(gt_bench_tests OBJECT
   tests/features/video_h265_vk.cpp
   tests/features/video_av1_vk.cpp
   tests/features/video_d3d12.cpp
+  tests/features/video_d3d12_encode.cpp
   tests/features/video_dxva.cpp
   tests/features/sampler_feedback.cpp
   tests/features/work_graphs.cpp

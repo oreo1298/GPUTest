@@ -17,13 +17,6 @@ using rhi::d3d12::check;
 using rhi::d3d12::Com;
 using rhi::d3d12::hresultName;
 
-namespace {
-
-constexpr std::uint32_t kRepeats = 8;   ///< GOPs per timed submission
-constexpr UINT64 kBitstreamAlign = 256; ///< frame offsets in the bitstream buffer (DXVA wants 128)
-constexpr DWORD kTimeoutMs = 20000;     ///< longest wait for the GPU
-constexpr std::uint32_t kPlanes = 2;    ///< NV12: luma, interleaved chroma
-
 D3D12_RESOURCE_BARRIER transition(ID3D12Resource* r, UINT sub, D3D12_RESOURCE_STATES from,
                                   D3D12_RESOURCE_STATES to) {
     D3D12_RESOURCE_BARRIER b{};
@@ -54,6 +47,26 @@ HRESULT committed(ID3D12Device* dev, D3D12_HEAP_TYPE type, const D3D12_RESOURCE_
     return dev->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state, nullptr,
                                         __uuidof(ID3D12Resource), out.putVoid());
 }
+
+HRESULT makeQueue(ID3D12Device* dev, D3D12_COMMAND_LIST_TYPE type, Queue& q) {
+    D3D12_COMMAND_QUEUE_DESC d{};
+    d.Type = type;
+    HRESULT hr = dev->CreateCommandQueue(&d, __uuidof(ID3D12CommandQueue), q.queue.putVoid());
+    if (SUCCEEDED(hr))
+        hr = dev->CreateCommandAllocator(type, __uuidof(ID3D12CommandAllocator), q.allocator.putVoid());
+    return hr;
+}
+
+void execute(ID3D12CommandQueue* q, ID3D12CommandList* list) {
+    ID3D12CommandList* lists[] = {list};
+    q->ExecuteCommandLists(1, lists);
+}
+
+namespace {
+
+constexpr std::uint32_t kRepeats = 8;   ///< GOPs per timed submission
+constexpr UINT64 kBitstreamAlign = 256; ///< frame offsets in the bitstream buffer (DXVA wants 128)
+constexpr std::uint32_t kPlanes = 2;    ///< NV12: luma, interleaved chroma
 
 D3D12_VIDEO_DECODE_CONFIGURATION configuration(const GUID& profile) {
     D3D12_VIDEO_DECODE_CONFIGURATION c{};
@@ -118,76 +131,12 @@ std::string profileName(const GUID& g) {
     return std::format("{{{:08x}-{:04x}-{:04x}-...}}", static_cast<unsigned long>(g.Data1), g.Data2, g.Data3);
 }
 
-/// One fence for all queues, and an event to wait on it.
-class Sync {
-public:
-    explicit Sync(ID3D12Device* dev) {
-        check(dev->CreateFence(0, D3D12_FENCE_FLAG_NONE, __uuidof(ID3D12Fence), m_fence.putVoid()),
-              "CreateFence");
-        m_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if (!m_event) throw std::runtime_error("CreateEvent failed");
-    }
-    ~Sync() {
-        if (m_value && m_fence->GetCompletedValue() < m_value) {
-            m_fence->SetEventOnCompletion(m_value, m_event);
-            WaitForSingleObject(m_event, kTimeoutMs);
-        }
-        CloseHandle(m_event);
-    }
-    Sync(const Sync&) = delete;
-    Sync& operator=(const Sync&) = delete;
-
-    /// Signals the fence on `q` after its work so far; returns the value.
-    UINT64 signal(ID3D12CommandQueue* q) {
-        check(q->Signal(m_fence.get(), ++m_value), "ID3D12CommandQueue::Signal");
-        return m_value;
-    }
-    /// Makes `q` wait for everything signalled so far.
-    void gpuWait(ID3D12CommandQueue* q) {
-        if (m_value) check(q->Wait(m_fence.get(), m_value), "ID3D12CommandQueue::Wait");
-    }
-    /// Waits for the last signal; throws if the GPU takes longer than 20 s.
-    void wait(ID3D12Device* dev) {
-        if (m_fence->GetCompletedValue() >= m_value) return;
-        check(m_fence->SetEventOnCompletion(m_value, m_event), "SetEventOnCompletion");
-        if (WaitForSingleObject(m_event, kTimeoutMs) != WAIT_OBJECT_0) {
-            const HRESULT removed = dev->GetDeviceRemovedReason();
-            throw std::runtime_error(
-                FAILED(removed) ? "the device was removed during video work (" + hresultName(removed) + ")"
-                                : std::string("the GPU did not finish the video work within 20 s"));
-        }
-    }
-
-private:
-    Com<ID3D12Fence> m_fence;
-    HANDLE m_event = nullptr;
-    UINT64 m_value = 0;
-};
-
-struct Queue {
-    Com<ID3D12CommandQueue> queue;
-    Com<ID3D12CommandAllocator> allocator;
-};
-
-HRESULT makeQueue(ID3D12Device* dev, D3D12_COMMAND_LIST_TYPE type, Queue& q) {
-    D3D12_COMMAND_QUEUE_DESC d{};
-    d.Type = type;
-    HRESULT hr = dev->CreateCommandQueue(&d, __uuidof(ID3D12CommandQueue), q.queue.putVoid());
-    if (SUCCEEDED(hr))
-        hr = dev->CreateCommandAllocator(type, __uuidof(ID3D12CommandAllocator), q.allocator.putVoid());
-    return hr;
-}
-
-void execute(ID3D12CommandQueue* q, ID3D12CommandList* list) {
-    ID3D12CommandList* lists[] = {list};
-    q->ExecuteCommandLists(1, lists);
-}
-
 // --- decoder -------------------------------------------------------------------------------------------
 
 class Decoder {
 public:
     Decoder(ID3D12Device* dev, const DxvaStream& s) : m_dev(dev), m_s(s), m_sync(dev) {}
+    ~Decoder() { m_sync.drain(m_dev); }
     Decoder(const Decoder&) = delete;
     Decoder& operator=(const Decoder&) = delete;
 
@@ -499,10 +448,18 @@ private:
 
 std::vector<CodecHooks> codecs() {
     return {
-        {"h264", "H.264", D3D12_VIDEO_DECODE_PROFILE_H264, dxvaH264},
-        {"h265", "H.265", D3D12_VIDEO_DECODE_PROFILE_HEVC_MAIN, dxvaH265},
-        {"av1", "AV1", D3D12_VIDEO_DECODE_PROFILE_AV1_PROFILE0, dxvaAv1},
+        {"h264", "H.264", D3D12_VIDEO_DECODE_PROFILE_H264, dxvaH264, h264Encoder},
+        {"h265", "H.265", D3D12_VIDEO_DECODE_PROFILE_HEVC_MAIN, dxvaH265, h265Encoder},
+        {"av1", "AV1", D3D12_VIDEO_DECODE_PROFILE_AV1_PROFILE0, dxvaAv1, nullptr},
     };
+}
+
+std::string decodeFrames(ID3D12Device* dev, const DxvaStream& s, std::vector<std::uint8_t>& frames) {
+    Decoder dec(dev, s);
+    if (std::string why = dec.prepare(); !why.empty()) return why;
+    if (std::string failure = dec.decodeOnce(); !failure.empty()) return failure;
+    frames = dec.readback();
+    return {};
 }
 
 std::string blocker(ID3D12Device* dev) {
@@ -538,44 +495,62 @@ std::vector<std::string> decodeProfiles(ID3D12Device* dev) {
     return out;
 }
 
-video::CodecResult runCodec(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hooks, double seconds,
-                            const video::Progress& progress) {
-    video::CodecResult res;
-    res.key = hooks.key;
-    res.label = hooks.label;
-    res.encodeNote = "encoding is measured through Vulkan Video";
+namespace {
+
+void decodeReference(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hooks, double seconds,
+                     const video::Progress& progress, video::CodecResult& res) {
     if (!canDecode(dev, hooks)) {
         res.decodeNote = std::format("no Direct3D 12 {} decoder", hooks.label);
-        return res;
+        return;
     }
     const video::ReferenceStream* ref = video::referenceStream(hooks.key);
     if (!ref) {
         res.decodeNote = "the reference stream is missing from this build";
-        return res;
+        return;
     }
     std::string error;
     const std::optional<DxvaStream> stream = hooks.reference(ref->data, &error);
     if (!stream) {
         res.failure = std::format("the {} reference stream could not be read: {}", hooks.label, error);
-        return res;
+        return;
     }
     Decoder dec(dev, *stream);
     if (std::string why = dec.prepare(); !why.empty()) {
         res.decodeNote = why;
-        return res;
+        return;
     }
     res.details["decode_stream"] = std::format("{} ({} frames, {} KiB, from {})", stream->name,
                                                stream->frames.size(), ref->data.size() / 1024, "data/video");
     res.details["decode_output"] = dec.outputMode();
+    ctx.log(std::format("{}: {} ready ({})", hooks.label, stream->name, dec.outputMode()));
     progress(0.0, std::format("{}: decoding the reference stream", hooks.label));
     if (std::string failure = dec.decodeOnce(); !failure.empty()) {
         res.failure = failure;
-        return res;
+        return;
     }
+    ctx.log(std::format("{}: decoded the reference stream once", hooks.label));
     progress(0.3, std::format("{}: measuring decode throughput", hooks.label));
     res.decodeFps = dec.time(ctx, seconds);
-    progress(0.9, std::format("{}: checking the decoded frames", hooks.label));
+    ctx.log(std::format("{}: {:.1f} fps decode", hooks.label, *res.decodeFps));
+    progress(0.4, std::format("{}: checking the decoded frames", hooks.label));
     video::checkReference(*ref, dec.readback(), static_cast<std::uint32_t>(stream->frames.size()), res);
+}
+
+} // namespace
+
+video::CodecResult runCodec(TestContext& ctx, ID3D12Device* dev, const CodecHooks& hooks,
+                            const std::vector<std::uint8_t>& source, double seconds,
+                            const video::Progress& progress) {
+    video::CodecResult res;
+    res.key = hooks.key;
+    res.label = hooks.label;
+    decodeReference(ctx, dev, hooks, seconds, progress, res);
+    ctx.checkStop();
+    if (!res.failure.empty()) return res;
+    if (!hooks.encoder)
+        res.encodeNote = std::format("{} encoding is measured through Vulkan Video only", hooks.label);
+    else
+        encodeAndCheck(ctx, dev, hooks, source, seconds, progress, res);
     return res;
 }
 

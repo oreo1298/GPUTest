@@ -83,8 +83,9 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   Vulkan plugin (tested in CI) and Intel XeSS (D3D12, user supplies `libxess.dll`); no DLSS (license).
   `feature.hdr` (PQ encoding check; HDR10 swapchain in a window). `feature.video` (Vulkan Video): decode fps
   on embedded 1080p reference streams (`data/video`, FFmpeg-made, frames checked by CRC against FFmpeg's
-  decode) and encode fps with a GPU round-trip PSNR check; H.264, H.265 and AV1 on Vulkan, decode on D3D12
-  through DXVA (skips without video engines; hardware-only, unverified). Next: D3D12 Video encode.
+  decode) and encode fps with a GPU round-trip PSNR check; H.264, H.265 and AV1 on Vulkan; on D3D12 decode of
+  all three through DXVA and H.264 / H.265 encode with Kiln-written parameter sets (skips without video
+  engines; hardware-only, unverified). M12 is complete apart from hardware verification.
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
@@ -139,6 +140,9 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
 - M12: Direct3D 12 Video decode in `feature.video` (DXVA picture parameters for H.264, H.265 and AV1 from the
   same parsers, texture-array DPB, reference-only support); shared video code split out of the Vulkan path
   (`video_common.h`, parser-side reference resolution with unit tests).
+- M12: Direct3D 12 Video encode (H.264, H.265) in `feature.video`: configuration from the support queries,
+  SPS / PPS / VPS written by new parameter-set writers (round-trip unit tests), metadata resolve, round trip
+  through the D3D12 decoder.
 
 ### 2026-10-26
 - Saved brief to docs/SPEC.md; research pass recorded in docs/RESEARCH.md (two research subagents).

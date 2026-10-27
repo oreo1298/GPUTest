@@ -61,12 +61,15 @@ and the iGPU, and that `kiln-hw-report` finds the runner by itself. Tell me if m
    note "videoEncodeAV1 feature" means the driver lists the extension but not the feature. GPUs with AV1 decode
    only (RTX 30, RDNA 2) should report AV1 encode as not available, not as a failure.
 6. **Video engines on Direct3D 12** (`feature.video`, Windows, the 4090 and the iGPU):
-   `kiln-run --api d3d12 --test feature.video --duration quick --validation`. Decode only (DXVA buffers built
-   from the same parsers; never run on a real decoder). Send the result JSON (the `decode_profiles` list, each
-   codec's `decode_output` line with the decode tier and whether reference-only pictures were required, the
-   CRCs and any notes) and the log with D3D12 debug-layer messages. A CRC mismatch on every frame points at the
-   picture parameters; only on inter frames, at the reference list (H.264 `RefFrameList`, H.265 `RefPicList`
-   / `RefPicSet*`, AV1 `RefFrameMapTextureIndex` / `frame_refs`). Compare the fps with the Vulkan run.
+   `kiln-run --api d3d12 --test feature.video --duration quick --validation`. Decode (DXVA buffers built from
+   the same parsers) and H.264 / H.265 encode (parameter sets written by Kiln); never run on real hardware.
+   Send the result JSON (the `decode_profiles` list, each codec's `decode_output` line with the decode tier and
+   whether reference-only pictures were required, the CRCs, the `encode` block with the chosen profile, level
+   and tools, round-trip PSNR and any notes) and the log with D3D12 debug-layer messages. A CRC mismatch on
+   every frame points at the picture parameters; only on inter frames, at the reference list (H.264
+   `RefFrameList`, H.265 `RefPicList` / `RefPicSet*`, AV1 `RefFrameMapTextureIndex` / `frame_refs`). An encode
+   note "could not be read back" or a very low PSNR points at the written SPS / PPS disagreeing with what the
+   encoder did (`encode_frame_bytes` lists what each frame came to). Compare the fps with the Vulkan run.
 
 ### M11 — OpenGL and Direct3D 11
 1. **OpenGL on the 4090 and the iGPU (Linux)**: `kiln-run --api opengl --suite legacy --duration quick` and the

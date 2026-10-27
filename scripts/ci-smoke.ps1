@@ -139,6 +139,23 @@ if (Test-Path "$out\plugins-d3d12.json") {
 } elseif (Test-Path "$out\plugins-d3d12.log") {
     Get-Content "$out\plugins-d3d12.log" -Tail 20 | Out-Host
 }
+# Video engines on WARP (report only): WARP decodes and encodes H.264 / H.265 through Media Foundation, which
+# exercises the DXVA and encoder code paths that no GPU runs here. Bounded; never fails the job.
+Write-Host "== Video engines on WARP (D3D12, report only)"
+$videoArgs = $stdCommon + @("--test", "feature.video", "--param", "feature.video.software=1",
+                            "--out", "$out\video-d3d12.json", "--log-file", "$out\video-d3d12.log")
+$proc = Start-Process -FilePath $runner.FullName -ArgumentList $videoArgs -NoNewWindow -PassThru `
+    -RedirectStandardOutput "$out\video-d3d12.out" -RedirectStandardError "$out\video-d3d12.err"
+$null = $proc.Handle
+if (-not $proc.WaitForExit(5 * 60 * 1000)) { $proc.Kill(); Write-Host "::warning title=Video on WARP::timed out" }
+if (Test-Path "$out\video-d3d12.json") {
+    $r = Get-Content "$out\video-d3d12.json" -Raw | ConvertFrom-Json
+    $t = $r.tests | Select-Object -First 1
+    Write-Host "feature.video: $($t.status) $($t.verdict) $($t.verdict_message) $($t.status_message)"
+    Write-Host ($t.details | ConvertTo-Json -Depth 6 -Compress)
+}
+if (Test-Path "$out\video-d3d12.log") { Get-Content "$out\video-d3d12.log" -Tail 60 | Out-Host }
+
 if ($StrictStandard -and $problems -gt 0) { throw "D3D12 standard suite failed ($problems tests)" }
 
 # Direct3D 11 on WARP: the smoke suite, the legacy scenes checked against the Direct3D 12 frames
