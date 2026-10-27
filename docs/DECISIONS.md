@@ -332,6 +332,8 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   specification's tables were checked against the header (its enum values and some names are out of date) and
   read by a subagent; where it is ambiguous the choices are: H.264 cropping at the bottom (the table says top,
   which no decoder expects), H.265 picture size aligned to the encoder's block size with a conformance window.
+  H.264 asks for an 8-bit frame_num (`log2_max_frame_num_minus4` 4): WARP's encoder writes 8 bits whatever the
+  GOP structure says (its first P slice parses to frame_num 1 only that way), and the SPS must match the slices.
   Slices without an Annex B start code get one. The joined stream is decoded on the D3D12 decoder for the
   round-trip PSNR. Reconstructed pictures are a two-slice reference-only array used in turn; recon in
   VIDEO_ENCODE_WRITE and the reference in VIDEO_ENCODE_READ around each EncodeFrame (states the specification

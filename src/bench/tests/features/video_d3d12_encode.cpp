@@ -410,7 +410,9 @@ private:
             m_gop.GOPLength = video::kGop;
             m_gop.PPicturePeriod = 1;
             m_gop.pic_order_cnt_type = pocType;
-            m_gop.log2_max_frame_num_minus4 = 0;         // MaxFrameNum 16 > 8 frames
+            // MaxFrameNum 256 (> 8 frames). WARP's encoder writes an 8-bit frame_num whatever it is asked
+            // for, so this is the length that matches it as well as every encoder that follows the request.
+            m_gop.log2_max_frame_num_minus4 = 4;
             m_gop.log2_max_pic_order_cnt_lsb_minus4 = 4; // MaxPicOrderCntLsb 256 > 2 x 8
             D3D12_VIDEO_ENCODER_PROFILE_H264 suggestedProfile{};
             D3D12_VIDEO_ENCODER_LEVELS_H264 suggestedLevel{};
