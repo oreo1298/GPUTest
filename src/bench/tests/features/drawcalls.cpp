@@ -27,7 +27,7 @@ public:
         m_info.id = "feature.drawcalls";
         m_info.name = "Draw-call overhead";
         m_info.description = "Issues tens of thousands of tiny draws with different per-draw state changes and reports "
-                             "how many draws per second the CPU can record and the GPU can execute.";
+                             "how many draws per second the CPU can record and submit and the GPU can execute.";
         m_info.category = Category::Feature;
         m_info.group = "API overhead";
         m_info.frameBased = false;
@@ -132,12 +132,15 @@ public:
             std::vector<double> cpu, gpu;
             for (std::uint32_t i = 0; i <= samples; ++i) { // first round warms up
                 ctx.checkStop();
-                double cpuMs = 0.0;
-                const double gpuMs = ctx.timeGpu([&](rhi::CommandList& cmd) {
-                    const auto t0 = std::chrono::steady_clock::now();
-                    record(cmd, v);
-                    cpuMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
-                });
+                double cpuMs = 0.0, submitMs = 0.0;
+                const double gpuMs = ctx.timeGpu(
+                    [&](rhi::CommandList& cmd) {
+                        const auto t0 = std::chrono::steady_clock::now();
+                        record(cmd, v);
+                        cpuMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                    },
+                    rhi::QueueType::Graphics, &submitMs);
+                cpuMs += submitMs; // OpenGL and Direct3D 11 issue the recorded commands at submit
                 if (i == 0) continue;
                 cpu.push_back(cpuMs);
                 gpu.push_back(gpuMs);
@@ -155,8 +158,8 @@ public:
         if (!args) d["note_indirect"] = "no multi-draw indirect on this GPU";
         if (software) d["note"] = "software renderer: reduced problem size";
         ctx.setVerdict(results::Verdict::Pass,
-                       std::format("{} draws recorded in {:.2f} ms with push constants ({:.2f} ms with a uniform buffer "
-                                   "per draw).",
+                       std::format("{} draws recorded and submitted in {:.2f} ms with push constants ({:.2f} ms with a "
+                                   "uniform buffer per draw).",
                                    draws, double(d["push_cpu_ms"]), double(d["uniform_cpu_ms"])));
     }
 

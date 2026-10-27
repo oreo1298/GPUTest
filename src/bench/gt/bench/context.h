@@ -121,9 +121,10 @@ public:
     /// the duration preset's minimum time is reached (or the time limit / a stop).
     FrameLoopResult runFrames(const FrameLoopDesc& desc);
     /// Records with `record`, submits on `queue`, waits, and returns the GPU time in ms
-    /// measured with timestamps (falls back to CPU wall time when unsupported).
+    /// measured with timestamps (falls back to CPU wall time when unsupported). `submitCpuMs`
+    /// receives the CPU time of the submit call itself (where OpenGL and D3D11 issue the commands).
     double timeGpu(const std::function<void(rhi::CommandList&)>& record,
-                   rhi::QueueType queue = rhi::QueueType::Graphics);
+                   rhi::QueueType queue = rhi::QueueType::Graphics, double* submitCpuMs = nullptr);
     /// Reads back a texture (RGBA8/BGRA8 only), records its hash + signature under
     /// details.golden.<name>, and writes <dumpDir>/<test-id>_<name>.png when a dump dir is set.
     /// Returns the 64-bit FNV-1a hash of the pixels (0 if unsupported).

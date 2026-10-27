@@ -395,7 +395,8 @@ FrameLoopResult TestContext::runFrames(const FrameLoopDesc& d) {
     return out;
 }
 
-double TestContext::timeGpu(const std::function<void(rhi::CommandList&)>& record, rhi::QueueType queue) {
+double TestContext::timeGpu(const std::function<void(rhi::CommandList&)>& record, rhi::QueueType queue,
+                            double* submitCpuMs) {
     if (!m_timerList || m_timerList->queueType() != queue) m_timerList = m_device.createCommandList(queue);
     const bool ts = m_device.features().timestamps &&
                     (queue == rhi::QueueType::Graphics || m_device.features().timestampsOnComputeQueue);
@@ -415,6 +416,8 @@ double TestContext::timeGpu(const std::function<void(rhi::CommandList&)>& record
     const auto t0 = std::chrono::steady_clock::now();
     rhi::CommandList* l[] = {&cmd};
     const std::uint64_t v = m_device.submit(queue, rhi::SubmitInfo{l});
+    if (submitCpuMs)
+        *submitCpuMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     m_device.wait(queue, v);
     const double cpuMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     if (ts) {

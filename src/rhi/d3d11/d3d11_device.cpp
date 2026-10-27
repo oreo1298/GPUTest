@@ -348,8 +348,11 @@ void D3D11Device::fillFeatures() {
     f.maxComputeSharedMemory = D3D11_CS_TGSM_REGISTER_COUNT * 4;
     f.maxComputeWorkgroupSize = {D3D11_CS_THREAD_GROUP_MAX_X, D3D11_CS_THREAD_GROUP_MAX_Y, D3D11_CS_THREAD_GROUP_MAX_Z};
     f.maxComputeWorkgroupInvocations = D3D11_CS_THREAD_GROUP_MAX_THREADS_PER_GROUP;
-    f.maxStorageBufferRange = 128ull << 20;
-    f.maxBufferSize = 128ull << 20; // D3D11_REQ_RESOURCE_SIZE_IN_MEGABYTES_EXPRESSION_A_TERM
+    // Resource size limit: max(128 MiB, min(VRAM / 4, 2 GiB)).
+    const std::uint64_t limit =
+        std::max<std::uint64_t>(128ull << 20, std::min<std::uint64_t>(m_adapter.dedicatedMemory / 4, 2048ull << 20));
+    f.maxStorageBufferRange = limit;
+    f.maxBufferSize = limit;
 }
 
 std::vector<Capability> D3D11Device::capabilities() const {
