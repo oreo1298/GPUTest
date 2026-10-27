@@ -89,5 +89,5 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 - [x] README with screenshots, user docs (USER_GUIDE, BUILDING), CONTRIBUTING.md
 
 ## 14. Polish
-- [ ] UI review, tool performance, accessibility pass, docs pass
-- [ ] Final summary in PROGRESS.md
+- [x] UI review, tool performance, accessibility pass, docs pass
+- [x] Final summary in PROGRESS.md

@@ -2,6 +2,54 @@
 
 Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLAUDE.md` for commands.
 
+## Final summary (2026-10-27)
+
+All fourteen milestones of the brief (docs/SPEC.md) are implemented. Every push to `main` builds and tests on
+Linux (GCC, Clang, AddressSanitizer + UBSan, all with warnings as errors) and Windows (MSVC /W4 /WX), and
+produces the AppImage, Flatpak bundle, Arch package, Windows installer and portable zip; a `v*` tag publishes
+them as a GitHub release. About 40 000 lines of C++, 52 unit-test cases, and smoke runs on software renderers.
+
+**What works** (verified in CI or locally, on lavapipe / llvmpipe / WARP):
+- `kiln-run` (headless engine, JSON-lines progress, results JSON, HTML / CSV export) and the Qt app (Home,
+  Tests, Live run, Results, History, Compare, System & features, Settings; light and dark themes following the
+  desktop; accessible names and keyboard use throughout), the app talking to the runner only as a subprocess.
+- Four APIs: Vulkan (everything lavapipe exposes, validation clean), Direct3D 12 (WARP with the debug layer:
+  smoke, standard suite, every scene), OpenGL 3.3-4.6 (llvmpipe: standard suite, scenes match Vulkan) and
+  Direct3D 11 (WARP: legacy suite, scenes match Direct3D 12).
+- 43 tests plus a device-loss simulation: 8 scenes (legacy forward / deferred and their CPU-light versions,
+  GPU-driven, hybrid ray-traced, path-traced), 13 synthetic tests, 17 feature tests (most check their results
+  as well as their speed), 5 diagnostics; suites, scores, golden-frame checks, loops with stability and trend,
+  safety cutoffs and device-loss capture / recovery (driven by fake telemetry and injected faults in CI); the
+  VRAM, artifact and compute checks and the BVH test proven to FAIL on injected faults.
+- Video: H.264 / H.265 / AV1 readers checked against FFmpeg's traces, parameter-set and AV1 header writers
+  checked by round trips (AV1: every header of three streams rewritten bit for bit); decode and encode code for
+  Vulkan Video and Direct3D 12 Video.
+- Packaging: all five packages built in CI; the Arch package installed and run in an Arch container; the Flatpak
+  built offline and its runner started; installer and portable zip packed with windeployqt.
+
+**Untested on real hardware** (each item has its check in docs/HARDWARE_TESTING.md):
+- Every performance number: score references are provisional until real results arrive (docs/SCORING.md).
+- Telemetry and what depends on it: NVML, amdgpu / i915 / xe sensors, safety cutoffs with real sensors, the
+  thermal soak, the PCIe link check, the VRAM test on real VRAM, recovery from a real driver reset.
+- GPU features run only in software (WARP, lavapipe) or not at all: variable-rate shading (Vulkan per-draw,
+  Direct3D 12 tier 2 images), SER, opacity micromaps, cooperative matrices, work graphs, sampler feedback, ray
+  tracing and mesh shaders on real GPUs, HDR10 output on an HDR display, the XeSS plugin with Intel's library.
+- All of Vulkan Video and Direct3D 12 Video (lavapipe has no video; WARP's video path hangs, see Known issues).
+- Vulkan on Windows (the Windows CI runner has no Vulkan driver); AMD / Intel sensors on Windows (not
+  implemented); the app on real desktops (KDE / GNOME on Wayland and X11, Windows 11, HiDPI); the installer, the
+  portable zip and the Flatpak on users' machines with real GPU drivers.
+
+**Suggested next steps**
+1. Run the hardware report (`kiln-hw-report` / `hw-report.ps1`) on the RTX 4090 and the iGPU, and on any AMD or
+   Intel GPU at hand; fix what it finds, then set the score references from real results.
+2. Push the `v0.1.0` tag once a hardware pass is clean (the release job is ready; CHANGELOG.md has the notes).
+3. Windows sensors for AMD (ADLX or D3DKMT) and Intel (IGCL / Level Zero).
+4. Vulkan on the Windows CI runner (Mesa's lavapipe for Windows) so the Vulkan path is exercised there.
+5. Answer the Agility SDK redistribution question (Kiln uses the system Direct3D 12 runtime until then).
+6. Vulkan image-based VRS and cooperative vectors once drivers in reach support them.
+7. Find out why WARP's video decode never completes, or drop the report-only CI step.
+8. Optionally submit the Flatpak to Flathub (manifest ready; needs the owner's account).
+
 ## Current state
 - **Milestone 1 (skeleton): done.** CMake presets, cloud-setup + SessionStart hook, CI (Linux GCC/Clang/ASan,
   Windows MSVC) with AppImage + portable-zip artifacts, docs.
@@ -90,8 +138,9 @@ Resume from here: read this file, then `docs/PLAN.md` for the checklist and `CLA
   Windows installer (Inno Setup) and portable zip, all built on every push; a `v*` tag publishes them as a
   GitHub release (version checked against `APP_VERSION`, notes from CHANGELOG.md). README with screenshots,
   docs/USER_GUIDE.md, docs/BUILDING.md, CONTRIBUTING.md.
-- **Milestone 14 (polish): in progress.** UI review from light / dark screenshots of every page, runner help
-  and docs pass, accessibility audit of every focusable widget.
+- **Milestone 14 (polish): done.** UI review from light / dark screenshots of every page, runner help and docs
+  pass (every runner option documented), accessibility audit of every focusable widget, frame timing around
+  golden-frame dumps, final summary above.
 
 ## Environment notes (cloud VM)
 - Blocked hosts (network policy): download.qt.io + all Qt mirrors, sdk.lunarg.com, Launchpad PPAs,
