@@ -1,10 +1,12 @@
-# Builds the Windows portable zip from an existing CMake build directory.
-#   pwsh scripts/package-windows.ps1 -BuildDir build/ci-windows [-OutDir dist]
+# Builds the Windows portable zip (and with -Installer the Inno Setup installer) from an existing CMake build
+# directory.
+#   pwsh scripts/package-windows.ps1 -BuildDir build/ci-windows [-OutDir dist] [-Installer]
 # Needs: windeployqt of the Qt the GUI was built with on PATH, and a VS developer
 # environment (VCToolsRedistDir) so the MSVC runtime DLLs can be shipped app-locally.
 param(
     [Parameter(Mandatory = $true)][string]$BuildDir,
-    [string]$OutDir = "dist"
+    [string]$OutDir = "dist",
+    [switch]$Installer
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -12,6 +14,11 @@ $info = @{}
 Get-Content "$root/cmake/AppInfo.cmake" | ForEach-Object {
     if ($_ -match '^set\((APP_[A-Z_]+) "([^"]*)"\)') { $info[$Matches[1]] = $Matches[2] }
 }
+# Values may refer to earlier ones (APP_GUI_NAME is "${APP_ID}"): expand them.
+foreach ($k in @($info.Keys)) {
+    foreach ($j in @($info.Keys)) { $info[$k] = $info[$k].Replace("`${$j}", $info[$j]) }
+}
+if ($info.APP_GUI_NAME -match '\$\{') { throw "could not read cmake/AppInfo.cmake" }
 $rev = (git -C $root rev-parse --short=8 HEAD 2>$null)
 if (-not $rev) { $rev = "local" }
 $name = "$($info.APP_DISPLAY_NAME)-$($info.APP_VERSION)-$rev-windows-x64"
@@ -48,3 +55,21 @@ $zip = Join-Path (Resolve-Path $OutDir) "$name-portable.zip"
 if (Test-Path $zip) { Remove-Item $zip }
 Compress-Archive -Path "$stage/*" -DestinationPath $zip
 Write-Host "Portable zip: $zip"
+
+if ($Installer) {
+    # Inno Setup 6: on PATH, in its default folder, or installed with Chocolatey.
+    $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+    if (-not $iscc) { $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe" }
+    if (-not (Test-Path $iscc)) {
+        choco install innosetup -y --no-progress | Out-Host
+        $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+    }
+    if (-not (Test-Path $iscc)) { throw "Inno Setup (ISCC.exe) not found" }
+    $isccArgs = @("/Q", "/DAppName=$($info.APP_DISPLAY_NAME)", "/DAppVersion=$($info.APP_VERSION)",
+                  "/DAppUrl=$($info.APP_HOMEPAGE)", "/DGuiExe=$($info.APP_GUI_NAME).exe", "/DSourceDir=$stage",
+                  "/DOutputDir=$(Resolve-Path $OutDir)", "/DOutputBaseFilename=$name-setup",
+                  (Join-Path $root "packaging/windows/installer.iss"))
+    & $iscc @isccArgs
+    if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+    Write-Host "Installer: $(Join-Path (Resolve-Path $OutDir) "$name-setup.exe")"
+}

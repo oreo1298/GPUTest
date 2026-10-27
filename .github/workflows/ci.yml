@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+    # Release tags (pushed by the maintainer): the same jobs, then the release job below.
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -177,6 +179,50 @@ jobs:
         with:
           name: arch-package
           path: packaging/arch/kiln-[0-9]*.pkg.tar.zst
+          if-no-files-found: error
+
+  flatpak:
+    name: Flatpak
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.11
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check manifest pins
+        shell: bash
+        run: |
+          m=packaging/flatpak/io.github.oreo1298.Kiln.yml
+          ok=1
+          grep -q "slang/releases/download/v${SLANG_VERSION}/" "$m" || { echo "::error file=$m::Slang is not $SLANG_VERSION (SLANG_VERSION)"; ok=0; }
+          # Every library the Linux build fetches must be pinned as in cmake/Dependencies.cmake.
+          while read -r name url tag; do
+            case "$name" in directx_headers|catch2) continue ;; esac
+            if ! grep -q "dest: deps/$name$" "$m" || ! grep -A1 "url: $url" "$m" | grep -q "tag: $tag$"; then
+              echo "::error file=$m::$name is not pinned to $tag as in cmake/Dependencies.cmake"; ok=0
+            fi
+          done < <(sed -nE 's/^gt_declare\(([a-z0-9_]+) ([^ ]+) ([^)]+)\)/\1 \2 \3/p' cmake/Dependencies.cmake)
+          [ "$ok" = 1 ]
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: kiln.flatpak
+          manifest-path: packaging/flatpak/io.github.oreo1298.Kiln.yml
+          cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/*.yml') }}
+          upload-artifact: false
+
+      - name: Run the runner inside the app
+        shell: bash
+        run: |
+          flatpak-builder --run flatpak_app packaging/flatpak/io.github.oreo1298.Kiln.yml kiln-run --version
+          flatpak-builder --run flatpak_app packaging/flatpak/io.github.oreo1298.Kiln.yml kiln-run --list-tests | head -5
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-bundle
+          path: kiln.flatpak
           if-no-files-found: error
 
   linux-sanitizers:
@@ -357,7 +403,7 @@ jobs:
       - name: Package portable zip
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
-        run: pwsh scripts/package-windows.ps1 -BuildDir build/ci-windows -OutDir dist
+        run: pwsh scripts/package-windows.ps1 -BuildDir build/ci-windows -OutDir dist -Installer
 
       - name: Upload portable zip
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -367,7 +413,68 @@ jobs:
           path: dist/*-portable.zip
           if-no-files-found: error
 
+      - name: Upload installer
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/*-setup.exe
+          if-no-files-found: error
+
       - name: Annotate failures
         if: failure()
         shell: bash
         run: scripts/ci-annotate.sh build/ci-windows
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, arch, flatpak, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check the tag against APP_VERSION
+        id: info
+        run: |
+          app="$(sed -nE 's/^set\(APP_VERSION "([^"]*)"\).*/\1/p' cmake/AppInfo.cmake)"
+          name="$(sed -nE 's/^set\(APP_DISPLAY_NAME "([^"]*)"\).*/\1/p' cmake/AppInfo.cmake)"
+          [ "$GITHUB_REF_NAME" = "v$app" ] || { echo "::error::tag $GITHUB_REF_NAME does not match APP_VERSION $app (cmake/AppInfo.cmake)"; exit 1; }
+          echo "version=$app" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-appimage
+          path: assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: flatpak-bundle
+          path: assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: arch-package
+          path: assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-portable
+          path: assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: assets
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.info.outputs.version }}
+          APP_NAME: ${{ steps.info.outputs.name }}
+        run: |
+          mv assets/kiln.flatpak "assets/${APP_NAME}-${VERSION}-x86_64.flatpak"
+          (cd assets && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+          # Release notes: this version's section of CHANGELOG.md.
+          awk -v v="$VERSION" '/^## /{p = ($2 == v)} p' CHANGELOG.md | tail -n +2 > notes.md
+          [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "${APP_NAME} ${VERSION}" --notes-file notes.md assets/*

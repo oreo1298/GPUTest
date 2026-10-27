@@ -84,8 +84,8 @@ Milestones from `docs/SPEC.md` §9 as checklists. Ticked items are done and push
 
 ## 13. Packaging
 - [x] Arch PKGBUILD (`packaging/arch`, built and installed by CI) — done early on request
-- [ ] AppImage, Flatpak manifest, Windows installer + portable zip
-- [ ] Tag-triggered release workflow
+- [x] AppImage, Flatpak manifest, Windows installer + portable zip (all built by CI)
+- [x] Tag-triggered release workflow (`v*` tags → `release` job)
 - [ ] README with screenshots, user docs, CONTRIBUTING.md
 
 ## 14. Polish

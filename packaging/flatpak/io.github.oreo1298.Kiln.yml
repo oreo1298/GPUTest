@@ -1,0 +1,119 @@
+# Flatpak manifest. The build is offline: the pinned libraries that CMake would otherwise fetch
+# (cmake/Dependencies.cmake) are sources here and reach CMake through GT_DEPS_CACHE, and the Slang shader
+# compiler is a build-time-only archive. Keep the tags / commits in sync with cmake/Dependencies.cmake and
+# the Slang version with SLANG_VERSION in .github/workflows/ci.yml (CI builds this manifest).
+#
+#   flatpak-builder --user --install --install-deps-from=flathub --force-clean build-flatpak \
+#       packaging/flatpak/io.github.oreo1298.Kiln.yml
+#   flatpak run io.github.oreo1298.Kiln
+#
+# The id, command and file names follow cmake/AppInfo.cmake (APP_RDNN, APP_GUI_NAME).
+id: io.github.oreo1298.Kiln
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: kiln
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # The GPU (Vulkan, OpenGL; NVIDIA's device nodes are part of dri).
+  - --device=dri
+  # Hardware reports and exports are written where the user picks (file dialogs go through the portal);
+  # results and history stay in the app's own data folder.
+modules:
+  - name: kiln
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DGT_BUILD_TESTS=OFF
+      - -DGT_WARNINGS_AS_ERRORS=OFF
+      - -DGT_DEPS_CACHE=/run/build/kiln/deps
+      - -DGT_SLANGC=/run/build/kiln/slang/bin/slangc
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - build
+          - out
+          - dist
+          - .cache
+          - .deps-cache
+          - build-flatpak
+          - .flatpak-builder
+          - flatpak-repo
+          - packaging/arch/src
+          - packaging/arch/pkg
+      # Slang (build time only: shaders are compiled and embedded in the binaries).
+      - type: archive
+        url: https://github.com/shader-slang/slang/releases/download/v2026.20/slang-2026.20-linux-x86_64.tar.gz
+        sha256: e863e568c204810d6e8bc31852f056aef6763c55ea9925db2db7affa060347c9
+        strip-components: 0
+        dest: slang
+        only-arches:
+          - x86_64
+      # Libraries (cmake/Dependencies.cmake). Each gets the .gt-tag file that GT_DEPS_CACHE matches.
+      - type: git
+        url: https://github.com/nlohmann/json.git
+        tag: v3.12.0
+        commit: 55f93686c01528224f448c19128836e7df245f72
+        dest: deps/nlohmann_json
+      - type: inline
+        contents: v3.12.0
+        dest: deps/nlohmann_json
+        dest-filename: .gt-tag
+      - type: git
+        url: https://github.com/CLIUtils/CLI11.git
+        tag: v2.7.2
+        commit: cbd58a3696887b34c70949aef21a71735a0c2ad5
+        dest: deps/cli11
+      - type: inline
+        contents: v2.7.2
+        dest: deps/cli11
+        dest-filename: .gt-tag
+      - type: git
+        url: https://github.com/KhronosGroup/Vulkan-Headers.git
+        tag: vulkan-sdk-1.4.363.0
+        commit: 6802bb4733b63ed5efd3adb308a6c885ef180ea1
+        dest: deps/vulkan_headers
+      - type: inline
+        contents: vulkan-sdk-1.4.363.0
+        dest: deps/vulkan_headers
+        dest-filename: .gt-tag
+      - type: git
+        url: https://github.com/zeux/volk.git
+        tag: vulkan-sdk-1.4.363.0
+        commit: 54fc0d7a72887cbfc5b030d26897b2b40ac53fb8
+        dest: deps/volk
+      - type: inline
+        contents: vulkan-sdk-1.4.363.0
+        dest: deps/volk
+        dest-filename: .gt-tag
+      - type: git
+        url: https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+        tag: v3.5.0
+        commit: 0f1a757da579831283413295cc7f3b47eb521c77
+        dest: deps/vma
+      - type: inline
+        contents: v3.5.0
+        dest: deps/vma
+        dest-filename: .gt-tag
+      - type: git
+        url: https://github.com/libsdl-org/SDL.git
+        tag: release-3.4.18
+        commit: 829a65d769d935c4852f8159e964312c0957260a
+        dest: deps/sdl3
+      - type: inline
+        contents: release-3.4.18
+        dest: deps/sdl3
+        dest-filename: .gt-tag
+      - type: git
+        url: https://github.com/KhronosGroup/SPIRV-Cross.git
+        tag: vulkan-sdk-1.4.363.0
+        commit: f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7
+        dest: deps/spirv_cross
+      - type: inline
+        contents: vulkan-sdk-1.4.363.0
+        dest: deps/spirv_cross
+        dest-filename: .gt-tag

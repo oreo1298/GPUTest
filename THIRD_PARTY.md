@@ -24,6 +24,8 @@ All components are MIT-compatible. "Build" = used only to build; "Linked" = comp
 | 8×8 VGA bitmap font | — | Public domain (Marcel Sondaar / IBM VGA), via SDL3 | Linked (HUD font, src/bench/hud_font.h) | https://github.com/libsdl-org/SDL |
 | Lucide icons (subset) | main (2026) | ISC | Linked (GUI icons, src/gui/icons) | https://github.com/lucide-icons/lucide |
 | linuxdeploy + plugin-qt | continuous | MIT | Build (AppImage packaging) | https://github.com/linuxdeploy |
+| Inno Setup | 6 | Inno Setup License (free, redistribution of installers allowed) | Build (Windows installer; its setup runtime is part of the installer) | https://jrsoftware.org/isinfo.php |
+| KDE / Freedesktop Flatpak runtime | 6.11 | LGPL / various (runtime, not bundled) | Runtime of the Flatpak build | https://flathub.org |
 
 Qt is used under the LGPLv3: it is dynamically linked, its source is available from qt.io, and users can replace
 the shipped Qt libraries. No GPL-only Qt module (Charts, Graphs, Data Visualization) is used.

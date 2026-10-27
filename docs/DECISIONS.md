@@ -336,6 +336,23 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   is given: it is not a GPU measurement and it hung the first CI run. CI runs it in a separate, bounded,
   report-only step, which exercises the DXVA and encoder paths that no GPU runs there.
 
+## Packaging and releases
+- **Flatpak on the KDE runtime, built offline.** `packaging/flatpak/<APP_RDNN>.yml` uses org.kde.Platform 6.11
+  (Qt 6 with Wayland, SQLite and Vulkan loader included); the libraries CMake normally fetches are pinned git
+  sources fed through `GT_DEPS_CACHE` (each with its `.gt-tag`), and Slang is a build-time archive that is not
+  installed. Permissions: Wayland / X11, IPC and `--device=dri` (which includes NVIDIA's nodes); no host files
+  (the file dialogs use the portal). CI builds it in the Flathub-infra container and checks the pins against
+  `cmake/Dependencies.cmake`. The local `dir` source builds the checkout; a Flathub submission would swap it for
+  a tagged git source.
+- **Windows installer with Inno Setup.** Built from the same staged folder as the portable zip (minus its
+  `portable.txt` marker), per-user by default with an all-users option, Start menu entry, optional desktop icon
+  and uninstaller. The AppId GUID in `packaging/windows/installer.iss` must never change. Packaging found that
+  `windeployqt` had never run (the script read `APP_GUI_NAME` as the literal `${APP_ID}`), so earlier portable
+  zips lacked the Qt DLLs; fixed.
+- **Releases from tags.** Pushing `v<APP_VERSION>` runs the normal CI jobs and then `release`, which refuses a tag
+  that does not match `APP_VERSION`, collects the AppImage, Flatpak bundle, Arch package, portable zip and
+  installer, writes `SHA256SUMS` and creates the GitHub release with that version's CHANGELOG.md section as notes.
+
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).
 - **Scores: 1000 × value / reference per test, geometric means for subscores and overall** (not a harmonic mean); comparable only with identical `suite|api|resolution|quality|duration`.
