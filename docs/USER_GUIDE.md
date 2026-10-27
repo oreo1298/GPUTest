@@ -20,6 +20,8 @@ scores.
 The app runs every benchmark in a separate process (`kiln-run`), so a driver crash cannot take the app or your
 results with it.
 
+![The System & features page: computer and GPU details, the capability explorer and test support](images/system.png)
+
 ## Suites
 
 | Suite | Contents | Typical time |
