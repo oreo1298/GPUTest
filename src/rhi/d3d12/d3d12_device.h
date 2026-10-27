@@ -282,6 +282,8 @@ public:
     /// all root state (viewports and scissors set natively are not restored).
     ID3D12GraphicsCommandList* beginNative();
     void endNative();
+    void* beginNativeCommands() override { return beginNative(); }
+    void endNativeCommands() override { endNative(); }
 
     void begin() override;
     void end() override;
@@ -422,6 +424,8 @@ public:
 
     // --- Device interface
     std::vector<Capability> capabilities() const override;
+    NativeDevice nativeDevice() override;
+    NativeTexture nativeTexture(Texture* texture, ResourceState state) override;
     std::unique_ptr<Buffer> createBuffer(const BufferDesc& desc, const void* initialData) override;
     std::unique_ptr<Texture> createTexture(const TextureDesc& desc) override;
     std::unique_ptr<Sampler> createSampler(const SamplerDesc& desc) override;

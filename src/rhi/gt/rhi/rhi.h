@@ -542,6 +542,12 @@ public:
     /// D3D12 needs an explicit resolve before read(); a no-op elsewhere.
     virtual void resolveQueries(QueryPool* pool, std::uint32_t first, std::uint32_t count) = 0;
 
+    /// Native recording for external libraries (upscaler plugins): returns the VkCommandBuffer or
+    /// ID3D12GraphicsCommandList* with pending barriers flushed, outside render passes. After
+    /// endNativeCommands() the pipeline and bindings must be set again. Vulkan and D3D12 only.
+    virtual void* beginNativeCommands() { throw Error("native command recording is not available on this API"); }
+    virtual void endNativeCommands() {}
+
     // Debug markers (visible in RenderDoc / PIX / Nsight).
     virtual void beginMarker(const char* name) = 0;
     virtual void endMarker() = 0;
@@ -612,6 +618,28 @@ struct CooperativeMatrixConfig {
     std::uint32_t m = 0, n = 0, k = 0;
     std::string a, b, c, result; ///< "f16", "bf16", "f32", "f64", "e4m3", "e5m2", "s8", "u8", "s32", "u32", ...
     bool saturating = false;
+};
+
+// --- native interop ------------------------------------------------------------------------------
+/// Native API objects as void*: VkInstance / VkPhysicalDevice / VkDevice / VkQueue (graphics) on Vulkan,
+/// ID3D12Device* / ID3D12CommandQueue* (graphics) on Direct3D 12.
+struct NativeDevice {
+    Api api = Api::Vulkan;
+    void* instance = nullptr;
+    void* physicalDevice = nullptr;
+    void* device = nullptr;
+    void* queue = nullptr;
+    std::uint32_t queueFamily = 0;       ///< Vulkan: graphics queue family index
+    void* getInstanceProcAddr = nullptr; ///< Vulkan: PFN_vkGetInstanceProcAddr
+};
+
+/// A texture's native objects, and the layout (VkImageLayout) or state (D3D12_RESOURCE_STATES) that a
+/// ResourceState maps to on graphics command lists.
+struct NativeTexture {
+    void* resource = nullptr; ///< VkImage / ID3D12Resource*
+    void* view = nullptr;     ///< Vulkan: VkImageView of the whole texture
+    std::uint32_t format = 0; ///< VkFormat / DXGI_FORMAT
+    std::uint32_t layout = 0; ///< VkImageLayout / D3D12_RESOURCE_STATES
 };
 
 // --- device ----------------------------------------------------------------------------------------
@@ -699,6 +727,12 @@ public:
     }
     virtual void setDebugName(Buffer*, const char*) {}
     virtual void setDebugName(Texture*, const char*) {}
+    /// Native objects for interop with external libraries (Vulkan and D3D12 only).
+    virtual NativeDevice nativeDevice() { throw Error("native interop is not available on this API"); }
+    /// `texture`'s native objects, with the layout/state that `state` maps to.
+    virtual NativeTexture nativeTexture(Texture*, ResourceState) {
+        throw Error("native interop is not available on this API");
+    }
 
 protected:
     Api m_api = Api::Vulkan;

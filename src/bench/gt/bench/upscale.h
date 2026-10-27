@@ -50,7 +50,6 @@ public:
     Upscaler kind() const { return m_kind; }
 
 private:
-    rhi::Device& m_dev;
     Upscaler m_kind;
     std::uint32_t m_outWidth, m_outHeight;
     fsr1::Constants m_easu, m_rcas;

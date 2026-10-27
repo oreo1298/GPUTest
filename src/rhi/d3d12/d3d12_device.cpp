@@ -605,6 +605,37 @@ void D3D12Device::setDebugName(Texture* t, const char* name) {
     setName(static_cast<D3D12Texture*>(t)->resource(), name);
 }
 
+// --- native interop ---------------------------------------------------------------------------------
+NativeDevice D3D12Device::nativeDevice() {
+    NativeDevice n;
+    n.api = Api::D3D12;
+    n.device = m_device.get();
+    n.queue = queue(QueueType::Graphics);
+    return n;
+}
+
+NativeTexture D3D12Device::nativeTexture(Texture* texture, ResourceState state) {
+    auto* t = static_cast<D3D12Texture*>(texture);
+    NativeTexture n;
+    n.resource = t->resource();
+    n.format = static_cast<std::uint32_t>(toDxgi(t->desc().format));
+    // The states D3D12CommandList::transition() uses on graphics lists.
+    D3D12_RESOURCE_STATES s = D3D12_RESOURCE_STATE_COMMON;
+    switch (state) {
+    case ResourceState::ShaderRead:
+        s = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        break;
+    case ResourceState::UnorderedAccess: s = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; break;
+    case ResourceState::RenderTarget: s = D3D12_RESOURCE_STATE_RENDER_TARGET; break;
+    case ResourceState::DepthWrite: s = D3D12_RESOURCE_STATE_DEPTH_WRITE; break;
+    case ResourceState::CopySrc: s = D3D12_RESOURCE_STATE_COPY_SOURCE; break;
+    case ResourceState::CopyDst: s = D3D12_RESOURCE_STATE_COPY_DEST; break;
+    default: throw Error("nativeTexture: unsupported resource state for interop");
+    }
+    n.layout = static_cast<std::uint32_t>(s);
+    return n;
+}
+
 // --- root signatures ---------------------------------------------------------------------------------
 const RootSignature& D3D12Device::rootSignature(const LayoutDesc& layout, bool inputAssembler) {
     std::string key = std::format("{}|{}|{}|", inputAssembler, layout.pushConstantBytes, layout.textureTable);

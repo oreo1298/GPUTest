@@ -229,6 +229,8 @@ public:
     ~VulkanCommandList() override;
     VkCommandBuffer handle() const { return m_cmd; }
     void setLastSubmit(std::uint64_t value) { m_lastSubmit = value; }
+    void* beginNativeCommands() override;
+    void endNativeCommands() override;
 
     void begin() override;
     void end() override;
@@ -402,6 +404,8 @@ public:
 
     // --- Device interface
     std::vector<Capability> capabilities() const override;
+    NativeDevice nativeDevice() override;
+    NativeTexture nativeTexture(Texture* texture, ResourceState state) override;
     std::unique_ptr<Buffer> createBuffer(const BufferDesc& desc, const void* initialData) override;
     std::unique_ptr<Texture> createTexture(const TextureDesc& desc) override;
     std::unique_ptr<Sampler> createSampler(const SamplerDesc& desc) override;

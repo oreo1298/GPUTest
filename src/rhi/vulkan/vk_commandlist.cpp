@@ -69,6 +69,19 @@ void VulkanCommandList::end() {
 }
 
 // --- barriers ------------------------------------------------------------------------------------------
+void* VulkanCommandList::beginNativeCommands() {
+    requireRecording("beginNativeCommands");
+    if (m_inRenderPass) throw Error("beginNativeCommands: not allowed inside a render pass");
+    return m_cmd; // barriers are recorded immediately: nothing pending
+}
+
+void VulkanCommandList::endNativeCommands() {
+    requireRecording("endNativeCommands");
+    m_pipeline = nullptr; // the native commands may have bound anything
+    m_bindingsDirty = true;
+    m_tableDirty = true;
+}
+
 void VulkanCommandList::transition(Texture* texture, ResourceState state) {
     requireRecording("transition");
     auto* t = static_cast<VulkanTexture*>(texture);

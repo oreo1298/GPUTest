@@ -84,7 +84,7 @@ Constants rcas(float sharpnessStops, std::uint32_t width, std::uint32_t height) 
 
 UpscalePass::UpscalePass(rhi::Device& dev, Upscaler kind, std::uint32_t inWidth, std::uint32_t inHeight,
                          std::uint32_t outWidth, std::uint32_t outHeight, float sharpnessStops)
-    : m_dev(dev), m_kind(kind), m_outWidth(outWidth), m_outHeight(outHeight) {
+    : m_kind(kind), m_outWidth(outWidth), m_outHeight(outHeight) {
     if (kind == Upscaler::Off) throw rhi::Error("UpscalePass: no upscaler selected");
     m_easu = fsr1::easu(inWidth, inHeight, outWidth, outHeight);
     m_rcas = fsr1::rcas(sharpnessStops, outWidth, outHeight);

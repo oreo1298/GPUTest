@@ -780,6 +780,30 @@ void VulkanDevice::collectGarbage() {
     }
 }
 
+// --- native interop -------------------------------------------------------------------------------------
+NativeDevice VulkanDevice::nativeDevice() {
+    NativeDevice n;
+    n.api = Api::Vulkan;
+    n.instance = m_instance;
+    n.physicalDevice = m_physical;
+    n.device = m_device;
+    QueueState& q = queue(QueueType::Graphics);
+    n.queue = q.queue;
+    n.queueFamily = q.family;
+    n.getInstanceProcAddr = reinterpret_cast<void*>(vkGetInstanceProcAddr);
+    return n;
+}
+
+NativeTexture VulkanDevice::nativeTexture(Texture* texture, ResourceState state) {
+    auto* t = static_cast<VulkanTexture*>(texture);
+    NativeTexture n;
+    n.resource = t->handle();
+    n.view = t->view({});
+    n.format = static_cast<std::uint32_t>(toVk(t->desc().format));
+    n.layout = static_cast<std::uint32_t>(imageState(state, formatInfo(t->desc().format).depth).layout);
+    return n;
+}
+
 // --- render pass / framebuffer caches --------------------------------------------------------------------
 VkRenderPass VulkanDevice::renderPass(const std::vector<VkFormat>& colors, VkFormat depth,
                                       VkSampleCountFlagBits samples, const std::vector<LoadOp>& colorLoads,
