@@ -386,6 +386,7 @@ private:
     const RootSignature* m_root = nullptr;
     bool m_rootDirty = true, m_viewsDirty = true, m_samplersDirty = true, m_pushDirty = false, m_tableDirty = true;
     bool m_accelDirty = false;
+    std::vector<const D3D12Accel*> m_builtAccels; ///< built since the last acceleration-structure barrier
     std::array<std::uint32_t, 32> m_push{};
     std::uint32_t m_pushBytes = 0;
     D3D12TextureTable* m_table = nullptr;

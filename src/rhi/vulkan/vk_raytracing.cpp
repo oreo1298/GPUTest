@@ -374,6 +374,10 @@ void VulkanCommandList::buildTlas(AccelerationStructure* tlas, std::span<const A
     // Instance records go through transient upload memory into the TLAS's device-local instance buffer.
     const std::uint64_t bytes = std::max<std::uint64_t>(1, instances.size()) * sizeof(VkAccelerationStructureInstanceKHR);
     TransientAllocation t = allocTransient(bytes, 16);
+    if (m_accelDirty) { // an earlier build may still read the instance buffer the copy below overwrites
+        vkCmdPipelineBarrier(m_cmd, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 0, nullptr);
+    }
     auto* rec = static_cast<VkAccelerationStructureInstanceKHR*>(t.cpu);
     for (std::size_t i = 0; i < instances.size(); ++i) {
         const AccelInstance& in = instances[i];

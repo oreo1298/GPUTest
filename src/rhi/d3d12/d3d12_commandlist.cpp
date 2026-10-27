@@ -81,6 +81,7 @@ void D3D12CommandList::begin() {
     m_pushDirty = false;
     m_pushBytes = 0;
     m_accelDirty = false;
+    m_builtAccels.clear();
     m_table = nullptr;
     m_b = {};
     m_t = {};

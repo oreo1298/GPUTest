@@ -2,6 +2,7 @@
 
 #include <deque>
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <format>
@@ -280,6 +281,9 @@ void D3D12CommandList::buildBlas(AccelerationStructure* blas, const BlasDesc& de
     requireRecording("buildBlas");
     if (!m_list4) throw Error("ray tracing is not supported by this command list");
     auto* a = static_cast<D3D12Accel*>(blas);
+    // Rebuilding a structure recorded earlier without a barrier in between (repeated builds, a refit
+    // right after its build) would race on its storage and scratch memory.
+    if (std::find(m_builtAccels.begin(), m_builtAccels.end(), a) != m_builtAccels.end()) accelBarrier();
     for (const AccelTriangles& g : desc.geometries) {
         if (g.vertices) require(static_cast<D3D12Buffer*>(g.vertices), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         if (g.indices) require(static_cast<D3D12Buffer*>(g.indices), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -319,6 +323,7 @@ void D3D12CommandList::buildBlas(AccelerationStructure* blas, const BlasDesc& de
     bd.ScratchAccelerationStructureData = a->scratchAddress();
     m_list4->BuildRaytracingAccelerationStructure(&bd, 0, nullptr);
     m_accelDirty = true;
+    m_builtAccels.push_back(a);
 }
 
 void D3D12CommandList::buildTlas(AccelerationStructure* tlas, std::span<const AccelInstance> instances, bool update) {
@@ -356,6 +361,7 @@ void D3D12CommandList::buildTlas(AccelerationStructure* tlas, std::span<const Ac
     bd.ScratchAccelerationStructureData = a->scratchAddress();
     m_list4->BuildRaytracingAccelerationStructure(&bd, 0, nullptr);
     m_accelDirty = true;
+    m_builtAccels.push_back(a);
 }
 
 void D3D12CommandList::accelBarrier() {
@@ -365,6 +371,7 @@ void D3D12CommandList::accelBarrier() {
     m_barriers.push_back(b);
     flushBarriers();
     m_accelDirty = false;
+    m_builtAccels.clear();
 }
 
 } // namespace gt::rhi::d3d12
