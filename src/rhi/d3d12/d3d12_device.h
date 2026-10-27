@@ -211,8 +211,15 @@ class D3D12Pipeline final : public Pipeline {
 public:
     D3D12Pipeline(D3D12Device& dev, const GraphicsPipelineDesc& desc);
     D3D12Pipeline(D3D12Device& dev, const ComputePipelineDesc& desc);
+    D3D12Pipeline(D3D12Device& dev, const RayTracingPipelineDesc& desc);
     ~D3D12Pipeline() override;
     ID3D12PipelineState* pso() const { return m_pso.get(); }
+    /// Ray-tracing pipelines: the state object and the shader-table regions for DispatchRays.
+    ID3D12StateObject* stateObject() const { return m_stateObject.get(); }
+    bool rayTracing() const { return static_cast<bool>(m_stateObject); }
+    D3D12_GPU_VIRTUAL_ADDRESS_RANGE raygenRecord() const { return m_raygen; }
+    D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE missTable() const { return m_miss; }
+    D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE hitTable() const { return m_hit; }
     const RootSignature& root() const { return *m_root; }
     const LayoutDesc& layoutDesc() const { return m_layoutDesc; }
     D3D_PRIMITIVE_TOPOLOGY topology() const { return m_topology; }
@@ -222,6 +229,10 @@ public:
 private:
     D3D12Device& m_dev;
     Com<ID3D12PipelineState> m_pso;
+    Com<ID3D12StateObject> m_stateObject;
+    std::unique_ptr<D3D12Buffer> m_shaderTable;
+    D3D12_GPU_VIRTUAL_ADDRESS_RANGE m_raygen{};
+    D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE m_miss{}, m_hit{};
     const RootSignature* m_root = nullptr;
     LayoutDesc m_layoutDesc;
     D3D_PRIMITIVE_TOPOLOGY m_topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
@@ -313,6 +324,7 @@ public:
     void buildTlas(AccelerationStructure* tlas, std::span<const AccelInstance> instances, bool update) override;
     void accelBarrier() override;
     void setAccelerationStructure(std::uint32_t slot, AccelerationStructure* tlas) override;
+    void traceRays(std::uint32_t width, std::uint32_t height, std::uint32_t depth) override;
 
 private:
     struct Bound {
@@ -399,6 +411,7 @@ public:
     std::unique_ptr<Sampler> createSampler(const SamplerDesc& desc) override;
     std::unique_ptr<Pipeline> createGraphicsPipeline(const GraphicsPipelineDesc& desc) override;
     std::unique_ptr<Pipeline> createComputePipeline(const ComputePipelineDesc& desc) override;
+    std::unique_ptr<Pipeline> createRayTracingPipeline(const RayTracingPipelineDesc& desc) override;
     std::unique_ptr<AccelerationStructure> createBlas(const BlasDesc& desc) override;
     std::unique_ptr<AccelerationStructure> createTlas(std::uint32_t maxInstances, bool allowUpdate) override;
     std::unique_ptr<TextureTable> createTextureTable(std::uint32_t capacity) override;

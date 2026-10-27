@@ -428,6 +428,7 @@ void D3D12Device::fillFeatures() {
     f.descriptorIndexing = m_bindingTier >= D3D12_RESOURCE_BINDING_TIER_2;
     f.maxBindlessTextures = f.descriptorIndexing ? 65536u : 0u;
     f.rayQuery = m_rtTier >= D3D12_RAYTRACING_TIER_1_1 && m_device5;
+    f.rayTracingPipeline = m_rtTier >= D3D12_RAYTRACING_TIER_1_0 && m_device5;
     f.meshShader = o7.MeshShaderTier >= D3D12_MESH_SHADER_TIER_1 && sm >= 0x65;
     f.taskShader = f.meshShader;
     f.variableRateShading = o6.VariableShadingRateTier >= D3D12_VARIABLE_SHADING_RATE_TIER_1;
@@ -555,6 +556,10 @@ std::unique_ptr<Pipeline> D3D12Device::createGraphicsPipeline(const GraphicsPipe
     return std::make_unique<D3D12Pipeline>(*this, desc);
 }
 std::unique_ptr<Pipeline> D3D12Device::createComputePipeline(const ComputePipelineDesc& desc) {
+    return std::make_unique<D3D12Pipeline>(*this, desc);
+}
+std::unique_ptr<Pipeline> D3D12Device::createRayTracingPipeline(const RayTracingPipelineDesc& desc) {
+    if (!m_features.rayTracingPipeline) throw Error("ray-tracing pipelines are not supported by this GPU");
     return std::make_unique<D3D12Pipeline>(*this, desc);
 }
 std::unique_ptr<TextureTable> D3D12Device::createTextureTable(std::uint32_t capacity) {

@@ -30,6 +30,26 @@ in the KDE application menu with its icon, that it starts on Wayland, that `kiln
 and the iGPU, and that `kiln-hw-report` finds the runner by itself. Tell me if makepkg complained about anything
 (missing dependency, namcap warnings) — CI builds it in a clean Arch container, but CachyOS's compiler flags differ.
 
+### M10 — Direct3D 12 (Windows)
+On a Windows PC (the 4090 if it dual-boots, otherwise any GPU), unzip the `windows-portable` artifact and run
+`powershell -ExecutionPolicy Bypass -File hw-report.ps1 -Mode standard` (it covers Vulkan and Direct3D 12).
+1. `kiln-run --list-devices`: every GPU should appear under Direct3D 12 too, with "FL 12_2, SM 6.x" (6.8+ on
+   current drivers) and the right driver version (NVIDIA shown as e.g. "566.36").
+2. **Same GPU, both APIs**: compare the Vulkan and Direct3D 12 results of the scenes; frame rates within ~15 % of
+   each other are plausible. Frames (`frames\d3d12-gpu0-*`) must look like the Vulkan ones.
+3. **Window**: `kiln-run --api d3d12 --test scene.skyline` (no `--offscreen`): the log's present mode should be
+   "immediate (tearing)" with VSync off. Resize/minimise the window during the run — no crash.
+4. **Debug layer** (optional): install "Graphics Tools" (Settings → System → Optional features), then run
+   `kiln-run --api d3d12 --suite smoke --validation`; the results file's `validation.errors` must be 0.
+5. **Runtime**: the device log line ends with "Windows built-in runtime"; tell me your Windows build (winver).
+   Shader model 6.9 features (SER, opacity micromaps) need the Agility SDK, which is not shipped yet (see below).
+
+**Decision needed (licensing):** shipping Microsoft's Agility SDK runtime (`D3D12Core.dll`,
+`d3d12SDKLayers.dll`) is allowed, but its license makes the distributor require end-user terms that protect
+Microsoft and indemnify Microsoft against claims. Kiln works without it (Windows' own runtime). If you are fine
+with those terms, say so and the portable zip will include it (newest shader models, debug layer without
+Graphics Tools).
+
 ### M9 — scene benchmarks
 On the RTX 4090 (and once on the Radeon iGPU): `kiln-run --suite standard --dump-frames frames-std` and
 `kiln-run --suite raytracing --dump-frames frames-rt`; on the 4090 also `--suite extreme`. Send the results files and

@@ -300,7 +300,12 @@ void D3D12CommandList::setPipeline(Pipeline* pipeline) {
     auto* p = static_cast<D3D12Pipeline*>(pipeline);
     if (p == m_pipeline) return;
     const bool typeChanged = !m_pipeline || m_pipeline->isCompute() != p->isCompute();
-    m_list->SetPipelineState(p->pso());
+    if (p->rayTracing()) {
+        if (!m_list4) throw Error("ray tracing is not supported by this command list");
+        m_list4->SetPipelineState1(p->stateObject());
+    } else {
+        m_list->SetPipelineState(p->pso());
+    }
     if (typeChanged || m_root != &p->root()) {
         m_root = &p->root();
         if (p->isCompute()) m_list->SetComputeRootSignature(m_root->signature.get());

@@ -364,6 +364,8 @@ struct RayTracingPipelineDesc {
     std::vector<ShaderRef> miss;
     std::vector<RayTracingHitGroup> hitGroups;
     std::uint32_t maxRecursion = 1;
+    std::uint32_t maxPayloadBytes = 32;   ///< largest ray payload (D3D12 needs it up front)
+    std::uint32_t maxAttributeBytes = 8;  ///< largest hit attributes (8 = triangle barycentrics)
     LayoutDesc layout; ///< bindings are visible to every ray-tracing stage
     const char* name = "";
 };

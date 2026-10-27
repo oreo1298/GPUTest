@@ -1,5 +1,8 @@
 #include "d3d12_device.h"
 
+#include <deque>
+
+#include <chrono>
 #include <cstring>
 #include <format>
 
@@ -52,7 +55,8 @@ D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS tlasInputs(std::uint32_t co
 } // namespace
 
 std::unique_ptr<AccelerationStructure> D3D12Device::createBlas(const BlasDesc& desc) {
-    if (!m_features.rayQuery || !m_device5) throw Error("ray tracing is not supported by this GPU");
+    if ((!m_features.rayQuery && !m_features.rayTracingPipeline) || !m_device5)
+        throw Error("ray tracing is not supported by this GPU");
     for (const AccelTriangles& g : desc.geometries)
         if (!g.opacity.empty()) throw Error("opacity micromaps are not supported by the Direct3D 12 backend yet");
     const auto geo = geometryDescs(desc);
@@ -65,13 +69,117 @@ std::unique_ptr<AccelerationStructure> D3D12Device::createBlas(const BlasDesc& d
 }
 
 std::unique_ptr<AccelerationStructure> D3D12Device::createTlas(std::uint32_t maxInstances, bool allowUpdate) {
-    if (!m_features.rayQuery || !m_device5) throw Error("ray tracing is not supported by this GPU");
+    if ((!m_features.rayQuery && !m_features.rayTracingPipeline) || !m_device5)
+        throw Error("ray tracing is not supported by this GPU");
     const auto inputs = tlasInputs(maxInstances, allowUpdate);
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
     m_device5->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
     auto a = std::make_unique<D3D12Accel>(*this, true, info, maxInstances, "tlas");
     a->allowUpdate = allowUpdate;
     return a;
+}
+
+// --- ray-tracing pipelines --------------------------------------------------------------------------------
+D3D12Pipeline::D3D12Pipeline(D3D12Device& dev, const RayTracingPipelineDesc& d) : m_dev(dev), m_name(d.name) {
+    const auto t0 = std::chrono::steady_clock::now();
+    m_isCompute = true; // bound through the compute root signature
+    m_layoutDesc = d.layout;
+    m_root = &dev.rootSignature(d.layout, false);
+    ID3D12Device5* dev5 = dev.device5();
+    if (!dev5) throw Error("ray-tracing pipelines need ID3D12Device5");
+
+    // Every shader is its own DXIL library; exports are renamed so entry names never clash.
+    struct Library {
+        D3D12_EXPORT_DESC exportDesc{};
+        D3D12_DXIL_LIBRARY_DESC desc{};
+        std::wstring name, original;
+    };
+    std::deque<Library> libraries; // stable addresses for the subobjects
+    auto addShader = [&](const ShaderRef& ref) -> std::wstring {
+        if (!ref.valid()) return {};
+        Library& lib = libraries.emplace_back();
+        lib.name = L"s" + std::to_wstring(libraries.size() - 1);
+        lib.original = widen(ref.entry);
+        lib.exportDesc = {lib.name.c_str(), lib.original.c_str(), D3D12_EXPORT_FLAG_NONE};
+        const auto code = dev.shaderBytecode(ref);
+        lib.desc = {{code.data(), code.size()}, 1, &lib.exportDesc};
+        return lib.name;
+    };
+    const std::wstring raygen = addShader(d.rayGen);
+    std::vector<std::wstring> misses;
+    for (const ShaderRef& m : d.miss) misses.push_back(addShader(m));
+    struct Group {
+        D3D12_HIT_GROUP_DESC desc{};
+        std::wstring name, closest, any, intersection;
+    };
+    std::deque<Group> groups;
+    for (const RayTracingHitGroup& h : d.hitGroups) {
+        Group& g = groups.emplace_back();
+        g.name = L"hg" + std::to_wstring(groups.size() - 1);
+        g.closest = addShader(h.closestHit);
+        g.any = addShader(h.anyHit);
+        g.intersection = addShader(h.intersection);
+        g.desc.HitGroupExport = g.name.c_str();
+        g.desc.Type = h.intersection.valid() ? D3D12_HIT_GROUP_TYPE_PROCEDURAL_PRIMITIVE : D3D12_HIT_GROUP_TYPE_TRIANGLES;
+        g.desc.ClosestHitShaderImport = g.closest.empty() ? nullptr : g.closest.c_str();
+        g.desc.AnyHitShaderImport = g.any.empty() ? nullptr : g.any.c_str();
+        g.desc.IntersectionShaderImport = g.intersection.empty() ? nullptr : g.intersection.c_str();
+    }
+    const D3D12_RAYTRACING_SHADER_CONFIG shaderConfig{d.maxPayloadBytes, d.maxAttributeBytes};
+    const D3D12_RAYTRACING_PIPELINE_CONFIG pipelineConfig{std::max(1u, d.maxRecursion)};
+    const D3D12_GLOBAL_ROOT_SIGNATURE globalRoot{m_root->signature.get()};
+    std::vector<D3D12_STATE_SUBOBJECT> subobjects;
+    for (Library& lib : libraries) subobjects.push_back({D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, &lib.desc});
+    for (Group& g : groups) subobjects.push_back({D3D12_STATE_SUBOBJECT_TYPE_HIT_GROUP, &g.desc});
+    subobjects.push_back({D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG, &shaderConfig});
+    subobjects.push_back({D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG, &pipelineConfig});
+    subobjects.push_back({D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE, &globalRoot});
+    const D3D12_STATE_OBJECT_DESC sd{D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE,
+                                     static_cast<UINT>(subobjects.size()), subobjects.data()};
+    dev.check(dev5->CreateStateObject(&sd, __uuidof(ID3D12StateObject), m_stateObject.putVoid()),
+              std::format("CreateStateObject({})", d.name).c_str());
+    dev.setName(m_stateObject.get(), d.name);
+
+    // Shader tables: ray generation, then the miss records, then the hit groups (identifiers only).
+    auto props = m_stateObject.as<ID3D12StateObjectProperties>();
+    if (!props) throw Error("ID3D12StateObjectProperties unavailable");
+    const std::uint64_t record = D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT;
+    const std::uint64_t table = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
+    auto alignUp = [](std::uint64_t v, std::uint64_t a) { return (v + a - 1) / a * a; };
+    const std::uint64_t missOffset = alignUp(record, table);
+    const std::uint64_t hitOffset = alignUp(missOffset + record * std::max<std::size_t>(misses.size(), 1), table);
+    const std::uint64_t size = hitOffset + record * std::max<std::size_t>(groups.size(), 1);
+    m_shaderTable = std::make_unique<D3D12Buffer>(
+        dev, BufferDesc{size, BufferUsage::ShaderTable, MemoryType::Upload, 0, "shader-table"});
+    auto* base = static_cast<std::uint8_t*>(m_shaderTable->mapped());
+    auto copyId = [&](const std::wstring& name, std::uint64_t offset) {
+        const void* id = props->GetShaderIdentifier(name.c_str());
+        if (!id) throw Error(std::format("pipeline '{}': no shader identifier for an export", d.name));
+        std::memcpy(base + offset, id, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+    };
+    copyId(raygen, 0);
+    for (std::size_t i = 0; i < misses.size(); ++i) copyId(misses[i], missOffset + i * record);
+    for (std::size_t i = 0; i < groups.size(); ++i) copyId(groups[i].name, hitOffset + i * record);
+    const D3D12_GPU_VIRTUAL_ADDRESS va = m_shaderTable->address();
+    m_raygen = {va, record};
+    m_miss = {va + missOffset, record * misses.size(), record};
+    m_hit = {va + hitOffset, record * groups.size(), record};
+    m_creationMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
+
+void D3D12CommandList::traceRays(std::uint32_t width, std::uint32_t height, std::uint32_t depth) {
+    if (!m_pipeline || !m_pipeline->rayTracing()) throw Error("traceRays: no ray-tracing pipeline bound");
+    if (!m_list4) throw Error("ray tracing is not supported by this command list");
+    flushBindings(true);
+    flushBarriers();
+    D3D12_DISPATCH_RAYS_DESC r{};
+    r.RayGenerationShaderRecord = m_pipeline->raygenRecord();
+    r.MissShaderTable = m_pipeline->missTable();
+    r.HitGroupTable = m_pipeline->hitTable();
+    r.Width = width;
+    r.Height = height;
+    r.Depth = depth;
+    m_list4->DispatchRays(&r);
 }
 
 void D3D12CommandList::buildBlas(AccelerationStructure* blas, const BlasDesc& desc, bool update) {
