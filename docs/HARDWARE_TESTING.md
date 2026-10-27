@@ -50,11 +50,12 @@ and the iGPU, and that `kiln-hw-report` finds the runner by itself. Tell me if m
 
 5. **Video engines** (`feature.video`, Vulkan, every GPU that has video queues — the 4090 and the iGPU on
    Linux, and once on Windows): `kiln-run --test feature.video --duration quick --validation`. This code has
-   never run on a real video engine. Send the result JSON (verdict, `h264_*` metrics and details: profile,
-   level, CABAC/CAVLC, encoder overrides, per-frame PSNR) and the log, especially any validation errors. Expect
-   pass with a PSNR around 35–45 dB; a fail with a low PSNR means the decoder's reference setup or the slice
-   offsets are wrong (say which frames are low: only P-frames points at references). Also send the
-   "Video codecs" section of `kiln-run --caps`.
+   never run on a real video engine. Per codec it decodes a reference stream (each frame must match FFmpeg's
+   decode bit for bit) and encodes the source pattern (checked by decoding it again). Send the result JSON
+   (verdict, `*_decode_fps`, `*_encode_fps`, `*_psnr`, and the per-codec details: profile, decode output
+   mode, CRCs, encoder overrides, per-frame PSNR, and any `*_note` saying what was skipped) and the log,
+   especially validation errors. A CRC mismatch on frame 0 only points at the decoder's parameter sets; on
+   inter frames only, at the reference setup. Also send the "Video codecs" section of `kiln-run --caps`.
 
 ### M11 — OpenGL and Direct3D 11
 1. **OpenGL on the 4090 and the iGPU (Linux)**: `kiln-run --api opengl --suite legacy --duration quick` and the

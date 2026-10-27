@@ -267,23 +267,33 @@ One line per non-trivial choice: what and why. Newest at the bottom of each sect
   look, plus what DXGI reports (colour space, luminance range). Vulkan HDR10 uses A2B10G10R10 only (the RHI's
   RGB10A2); the HUD is off on HDR swapchains (its white would be 10000 nits).
 
-- **Video engines through native Vulkan Video, H.264 first** (`feature.video`). The RHI gets no video
-  abstraction: video sessions, DPB slots and bitstream buffers do not fit its resource model and only one test
-  uses them, so the RHI only creates the video decode/encode queues and exposes them, with the enabled
-  extensions, through `NativeDevice`; the test drives volk directly. Its streams are made by the GPU's own
-  encoder (an IDR + 7 P-frame GOP of synthetic 1080p NV12 frames, one slice each): no bitstream files in the
-  repository, nothing to license, and the decoder is checked against known source frames (luma PSNR: warn below
-  30 dB, fail below 25 dB). Encoders may override parameters, so the decoder uses the SPS/PPS the encoder wrote
-  (`vkGetEncodedVideoSessionParametersKHR`, parsed by `gt/bench/h264_params.h`) and each frame's slice header
-  (frame_num, idr_pic_id, POC derivation for types 0 and 2). Constant QP 26 when the encoder offers rate control
-  "disabled", else the driver's default. Throughput = wall time of submissions of 8 back-to-back GOPs after one
-  warm-up, encode and decode measured separately. All native submissions are ordered by one timeline semaphore;
-  images and buffers that cross queues use concurrent sharing. Limitations: a GPU with a decoder but no encoder
-  for a codec is not measured for that codec (decode-only AV1 is common); slice offsets point at start codes
-  (as FFmpeg's Vulkan decoder does — the spec text says "slice headers"). No driver here or in CI has video
-  queues (lavapipe, WARP), and building the Khronos mock ICD to run the validation layers over this code was not
-  allowed in this environment, so the code was checked against the spec text and is verified on hardware
-  (docs/HARDWARE_TESTING.md). H.265, AV1 and D3D12 Video follow.
+- **Video engines through native Vulkan Video** (`feature.video`). The RHI gets no video abstraction: video
+  sessions, DPB slots and bitstream buffers do not fit its resource model and only one test uses them, so the
+  RHI only creates the video decode/encode queues and exposes them, with the enabled extensions, through
+  `NativeDevice`; the test drives volk directly (`video_vk.h`: a codec-independent decoder and encoder,
+  codecs plug in as `DecodeCodec` / `EncodeCodec`).
+- **Decode throughput on fixed reference streams, checked bit for bit.** `data/video` holds one 1080p stream per
+  codec (8 frames, IDR/key frame + inter frames referencing the previous frame, ~25 Mbit/s at 60 fps), made by
+  `scripts/make-video-streams.py` with FFmpeg's libx264/libx265/libaom from Kiln's own synthetic pattern, plus
+  the CRC-32 of each frame FFmpeg decodes. Every GPU decodes the same bits (comparable frame rates), and as the
+  codecs define decoding exactly, a GPU frame that differs from FFmpeg's is a decoder fault. The streams are
+  embedded with `gt_embed` (~1.3 MB). Encoder output is not covered by the encoders' licenses and the content
+  is ours, so the streams are MIT like the rest (`data/video/README.md`). The same streams validate the
+  bitstream parsers in unit tests against values from FFmpeg's `trace_headers` filter.
+- **Encode throughput on the GPU's encoder, checked by a round trip.** The same pattern (identical bytes from
+  the C++ and Python generators) is encoded as IDR + P-frames, constant quantizer where the encoder offers rate
+  control "disabled", else the driver's default; the stream is decoded on the GPU with the parameter sets the
+  encoder actually wrote (`vkGetEncodedVideoSessionParametersKHR`, parsed: encoders may override) and the
+  slice headers it produced; luma PSNR against the source warns below 30 dB and fails below 25 dB. A GPU with
+  an encoder but no decoder reports encode fps unchecked.
+- **Video details:** throughput = wall time of submissions of 8 back-to-back GOPs after one warm-up. Decoding
+  puts frame f in DPB slot f and image layer f (any frame may reference any earlier one, as AV1 needs);
+  H.264 references follow the sliding window. Slice offsets point at start codes, as FFmpeg's Vulkan decoder
+  does (the spec text says "slice headers"). All native submissions are ordered by one timeline semaphore;
+  images that cross queues use concurrent sharing. No driver here or in CI has video queues (lavapipe, WARP),
+  and building the Khronos mock ICD to run the validation layers over this code was not allowed in this
+  environment, so the Vulkan calls were checked against the spec text and are verified on hardware
+  (docs/HARDWARE_TESTING.md).
 
 ## Stats & scoring
 - **1%/0.1% lows = 1000 / mean of the slowest 1%/0.1% of frame times** (at least one frame); percentiles use linear interpolation (R-7).

@@ -1,9 +1,11 @@
 #include "gt/bench/h264_params.h"
+#include "gt/bench/video_streams.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
 #include <span>
+#include <string>
 #include <utility>
 
 using namespace gt::bench;
@@ -107,4 +109,55 @@ TEST_CASE("H.264 parameter-set errors are reported", "[h264]") {
     const std::uint8_t truncated[] = {0x00, 0x00, 0x01, 0x67, 0x64, 0x00};
     CHECK_FALSE(h264::parse(truncated, &error));
     CHECK_FALSE(error.empty());
+}
+
+TEST_CASE("CRC-32 matches zlib", "[video]") {
+    const std::string s = "123456789";
+    const std::span<const std::uint8_t> bytes(reinterpret_cast<const std::uint8_t*>(s.data()), s.size());
+    CHECK(video::crc32(bytes) == 0xCBF43926u);
+    CHECK(video::crc32(bytes.subspan(4), video::crc32(bytes.first(4))) == 0xCBF43926u);
+}
+
+TEST_CASE("Reference video streams are embedded with their frame CRCs", "[video]") {
+    for (const char* key : {"h264", "h265", "av1"}) {
+        const video::ReferenceStream* s = video::referenceStream(key);
+        REQUIRE(s);
+        CHECK(s->width == 1920);
+        CHECK(s->height == 1080);
+        CHECK(s->crc32.size() == 8);
+        CHECK(s->data.size() > 100000);
+    }
+}
+
+TEST_CASE("The x264 reference stream splits into eight frames", "[h264][video]") {
+    const video::ReferenceStream* s = video::referenceStream("h264");
+    REQUIRE(s);
+    std::string error;
+    const auto st = h264::split(s->data, nullptr, &error);
+    INFO(error);
+    REQUIRE(st);
+    // Values from FFmpeg's trace_headers bitstream filter on the same stream.
+    const h264::Sps& sps = *st->params.sps;
+    CHECK(sps.profileIdc == 100);
+    CHECK(sps.levelIdc == 42);
+    CHECK(sps.pocType == 2);
+    CHECK(sps.maxNumRefFrames == 1);
+    CHECK(sps.widthInMbsMinus1 == 119);
+    CHECK(sps.heightInMapUnitsMinus1 == 67);
+    CHECK(sps.cropBottom == 4);
+    CHECK(sps.vuiPresent);
+    CHECK(st->params.pps->entropyCodingMode);
+    CHECK(st->params.pps->transform8x8Mode);
+    CHECK(st->params.pps->chromaQpIndexOffset == -2);
+    REQUIRE(st->pictures.size() == 8);
+    for (std::size_t f = 0; f < 8; ++f) {
+        const h264::Picture& p = st->pictures[f];
+        INFO("frame " << f);
+        CHECK(p.header.idr() == (f == 0));
+        CHECK(p.header.frameNum == f);
+        CHECK(p.poc[0] == static_cast<std::int32_t>(2 * f));
+        CHECK(p.slices.size() == 1);
+        CHECK(p.slices[0] == 0);
+        CHECK(p.data.size() > 1000);
+    }
 }

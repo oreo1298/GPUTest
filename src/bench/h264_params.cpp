@@ -253,4 +253,41 @@ std::array<std::int32_t, 2> PocCounter::next(const SliceHeader& h, const Sps& sp
     return {top, top};
 }
 
+std::optional<Stream> split(std::span<const std::uint8_t> data, const ParameterSets* params,
+                            std::string* error) {
+    Stream out;
+    if (params) {
+        out.params = *params;
+    } else {
+        auto ps = parse(data, error);
+        if (!ps) return std::nullopt;
+        out.params = *ps;
+    }
+    if (!out.params.sps || !out.params.pps) {
+        if (error) *error = "no SPS/PPS";
+        return std::nullopt;
+    }
+    PocCounter poc;
+    for (const NalUnit& n : nalUnits(data)) {
+        if (n.type != 1 && n.type != 5) continue;
+        auto h = parseSliceHeader(data.subspan(n.payload, n.end - n.payload), out.params, error);
+        if (!h) return std::nullopt;
+        if (h->firstMb == 0 || out.pictures.empty()) {
+            Picture p;
+            p.header = *h;
+            p.poc = poc.next(*h, *out.params.sps);
+            out.pictures.push_back(std::move(p));
+        }
+        Picture& p = out.pictures.back();
+        p.slices.push_back(static_cast<std::uint32_t>(p.data.size()));
+        p.data.insert(p.data.end(), data.begin() + static_cast<std::ptrdiff_t>(n.offset),
+                      data.begin() + static_cast<std::ptrdiff_t>(n.end));
+    }
+    if (out.pictures.empty()) {
+        if (error) *error = "no slices";
+        return std::nullopt;
+    }
+    return out;
+}
+
 } // namespace gt::bench::h264

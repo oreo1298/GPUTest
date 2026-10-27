@@ -77,4 +77,20 @@ private:
     std::uint32_t m_prevFrameNum = 0, m_frameNumOffset = 0;
 };
 
+/// One coded frame: its slice NAL units (each with a 00 00 01 start code) and what decoding it needs.
+struct Picture {
+    std::vector<std::uint8_t> data;
+    std::vector<std::uint32_t> slices; ///< offsets of the slices' start codes in `data`
+    SliceHeader header;                ///< of the first slice
+    std::array<std::int32_t, 2> poc{};
+};
+struct Stream {
+    ParameterSets params;
+    std::vector<Picture> pictures;
+};
+/// Splits Annex B data into frames (a frame starts at a slice with first_mb_in_slice 0). The parameter sets
+/// are read from the data unless `params` is given (an encoder's own, for its slice-only output).
+std::optional<Stream> split(std::span<const std::uint8_t> annexB, const ParameterSets* params,
+                            std::string* error);
+
 } // namespace gt::bench::h264

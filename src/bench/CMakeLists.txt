@@ -6,6 +6,7 @@ add_library(gt_bench STATIC
   plugins.cpp
   upscale.cpp
   h264_params.cpp
+  video_streams.cpp
   suites.cpp
   scene.cpp
   stb_impl.cpp
@@ -15,6 +16,25 @@ target_include_directories(gt_bench PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
   PRIVATE "${CMAKE_SOURCE_DIR}/third_party/stb")
 target_link_libraries(gt_bench PUBLIC gt_common gt_rhi gt_telemetry)
 gt_set_warnings(gt_bench)
+
+# Reference video streams for feature.video (data/video, made by scripts/make-video-streams.py).
+set(_video_dir "${CMAKE_SOURCE_DIR}/data/video")
+set(_video_files h264=h264_1080p.h264 h265=h265_1080p.h265 av1=av1_1080p.obu streams.json=streams.json)
+set(_video_args)
+set(_video_deps)
+foreach(_entry IN LISTS _video_files)
+  string(REPLACE "=" ";" _kv "${_entry}")
+  list(GET _kv 0 _key)
+  list(GET _kv 1 _file)
+  list(APPEND _video_args "${_key}=${_video_dir}/${_file}")
+  list(APPEND _video_deps "${_video_dir}/${_file}")
+endforeach()
+set(_video_cpp "${CMAKE_CURRENT_BINARY_DIR}/embedded_video.cpp")
+add_custom_command(OUTPUT "${_video_cpp}"
+  COMMAND gt_embed "${_video_cpp}" gt::bench::video_data kStreams ${_video_args}
+  DEPENDS gt_embed ${_video_deps}
+  COMMENT "Embedding reference video streams" VERBATIM)
+target_sources(gt_bench PRIVATE "${_video_cpp}")
 
 # Tests register themselves statically; an OBJECT library keeps every object file.
 add_library(gt_bench_tests OBJECT
@@ -46,6 +66,8 @@ add_library(gt_bench_tests OBJECT
   tests/features/upscale.cpp
   tests/features/hdr.cpp
   tests/features/video.cpp
+  tests/features/video_vk.cpp
+  tests/features/video_h264_vk.cpp
   tests/features/sampler_feedback.cpp
   tests/features/work_graphs.cpp
   tests/features/async_queues.cpp
